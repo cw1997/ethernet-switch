@@ -44,6 +44,8 @@ ram #(
 always #1 clock = ~clock;
 
 initial begin
+    // $monitor("%t: read_ready=0x%h, read_data=0x%h", $time, read_ready, read_data);
+    $monitor("%t: write_ready=0x%h, write_address=0x%h, write_data=0x%h", $time, write_ready, write_address, write_data);
     read_vaild = 0;
     read_address = 0;
     write_vaild = 0;
@@ -57,7 +59,6 @@ initial begin
     read_vaild = 1;
     read_address = 0;
     $display("%t: read: address=0x%h", $time, read_address);
-    $monitor("%t: read_ready=0x%h, read_data=0x%h", $time, read_ready, read_data);
 
     #8;
 
@@ -65,14 +66,12 @@ initial begin
     write_address = 0;
     write_data = 1;
     $display("%t: write: address=0x%h", $time, write_address);
-    $monitor("%t: write_ready=0x%h, write_address=0x%h, write_data=0x%h", $time, write_ready, write_address, write_data);
 
     #8;
 
     read_vaild = 1;
     read_address = 0;
     $display("%t: read: address=0x%h", $time, read_address);
-    $monitor("%t: read_ready=0x%h, read_data=0x%h", $time, read_ready, read_data);
 
     #64;
 
