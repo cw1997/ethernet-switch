@@ -1,14 +1,14 @@
 module transceiver #(
     mac_address = 48'h11_22_33_44_55_66
 ) (
-	input  logic        mii_tx_clock,
-	output logic        mii_tx_enable,
-	output logic        mii_tx_error,
-	output logic [ 3:0] mii_tx_data,
-	input  logic        mii_rx_clock,
-	input  logic        mii_rx_data_valid,
-	input  logic        mii_rx_error,
-	input  logic [ 3:0] mii_rx_data,
+    input  logic        mii_tx_clock,
+    output logic        mii_tx_enable,
+    output logic        mii_tx_error,
+    output logic [ 3:0] mii_tx_data,
+    input  logic        mii_rx_clock,
+    input  logic        mii_rx_data_valid,
+    input  logic        mii_rx_error,
+    input  logic [ 3:0] mii_rx_data,
     input  logic        clock, reset
 );
 
@@ -80,11 +80,12 @@ always_ff @(posedge clock or posedge reset) begin
                 end
             end
             STATE_TRANSMIT_3_0: begin
-                if (rxc_edge_positive) begin
+                if (rxdv_level_high & rxc_edge_positive) begin
                     write_data[3:0] <= mii_rx_data;
                     write_enable <= 1;
                     state_recv <= STATE_TRANSMIT_7_4;
                 end else begin
+                    write_enable <= 0;
                     state_recv <= STATE_TRANSMIT_3_0;
                 end
             end
