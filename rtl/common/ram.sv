@@ -34,7 +34,7 @@ assign write_ready = write_vaild;
 always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
         read_data <= '{default:'z};
-    end begin
+    end else begin
         if (read_vaild) begin
             read_data <= ram[read_address];
         end else begin
