@@ -19,7 +19,7 @@ logic             is_empty;
 logic             is_full;
 
 initial begin
-    $monitor("%t : read_enable = %b, read_data = 0x%h (%bb) , is_empty = %b, is_full = %b", $time, read_enable, read_data, read_data, is_empty, is_full);
+    // $monitor("%t : read_enable = %b, read_data = 0x%h (%bb) , is_empty = %b, is_full = %b", $time, read_enable, read_data, read_data, is_empty, is_full);
     $monitor("%t : write_enable = %b, write_data = 0x%h (%bb) , is_empty = %b, is_full = %b", $time, write_enable, write_data, write_data, is_empty, is_full);
 
     read_enable = 0;
