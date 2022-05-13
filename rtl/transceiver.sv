@@ -9,11 +9,24 @@ module transceiver #(
     input  logic        mii_rx_data_valid,
     input  logic        mii_rx_error,
     input  logic [ 3:0] mii_rx_data,
+    input  logic        switch_ready,
+    output logic        switch_vaild,
+    output logic [15:0] switch_length,
+    output logic [47:0] switch_source_mac_address,
+    output logic [47:0] switch_destin_mac_address,
+    input  logic        switch_mii_tx_clock,
+    output logic        switch_mii_tx_enable,
+    output logic        switch_mii_tx_error,
+    output logic [ 3:0] switch_mii_tx_data,
     input  logic        clock, reset
 );
 
+assign mii_tx_enable = 0;
+assign mii_tx_error = 0;
+assign mii_tx_data = 0;
+
 localparam
-WIDTH = 8, DEPTH = 32;
+WIDTH = 8, DEPTH = 1536 * 3;
 
 logic [WIDTH-1:0] read_data;
 logic             read_enable;
