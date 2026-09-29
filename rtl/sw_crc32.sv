@@ -33,6 +33,12 @@
 `ifndef SW_CRC32_SV
 `define SW_CRC32_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 `include "sw_defs.sv"
 
 // The shared CRC constants arrive through the include above and are visible at
@@ -105,5 +111,10 @@ module sw_crc32 (
   assign resid_ok_o = (crc == SW_CRC32_RESIDUE);
 
 endmodule : sw_crc32
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_CRC32_SV

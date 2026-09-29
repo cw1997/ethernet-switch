@@ -4,11 +4,14 @@
 #
 #                Three jobs, in dependency order:
 #
-#                  1. lint     - syntax and elaboration: Verilator -Wall lint plus
-#                                 an Icarus elaboration of the RTL on its own,
+#                  1. lint     - syntax and elaboration: Verilator -Wall lint, an
+#                                 Icarus elaboration of the RTL on its own,
 #                                 which is the synthesis-style check because it
 #                                 catches anything that only works because a
-#                                 testbench happens to drive it.
+#                                 testbench happens to drive it, and a yosys
+#                                 read + elaborate + synthesise, which is the
+#                                 only gate that enforces the synthesis
+#                                 restrictions the simulators cannot see.
 #                  2. test     - the full regression: three block level
 #                                 testbenches, the four-port mixed-speed switch
 #                                 testbench, and the three-port parameterisation
@@ -53,10 +56,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Pinned so that a surprise upstream release cannot turn a green run red (or,
-  # worse, a red run green) without a change in this repository.
+  # Package names, not versions.  Pinning the *version* here would make this job
+  # fail to install the moment ubuntu-latest moves on, which is a worse failure
+  # than a stricter linter, so the flow tracks the distribution instead and the
+  # RTL is written to satisfy every version of the flow in use rather than one
+  # of them.  See AGENTS.md section 2.2 for what that means in practice: the lint
+  # result is version sensitive, so the width discipline has to be self-imposed.
   IVERILOG_PKG: iverilog
   VERILATOR_PKG: verilator
+  YOSYS_PKG: yosys
 
 jobs:
   # ==========================================================================
@@ -71,14 +79,16 @@ jobs:
       - name: Check out the sources
         uses: actions/checkout@v4
 
-      - name: Install the simulators and the linter
+      - name: Install the simulators, the linter and the synthesis frontend
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             $IVERILOG_PKG \
-            $VERILATOR_PKG
+            $VERILATOR_PKG \
+            $YOSYS_PKG
           iverilog -V | head -1
           verilator --version
+          yosys -V
 
       - name: Cache the build directory
         uses: actions/cache@v4
@@ -98,6 +108,16 @@ jobs:
       # only elaborates because a testbench declares a missing signal fails here.
       - name: Elaborate the RTL standalone
         run: make rtl
+
+      # yosys read + elaborate + synthesise.  This is the only gate that enforces
+      # the three synthesis restrictions the simulators cannot see - no package
+      # or import, no `return` in a function, a package-width port declaration -
+      # so a change that violates one passes every other job and then fails in
+      # the physical flow, tens of minutes into the most expensive job there is.
+      # It was out of CI only because yosys was not installed on the runner; see
+      # AGENTS.md section 2.1 and the `synth` target in the Makefile.
+      - name: Synthesise the RTL with yosys
+        run: make synth
 
   # ==========================================================================
   # 2. Regression

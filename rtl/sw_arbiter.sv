@@ -36,6 +36,12 @@
 `ifndef SW_ARBITER_SV
 `define SW_ARBITER_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 `include "sw_defs.sv"
 
 // The shared declarations (`SW_LEN_W`, `sw_tag_width`, ...) arrive through the
@@ -226,9 +232,6 @@ module sw_arbiter #(
 
   // --------------------------------------------------------------------------
   // Round-robin arbitration
-  // --------------------------------------------------------------------------
-  // --------------------------------------------------------------------------
-  // Round-robin arbitration
   //
   // A grant is only issued while no transfer is in flight.  `beat_write` is a
   // single OR of "continue the transfer" and "start a new one", so allowing both
@@ -280,9 +283,28 @@ module sw_arbiter #(
     end
   end
 
+  // The port the scan starts from next: the one after the port just granted.
+  // `grant_idx` is '0 whenever there is no grant, and `rr_next` is only read on
+  // `grant_now`, so the two agree everywhere it matters.
+  //
+  // Both operands of the increment carry the pointer width, so the addition is
+  // evaluated at PW bits: `PW'(grant_idx + 1)` would evaluate at the 32 bits of
+  // the unsized literal, zero-extending `grant_idx` and discarding 30 bits of
+  // the result again.
+  //
+  // The wrap is written out against NUM_PORTS rather than left to the natural
+  // overflow of the counter, because a PW bit counter only wraps to zero when
+  // NUM_PORTS is a power of two.  With NUM_PORTS = 3 the truncation lands on
+  // port 3, which does not exist; the scan modulo in `rr_order` still visits
+  // every real port, so the scheduler stays fair and the defect never shows up -
+  // it would only resurface the moment the wrap is used for anything else.
+  logic [PW-1:0] rr_next;
+  assign rr_next = (grant_idx == PW'(NUM_PORTS - 1)) ? '0
+                                                    : (grant_idx + PW'(1));
+
   always_ff @(posedge clk_i) begin
-    if (!rst_ni)                       rr_ptr <= '0;
-    else if (grant_now)                rr_ptr <= PW'(grant_idx + 1);
+    if (!rst_ni)         rr_ptr <= '0;
+    else if (grant_now)  rr_ptr <= rr_next;
   end
 
   // --------------------------------------------------------------------------
@@ -330,13 +352,20 @@ module sw_arbiter #(
   end
 
   // The candidate is armed only while the fabric has nothing better to do, and
-  // fires when the block has waited STALL_LIMIT arbitration cycles.  With
-  // STALL_LIMIT == 0 the comparison is never true, so the feature is off.
+  // fires when the block has waited STALL_LIMIT arbitration cycles.
+  //
+  // STALL_LIMIT == 0 disables the drop, and it is disabled *explicitly* rather
+  // than by letting the threshold underflow: `16'(0) - 16'd1` is 16'hFFFF, and
+  // the feature then stays off only because a 16-bit counter never reaches it.
+  // That is a real property of the counter rather than of the intent, and it
+  // breaks the moment the counter is widened.  The guard is a constant
+  // expression, so it elaborates away and the disabled configuration costs
+  // nothing in hardware.
   always_comb begin
     stall_fire = 1'b0;
     stall_idx  = stall_cand_idx;
-    if (stall_cand && any_wait && !grant_now && !drop_valid) begin
-      stall_fire = stall_cand && (stall_cnt >= 16'(STALL_LIMIT) - 16'd1);
+    if ((STALL_LIMIT != 0) && stall_cand && any_wait && !grant_now && !drop_valid) begin
+      stall_fire = stall_cnt >= 16'(STALL_LIMIT - 1);
     end
   end
 
@@ -513,10 +542,31 @@ module sw_arbiter #(
     count_copies = n;
   endfunction
 
-  assign tx_copies = CPY_W'(count_copies(tx_copy_b));
-  // The multiplier is CPY_W wide, not 32: `tx_copies` can only reach NUM_PORTS,
-  // so this is a short shift-add chain rather than a general multiplier.
-  assign tx_octets_inc = {21'd0, beat_len[10:0]} * {{(32-CPY_W){1'b0}}, tx_copies};
+  /// The frame length multiplied by the replication count.
+  ///
+  /// Written as an explicit shift-add rather than with `*`, because the general
+  /// operator would describe a 32 x 32 multiplier: both operands are 32-bit
+  /// vectors, and a synthesis tool has no way to know that `copies` only ever
+  /// reaches NUM_PORTS, so it builds the full array.  Here the operand is
+  /// CPY_W bits wide and the network is a CPY_W-term shift-add - a handful of
+  /// adders on a path that is already a 32-bit accumulator.
+  ///
+  /// A function for the same reason as `count_copies` above: the accumulator is
+  /// written and read inside the same evaluation, which is safe in a function
+  /// (no sensitivity list at all) and hangs Icarus in an always_comb.
+  function automatic logic [31:0] octets_x_copies(
+      input logic [SW_LEN_W-1:0] len,
+      input logic [CPY_W-1:0]     copies);
+    logic [31:0] acc;
+    acc = 32'd0;
+    for (int unsigned b = 0; b < CPY_W; b++) begin
+      if (copies[b]) acc = acc + ({21'd0, len[10:0]} << b);
+    end
+    octets_x_copies = acc;
+  endfunction
+
+  assign tx_copies      = CPY_W'(count_copies(tx_copy_b));
+  assign tx_octets_inc  = octets_x_copies(beat_len, tx_copies);
 
   logic [31:0] cnt_tx_frames, cnt_tx_octets, cnt_tx_stalled;
 
@@ -560,5 +610,10 @@ module sw_arbiter #(
   end
 
 endmodule : sw_arbiter
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_ARBITER_SV

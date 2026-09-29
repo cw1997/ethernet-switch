@@ -10,7 +10,8 @@
 #    make sim        the main four-port switch testbench
 #    make param      the parameterisation testbench (3 ports, 50 MHz)
 #    make synth      read + elaborate + synthesise the RTL with yosys (needs
-#                    yosys on PATH; not part of `all`, see the comment above it)
+#                    yosys on PATH; not part of `all`, but it *is* a CI gate -
+#                    see the comment above the target)
 #    make clean      remove build products
 #
 #  Tools
@@ -167,10 +168,11 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 # ---------------------------------------------------------------------------
 # Synthesis readability check.
 #
-# Not part of `all`, because it needs yosys and the CI lint job does not install
-# it.  It is here because the simulators are *far* more permissive than the
-# synthesis frontend, so a design can pass every testbench and still be
-# unreadable by the flow:
+# Not part of `all`, because `all` is what you want to run while iterating on
+# behaviour and this target needs yosys.  The CI lint job installs yosys and
+# runs it, so it is a hard gate there.  It is here because the simulators are
+# *far* more permissive than the synthesis frontend, so a design can pass every
+# testbench and still be unreadable by the flow:
 #
 #   * a package item is not a constant range, so a port width taken from a
 #     package is rejected outright,
@@ -179,8 +181,7 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 #   * `return` in any function is a syntax error.
 #
 # All four are invisible to Icarus and Verilator.  The RTL avoids all of them -
-# see rtl/sw_defs.sv - and this target is what keeps it that way.  Add yosys to
-# a CI job to turn it into a hard gate.
+# see rtl/sw_defs.sv and AGENTS.md - and this target is what keeps it that way.
 #
 # The `-sv` is not optional: read_verilog does not infer SystemVerilog from a
 # `.sv` extension, and without it the parse dies on the first declaration with

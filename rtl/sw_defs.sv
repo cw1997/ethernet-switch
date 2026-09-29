@@ -86,6 +86,12 @@
 `ifndef SW_DEFS_SV
 `define SW_DEFS_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 // This is a shared declaration library, not a module: no constant or helper
 // below is referenced by every file that includes it.  Waive the two warnings
 // that report exactly that situation so that every other check can stay
@@ -400,5 +406,10 @@ localparam int unsigned SW_STAT_COUNT = 14;
 /* verilator lint_on UNUSEDSIGNAL */
 /* verilator lint_on UNUSEDPARAM */
 `endif
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_DEFS_SV
