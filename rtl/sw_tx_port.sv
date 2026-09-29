@@ -26,6 +26,12 @@
 `ifndef SW_TX_PORT_SV
 `define SW_TX_PORT_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 `include "sw_defs.sv"
 
 // The shared declarations (`SW_LEN_W`, `sw_tx_free_width`) arrive through the
@@ -177,5 +183,10 @@ module sw_tx_port #(
   end
 
 endmodule : sw_tx_port
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_TX_PORT_SV

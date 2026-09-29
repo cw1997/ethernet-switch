@@ -83,3 +83,12 @@ compilation-unit scope instead of in a package** - which is the single most
 important portability constraint in this repository, because the synthesis
 frontend rejects a package in three separate places and neither simulator
 notices.
+
+## Working on the design
+
+[`AGENTS.md`](AGENTS.md) is the style and portability contract for this
+repository: the tool flow and what each gate catches, the three restrictions the
+synthesis frontend imposes, the RTL conventions (width discipline in
+particular, since a silent operand extension is the defect the linter catches
+least reliably), the testbench rules, and the order to run the gates in. Read it
+before changing anything under `rtl/`.

@@ -26,6 +26,12 @@
 `ifndef SW_SYNC_FIFO_SV
 `define SW_SYNC_FIFO_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 module sw_sync_fifo #(
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
@@ -69,7 +75,8 @@ module sw_sync_fifo #(
 
   // A rewind or a flush suppresses the write in the same clock, so the two
   // operations can never fight over the write pointer.
-  wire do_write = wr_en_i && !full_o && !undo_i && !flush_i;
+  logic do_write;
+  assign do_write = wr_en_i && !full_o && !undo_i && !flush_i;
 
   // Pointer increment that wraps at DEPTH, which is not necessarily a power of
   // two, so a plain +1 on an $clog2 wide pointer would run off the end.
@@ -140,5 +147,10 @@ module sw_sync_fifo #(
   assign rd_data_o = mem[rd_ptr];   // FWFT: valid while `empty_o` is low
 
 endmodule : sw_sync_fifo
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_SYNC_FIFO_SV

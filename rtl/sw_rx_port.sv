@@ -51,6 +51,12 @@
 `ifndef SW_RX_PORT_SV
 `define SW_RX_PORT_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 `include "sw_defs.sv"
 
 // The shared declarations (`SW_LEN_W`, `SW_STAT_COUNT`, `sw_tag_width`) arrive
@@ -185,11 +191,20 @@ module sw_rx_port #(
   assign wf_wr_en   = beat_valid;
   assign wf_wr_data = {beat_octets, beat_crc_ok, beat_eof, beat_sof, beat_data};
 
-  wire [63:0] w_data  = wf_rd_data[63:0];
-  wire        w_sof   = wf_rd_data[64];
-  wire        w_eof   = wf_rd_data[65];
-  wire        w_crcok = wf_rd_data[66];
-  wire [3:0]  w_oct   = wf_rd_data[67 +: 4];
+  // The elastic FIFO word, unpacked into named fields.  Continuous assignments
+  // rather than the `wire x = expr;` form, so that every derived signal in the
+  // design is declared the same way and reads the same way.
+  logic [63:0] w_data;
+  logic        w_sof;
+  logic        w_eof;
+  logic        w_crcok;
+  logic [3:0]  w_oct;
+
+  assign w_data  = wf_rd_data[63:0];
+  assign w_sof   = wf_rd_data[64];
+  assign w_eof   = wf_rd_data[65];
+  assign w_crcok = wf_rd_data[66];
+  assign w_oct   = wf_rd_data[67 +: 4];
 
   // --------------------------------------------------------------------------
   // 2. Parser state machine
@@ -410,6 +425,13 @@ module sw_rx_port #(
   always_comb begin
     // Octets of the complete frame: everything popped so far plus the closing
     // beat, which still includes the four FCS octets.
+    //
+    // `oct_cnt` is OCTW bits wide and `fin_wire` is one narrower, so the cast
+    // truncates.  That is deliberate and bounded: 17 bits is 131 071 octets,
+    // eighty-six times the 1518 octet maximum, and the parser cannot leave
+    // S_BODY/S_DRAIN without either a frame end or the MAX_BEATS limit, so a
+    // legal frame never comes close.  A frame that did overflow the counter is
+    // malformed by any definition and is dropped either way.
     fin_wire = 17'(oct_cnt) + 17'(w_oct);
 
     if (fixed_len_q) begin
@@ -864,5 +886,10 @@ module sw_rx_port #(
   /* verilator lint_on PINCONNECTEMPTY */
 
 endmodule : sw_rx_port
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_RX_PORT_SV

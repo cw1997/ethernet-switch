@@ -49,6 +49,12 @@
 `ifndef SW_GMII_TX_SV
 `define SW_GMII_TX_SV
 
+// Any name used in this file that is not declared is a typo - most likely in a
+// port connection - and `default_nettype none` makes it an elaboration error
+// instead of an implicit one-bit net that quietly carries X through the whole
+// design.  Restored at the end of the file; the rationale is in AGENTS.md.
+`default_nettype none
+
 `include "sw_defs.sv"
 
 // The shared declarations (`SW_LEN_W`, `SW_MIN_PAYLOAD`, `SW_IFG_OCTETS`) arrive
@@ -157,13 +163,32 @@ module sw_gmii_tx #(
   // Octet selection inside the current beat.
   //
   // `beat_left` counts down from 7 to 0 while a beat is serialised, so the
-  // index of the next octet to drive is (8 - beat_left), i.e. 1 .. 7.  Octet 0
-  // is driven directly from `beat_data_i` at the clock that loads the beat.
-  // `beat_left == 0` therefore means "this beat is exhausted".
+  // index of the next octet to drive is (BEAT_OCTETS - beat_left), i.e. 1 .. 7.
+  // Octet 0 is driven directly from `beat_data_i` at the clock that loads the
+  // beat.  `beat_left == 0` therefore means "this beat is exhausted".
+  //
+  // The index is three bits wide because it is used as the lane number of a
+  // 64-bit beat, and `BEAT_OCTETS` is declared at the width of `beat_left` so
+  // that *both* operands of the subtraction are four bits.  That matters:
+  //
+  //   * An unsized literal (`8 - beat_left`) makes the expression 32 bits wide,
+  //     so Verilog zero-extends `beat_left` to 32 bits, evaluates the subtraction
+  //     there and throws 29 bits away again.  The value comes out right, but the
+  //     width of the *arithmetic* is decided by a literal rather than by the
+  //     signals - which is exactly what `-Wall` reports as WIDTHEXPAND, and a
+  //     32-bit adder is not what either tool or a synthesis tool should infer
+  //     here.
+  //   * `(8 - beat_left)` is 8 for the exhausted case, and 8 does not fit in
+  //     three bits, so the honest fix is to make the exhausted case explicit
+  //     instead of letting it wrap.  It is mapped to lane 0 - the lane a
+  //     freshly loaded beat starts at, and a value the sequencer never reads,
+  //     because S_FRAME takes the next beat when `beat_left == 0`.
   // --------------------------------------------------------------------------
+  localparam logic [3:0] BEAT_OCTETS = SW_BEAT_BYTES[3:0];
+
   logic [2:0] cur_idx;
   logic [7:0] cur_octet;
-  assign cur_idx   = 3'(8 - beat_left);
+  assign cur_idx   = (beat_left == 4'd0) ? 3'd0 : 3'(BEAT_OCTETS - beat_left);
   assign cur_octet = cur_beat[63 - {cur_idx, 3'b000} -: 8];
 
   // Octet 0 of the beat offered by the source.  Selected outside the sequencer
@@ -458,5 +483,10 @@ module sw_gmii_tx #(
   end
 
 endmodule : sw_gmii_tx
+
+// Hand the nettype default back.  A file that leaves it `none` changes the
+// meaning of every name compiled after it, in a file that has nothing to do
+// with the change that caused the breakage.
+`default_nettype wire
 
 `endif // SW_GMII_TX_SV
