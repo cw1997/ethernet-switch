@@ -21,12 +21,9 @@
 
 module sw_crc32_tb;
 
-  // The verification helpers live in sw_tb_pkg; sw_switch_pkg is imported
-  // explicitly as well, because Icarus Verilog cannot use a typedef that is
-  // only visible through a transitive package import in a subroutine
-  // argument list.
+  // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
+  // compilation-unit scope (`rtl/sw_defs.sv`) and so need no import.
   import sw_tb_pkg::*;
-  import sw_switch_pkg::*;
 
   logic        clk   = 1'b0;
   logic        rst_n = 1'b0;

@@ -33,8 +33,14 @@
 
 package sw_tb_pkg;
 
-  import sw_switch_pkg::*;
-
+  // The RTL's shared declarations (`sw_mac_t`, `SW_PREAMBLE_LEN`, `SW_FCS_LEN`)
+  // live at compilation-unit scope in `rtl/sw_defs.sv`, which every RTL file
+  // includes, so they are already in scope inside this package and need no
+  // import.  This is deliberate rather than accidental: see sw_defs.sv for why
+  // the RTL cannot use a package, and a package cannot reference
+  // compilation-unit-scope names on the synthesis frontend either, so keeping
+  // this one *out* of a package dependency is what lets the whole testbench and
+  // the whole design share one declaration set.
   // ==========================================================================
   // Octet vector convention
   // ==========================================================================

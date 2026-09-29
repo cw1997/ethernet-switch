@@ -48,10 +48,10 @@
 module tb_sw_switch;
 
   import sw_tb_pkg::*;
-  // sw_switch_pkg is imported explicitly as well: Icarus Verilog cannot use a
-  // typedef that is only visible through a transitive package import in a task
-  // or function port list, and sw_tb_pkg re-exports it.
-  import sw_switch_pkg::*;
+  // The RTL declarations (`SW_STAT_COUNT`, `SW_MAC_BROADCAST`, `sw_is_group`,
+  // `sw_is_unicast`, `sw_mac_t`, ...) are at compilation-unit scope: the DUT
+  // pulls in `rtl/sw_defs.sv`, which declares them there, so they are already
+  // visible in this file and need no import.
 
   // ==========================================================================
   // Configuration
@@ -91,6 +91,17 @@ module tb_sw_switch;
 
   function automatic int unsigned settle_clocks(input int unsigned octets);
     return OCT_PERIOD_MAX * (octets + SW_FCS_LEN) + 4*OCT_PERIOD_MAX + 2000;
+  endfunction
+
+  /// Clocks the slowest port needs to serialise *one* complete frame: eight
+  /// preamble octets, the client data, the four FCS octets, and a minimum
+  /// inter-frame gap of twelve octets, at OCT_PERIOD_MAX core clocks per octet.
+  ///
+  /// This is the per-frame term of a queue, not a per-frame term for the fabric;
+  /// `settle_clocks` covers the latter.  A test that queues several frames onto
+  /// the slow port needs both.
+  function automatic int unsigned queue_clocks(input int unsigned octets);
+    return OCT_PERIOD_MAX * (octets + 8 + SW_FCS_LEN + SW_IFG_OCTETS);
   endfunction
 
   // Per-port link speeds, 2 bits per port, port p at bits [2*p +: 2].
@@ -337,21 +348,29 @@ module tb_sw_switch;
     // it has been transmitted, which is what the back-to-back and congestion
     // tests need in order to present the fabric with simultaneous arrivals.
     //
-    // The send runs in a dedicated `always` block guarded by a request/acknowledge
-    // handshake rather than in a `fork ... join_none`.  Icarus Verilog aborts with
-    // an internal assertion (`vthread.cc: of_JOIN_DETACH`) on a `join_none` whose
-    // child outlives the enclosing process, and the whole run dies with it -
-    // silently losing every check that had already passed.  A handshake made of
-    // ordinary flags is portable, and because the request is a single one-word
-    // record it does not need the unpacked-argument task support Icarus lacks.
+    // The send runs in a dedicated `always` block guarded by a request/done
+    // handshake rather than in a `fork ... join_none`.  Icarus Verilog aborts
+    // with an internal assertion (`vthread.cc: of_JOIN_DETACH`) on a
+    // `join_none` whose child outlives the enclosing process, and the whole run
+    // dies with it - silently losing every check that had already passed.  A
+    // handshake over ordinary variables is portable, and it needs none of the
+    // unpacked-argument task support Icarus lacks.
     if (async_send) begin
-      async_arg <= {dst, src, l2type, total_len, vlan_en, corrupt, truncate, ingress};
-      async_req <= 1'b1;
+      // Blocking assignments: the worker samples the record at the very next
+      // clock edge, so there is nothing to pipeline here.
+      async_dst     = dst;
+      async_src     = src;
+      async_l2type  = l2type;
+      async_len     = total_len;
+      async_vlan    = vlan_en;
+      async_corrupt = corrupt;
+      async_trunc   = truncate;
+      async_port    = ingress;
+      async_req     <= 1'b1;
       @(posedge clk_i);
-      while (async_ack != 1'b1) @(posedge clk_i);
-      async_req <= 1'b0;
+      async_req     <= 1'b0;        // one-clock request pulse
       @(posedge clk_i);
-      while (async_ack != 1'b0) @(posedge clk_i);
+      while (async_done != 1'b1) @(posedge clk_i);
     end else begin
       u_ifs.send_on(ingress, dst, src, l2type, total_len, vlan_en,
                     corrupt, truncate);
@@ -365,34 +384,59 @@ module tb_sw_switch;
   // --------------------------------------------------------------------------
   // Background transmitter
   //
-  // One request word carries everything a single send needs, so the request and
-  // the acknowledgement are two flat registers rather than a task call across a
-  // process boundary.  `async_req` is raised by the test, the block below performs
-  // the send and then raises `async_ack`; the test clears `async_req` and waits
-  // for `async_ack` to fall again, so the next request always starts from a
-  // clean handshake.
+  // The request is a record of *named* variables, not one packed word.
+  //
+  // A packed word has to agree with the concatenation in `inject` on every field
+  // width, and getting that wrong is not a compile error: the widths simply do
+  // not add up to the declared size, the excess is dropped, and every field
+  // above the truncation point moves.  `total_len` and `ingress` are
+  // `int unsigned`, so a word sized for 16-bit fields loses 32 bits - and the
+  // symptom is a send that runs with a garbage port index, frame length and
+  // addresses, so the switch is handed a malformed frame, sizes it against the
+  // header it can parse, and correctly drops it as oversize.  That points at the
+  // receive path, which is not where the fault is.
+  //
+  // Named variables cannot disagree with themselves, and they cost nothing here:
+  // the test writes them and the worker reads them in the very next clock, which
+  // is all the handshake below needs.
   // --------------------------------------------------------------------------
-  localparam int unsigned ASYNC_W = 48 + 48 + 16 + 16 + 1 + 1 + 1 + 16;
+  sw_mac_t     async_dst;
+  sw_mac_t     async_src;
+  logic [15:0] async_l2type;
+  int unsigned async_len;
+  bit          async_vlan;
+  bit          async_corrupt;
+  bit          async_trunc;
+  int unsigned async_port;
+  logic        async_req;
+  logic        async_done;
+  logic        async_busy;
 
-  logic [ASYNC_W-1:0] async_arg;
-  logic              async_req;
-  logic              async_ack;
-
+  // The worker is a *one-shot*: the request is a single-clock pulse and the
+  // completion strobe is raised only after the send has returned.
+  //
+  // The obvious alternative - hold `async_req` high until the worker
+  // acknowledges it, and let the worker clear it - re-runs the send on every
+  // clock edge for as long as the request is still high.  The worker is
+  // suspended *inside* the send for thousands of clocks and re-enters the same
+  // `else if (async_req)` branch the moment it returns, so one request puts the
+  // same frame on the wire three or four times back to back with no inter-frame
+  // gap.  The receiver then sees one long malformed frame instead of four good
+  // ones, and the scoreboard reports every copy as missing - which reads as a
+  // switch that dropped the traffic rather than as a testbench defect.
+  //
+  // The busy guard makes the one-shot explicit rather than relying on the
+  // request pulse having already gone away by the time the send finishes.
   always @(posedge clk_i) begin
+    async_done <= 1'b0;
     if (!rst_ni) begin
-      async_ack <= 1'b0;
-    end else if (async_req) begin
-      u_ifs.send_on(async_arg[ASYNC_W-1 -: 16],
-                    async_arg[ASYNC_W-17 -: 48],
-                    async_arg[ASYNC_W-65 -: 48],
-                    async_arg[ASYNC_W-81 -: 16],
-                    async_arg[ASYNC_W-97 -: 16],
-                    async_arg[ASYNC_W-98],
-                    async_arg[ASYNC_W-99],
-                    async_arg[15:0]);
-      async_ack <= 1'b1;
-    end else begin
-      async_ack <= 1'b0;
+      async_busy <= 1'b0;
+    end else if (async_req && !async_busy) begin
+      async_busy <= 1'b1;
+      u_ifs.send_on(async_port, async_dst, async_src, async_l2type, async_len,
+                    async_vlan, async_corrupt, async_trunc);
+      async_busy <= 1'b0;
+      async_done <= 1'b1;
     end
   end
 
@@ -408,11 +452,28 @@ module tb_sw_switch;
     tb_rec_t   want;
     int        p;
     bit        ok;
+    int unsigned queued;
 
     // Let the fabric and every transmit path finish.  The bound is derived, for
     // the same reason as in `settle`: it has to outlast the slowest port, or the
     // expectations are checked while that port is still transmitting.
-    repeat (settle_clocks(octets)) @(posedge clk_i);
+    //
+    // It also has to outlast the whole *queue* on that port, not one frame.  A
+    // test that hands six frames to a 10 Mbit/s egress needs six times the
+    // one-frame bound, because the port serialises them one after another and the
+    // last one does not appear until the first five have gone out.  `settle_clocks`
+    // models a single frame crossing the fabric once; the extra term below
+    // models the queue draining on the slow port, at
+    //   8 preamble + `octets` + 4 FCS + a 12 octet inter-frame gap
+    // per frame.  A bound that omits it does not report the design as slow - it
+    // reports it as broken: every expectation is consumed against a placeholder,
+    // the frame turns up afterwards, and the leftovers are then counted as
+    // *unexpected* by the following test.
+    queued = 0;
+    for (p = 0; p < NUM_PORTS; p++) begin
+      if (u_ifs.expect_count(p) > queued) queued = u_ifs.expect_count(p);
+    end
+    repeat (settle_clocks(octets) + queued*queue_clocks(octets)) @(posedge clk_i);
 
     for (p = 0; p < NUM_PORTS; p++) begin
       if (silent[p]) begin
@@ -499,8 +560,16 @@ module tb_sw_switch;
   int      t;
 
   initial begin
-    async_arg = '0;
-    async_req = 1'b0;
+    async_dst     = 48'd0;
+    async_src     = 48'd0;
+    async_l2type  = 16'd0;
+    async_len     = 0;
+    async_vlan    = 1'b0;
+    async_corrupt = 1'b0;
+    async_trunc   = 1'b0;
+    async_port    = 0;
+    async_req     = 1'b0;
+    async_done    = 1'b0;
 
     // ---- publish the port addresses to the reference model -----------------
     for (t = 0; t < NUM_PORTS; t++) begin

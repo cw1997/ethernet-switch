@@ -24,7 +24,7 @@
 
 `include "sw_tb_pkg.sv"
 
-module sw_rec_q import sw_tb_pkg::*, sw_switch_pkg::*; #(
+module sw_rec_q import sw_tb_pkg::*; #(
   /// Number of records the queue can hold.
   parameter int unsigned DEPTH = 512
 ) (

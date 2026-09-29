@@ -26,33 +26,13 @@
 `ifndef SW_TX_PORT_SV
 `define SW_TX_PORT_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_tx_port import sw_switch_pkg::*; #(
-`else
+// The shared declarations (`SW_LEN_W`, `sw_tx_free_width`) arrive through the
+// include above and are visible at compilation-unit scope, which is what lets
+// them appear in a port range.  See sw_defs.sv for why a package cannot be used
+// here.
 module sw_tx_port #(
-`endif
   parameter int unsigned BYTE_PERIOD    = 1,     ///< clk_i cycles per GMII octet
   parameter int unsigned TX_FIFO_DEPTH  = 256,   ///< egress beats buffered
   parameter int unsigned LEN_FIFO_DEPTH = 8      ///< frame length descriptors
@@ -70,8 +50,28 @@ module sw_tx_port #(
   output logic                    gmii_en_o,
   output logic [7:0]              gmii_d_o,
 
-  // ---- egress buffer occupancy (consumed by the arbiter) ------------------
+  // ---- egress capacity (consumed by the arbiter) ---------------------------
+  // Two separate limits, because there are two separate buffers, and reporting
+  // only one of them is what lets a frame end up buffered with nothing to
+  // launch it.
+  //
+  // `free_o` is the payload headroom in beats.  `slot_o` says whether one more
+  // *complete frame* can be started at all, which is the length-descriptor
+  // FIFO's state.  A frame with no descriptor can never be serialised, so a beat
+  // slot without a descriptor is not usable capacity.
+  //
+  // Reporting only `free_o` lets the fabric queue more frames than there are
+  // descriptors - the beat FIFO holds TX_FIFO_DEPTH/8 = 32 minimum-length frames
+  // while only LEN_FIFO_DEPTH = 8 descriptors exist.  The ninth frame is then
+  // written into the payload buffer and its descriptor write is dropped, because
+  // `u_len_fifo` ignores a write while it is full.  That frame can never be
+  // transmitted: it sits in the buffer forever, the port serialises the eight
+  // frames it does have descriptors for and then goes idle with dead payload
+  // behind it, and once the beat FIFO fills up *every* frame that lists this
+  // port as a destination fails the admission check.  On a switch whose ports
+  // flood to one another, that is a single frame wedging the whole fabric.
   output logic [sw_tx_free_width(TX_FIFO_DEPTH):0] free_o,
+  output logic                                slot_o,   ///< a whole frame still fits
 
   // ---- status / statistics -------------------------------------------------
   output logic [32*SW_STAT_COUNT-1:0] stat_o
@@ -83,6 +83,12 @@ module sw_tx_port #(
   logic        data_empty;
   logic [63:0] data_rd_data;   ///< FWFT head of the egress beat FIFO
   logic        beat_rd;
+
+  // Free space in the length-descriptor FIFO.  Its width is whatever that FIFO
+  // needs; only "is it non-zero" is used, so it is reduced to one bit here.
+  logic [sw_tx_free_width(LEN_FIFO_DEPTH):0] len_free;
+
+  assign slot_o = (len_free != '0);
 
   // A new frame is started as soon as a descriptor is available and the
   // serialiser has finished the inter-frame gap of the previous one.
@@ -140,8 +146,8 @@ module sw_tx_port #(
       .flush_i   (1'b0),
       .wr_en_i   (wr_en_i & wr_fr_i),
       .wr_data_i (wr_len_i),
-      .full_o    (),      // one descriptor per frame, bounded by the fabric
-      .free_o    (),
+      .full_o    (),      // one descriptor per frame; `slot_o` gates the fabric
+      .free_o    (len_free),
       .rd_en_i   (fr_start),
       .rd_data_o (len_data),
       .empty_o   (len_empty)

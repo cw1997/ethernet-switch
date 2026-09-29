@@ -53,36 +53,13 @@
 `ifndef SW_SWITCH_SV
 `define SW_SWITCH_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-// The package items are made visible in the parameter and port lists through
-// the `import` clause of the module header (IEEE 1800-2017 4.7.1), which is
-// the only construct that is legal before the ANSI port list is parsed.
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_switch import sw_switch_pkg::*; #(
-`else
+// The shared declarations arrive through the include above and are visible at
+// compilation-unit scope, so the parameter list and the ANSI port list below can
+// use them (`sw_port_w`, `sw_tag_width`, `SW_STAT_COUNT`, ...) without an
+// import clause.  See sw_defs.sv for why a package cannot be used here.
 module sw_switch #(
-`endif
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
   parameter int unsigned NUM_PORTS      = 4,
@@ -197,6 +174,7 @@ module sw_switch #(
   logic [NUM_PORTS*SW_LEN_W-1:0]       dst_wr_len;
   logic [NUM_PORTS-1:0]                dst_fr;
   logic [NUM_PORTS*(FF_W+1)-1:0]       dst_free;
+  logic [NUM_PORTS-1:0]                dst_slot;   ///< an egress port still fits a frame
 
   logic [32*SW_STAT_COUNT-1:0]         rx_stat [NUM_PORTS];
   logic [32*SW_STAT_COUNT-1:0]         tx_stat [NUM_PORTS];
@@ -274,6 +252,7 @@ module sw_switch #(
 
     // ---- egress ---------------------------------------------------------
     logic [FF_W:0] tx_free;
+    logic         tx_slot;
 
     sw_tx_port #(
         .BYTE_PERIOD (BP_G),
@@ -288,10 +267,12 @@ module sw_switch #(
         .gmii_en_o  (gmii_tx_en_o[g]),
         .gmii_d_o   (gmii_tx_data_o[g*8 +: 8]),
         .free_o     (tx_free),
+        .slot_o     (tx_slot),
         .stat_o     (tx_stat[g])
     );
 
     assign dst_free[g*(FF_W+1) +: FF_W+1] = tx_free;
+    assign dst_slot[g]                     = tx_slot;
 
   end
 
@@ -352,6 +333,7 @@ module sw_switch #(
       .dst_wr_len_o      (dst_wr_len),
       .dst_fr_o          (dst_fr),
       .dst_free_i        (dst_free),
+      .dst_slot_i        (dst_slot),
       .stat_o            (arb_stat)
   );
 
@@ -364,7 +346,7 @@ module sw_switch #(
   // --------------------------------------------------------------------------
   function automatic logic [31:0] stat_get(
       input logic [32*SW_STAT_COUNT-1:0] bus, input int unsigned idx);
-    return bus[32*idx +: 32];
+    stat_get = bus[32*idx +: 32];
   endfunction
 
   always_comb begin

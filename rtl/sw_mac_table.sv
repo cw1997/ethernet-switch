@@ -47,33 +47,13 @@
 `ifndef SW_MAC_TABLE_SV
 `define SW_MAC_TABLE_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_mac_table import sw_switch_pkg::*; #(
-`else
+// The shared declarations (`sw_port_w`, `sw_mac_t`) arrive through the include
+// above and are visible at compilation-unit scope, which is what lets them appear
+// in a port range and in a subroutine argument type.  See sw_defs.sv for why a
+// package cannot be used here.
 module sw_mac_table #(
-`endif
   /// Number of switch ports (read and learn ports).
   parameter int unsigned NUM_PORTS       = 4,
   /// Number of CAM buckets; the address space is hashed into this range.
@@ -171,7 +151,7 @@ module sw_mac_table #(
     for (int unsigned i = 0; i < 6; i++) begin
       h = (h ^ {24'd0, m[i*8 +: 8]}) * 32'h0100_0193;
     end
-    return IDX_W'(h % NUM_SETS);
+    mac_hash = IDX_W'(h % NUM_SETS);
   endfunction
 
   // --------------------------------------------------------------------------
@@ -195,31 +175,31 @@ module sw_mac_table #(
   // construction.  The waiver keeps `-Wall` clean without hiding real issues.
   /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic        entry_valid(input entry_t e);
-    return e[V_LSB];
+    entry_valid = e[V_LSB];
   endfunction
 
   function automatic logic [PW-1:0] entry_port(input entry_t e);
-    return e[P_LSB +: PW];
+    entry_port = e[P_LSB +: PW];
   endfunction
 
   function automatic sw_mac_t     entry_mac(input entry_t e);
-    return e[47:0];
+    entry_mac = e[47:0];
   endfunction
   /* verilator lint_on UNUSEDSIGNAL */
 
   function automatic logic entry_match(input entry_t e, input sw_mac_t m);
-    return entry_valid(e) && (entry_mac(e) == m);
+    entry_match = entry_valid(e) && (entry_mac(e) == m);
   endfunction
 
   function automatic entry_t make_entry(input sw_mac_t m, input logic [PW-1:0] p);
-    return entry_t'({1'b1, p, m});
+    make_entry = entry_t'({1'b1, p, m});
   endfunction
 
   /// Clear the valid flag while keeping the address and the port, so that an
   /// expired entry still has deterministic contents.
   /* verilator lint_off UNUSEDSIGNAL */
   function automatic entry_t kill_entry(input entry_t e);
-    return entry_t'({1'b0, e[ENT_W-1:1]});
+    kill_entry = entry_t'({1'b0, e[ENT_W-1:1]});
   endfunction
   /* verilator lint_on UNUSEDSIGNAL */
 
@@ -318,7 +298,7 @@ module sw_mac_table #(
     for (int unsigned k = NUM_WAYS; k > 0; k--) begin
       if (hit_v[k-1]) p = port_v[(k-1)*PW +: PW];
     end
-    return p;
+    prio_port = p;
   endfunction
 
   // Per-way port fields, flattened into the packed vector the function takes.
@@ -379,7 +359,7 @@ module sw_mac_table #(
     logic [31:0] n;
     n = 32'd0;
     for (int unsigned b = 0; b < NUM_PORTS; b++) n = n + {31'd0, v[b]};
-    return n;
+    count_port_bits = n;
   endfunction
 
   function automatic logic [31:0] count_entry_bits(
@@ -387,7 +367,7 @@ module sw_mac_table #(
     logic [31:0] n;
     n = 32'd0;
     for (int unsigned b = 0; b < NUM_SETS*NUM_WAYS; b++) n = n + {31'd0, v[b]};
-    return n;
+    count_entry_bits = n;
   endfunction
 
   assign hits_inc   = count_port_bits(hit_b);

@@ -19,6 +19,11 @@ build/
 librelane/runs/
 out/
 
+# The container's HOME, which is where the flow keeps its (multi-gigabyte) PDK
+# download.  Local runs and CI share it through the `-e HOME=` flag in the `gds`
+# job; see librelane/README.md.
+.cache/
+
 # ---- editors / OS ---------------------------------------------------------
 .vscode/
 .idea/

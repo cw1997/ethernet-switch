@@ -33,34 +33,11 @@
 `ifndef SW_CRC32_SV
 `define SW_CRC32_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  neither the port list nor the body can see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, so the message points at the module rather than
-//  at the import.  It does, however, make the items of an *included* package
-//  visible for free, so dropping the import is both necessary and sufficient.
-//  The two forms below differ only in the two tokens between the module name and
-//  its port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_crc32 import sw_switch_pkg::*; (
-`else
+// The shared CRC constants arrive through the include above and are visible at
+// compilation-unit scope.  See sw_defs.sv for why a package cannot be used here.
 module sw_crc32 (
-`endif
   input  logic        clk_i,      ///< core clock
   input  logic        rst_ni,     ///< active-low synchronous reset
   input  logic        en_i,       ///< absorb `din_i` this clock

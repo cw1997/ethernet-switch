@@ -28,10 +28,12 @@
 
 `include "sw_tb_pkg.sv"
 
-// Both packages are named explicitly in the header import clause: a transitive
-// import of the RTL package is not visible to a parameter default or a
-// subroutine argument type in Icarus Verilog.
-module sw_if_array import sw_tb_pkg::*, sw_switch_pkg::*; #(
+// The testbench package is named explicitly in the header import clause: a
+// transitive import of the record types is not visible to a subroutine argument
+// type in Icarus Verilog.  The RTL declarations (`sw_byte_period`, `sw_speed_e`)
+// need no import - they arrive at compilation-unit scope through
+// `rtl/sw_defs.sv`, which the DUT pulls in.
+module sw_if_array import sw_tb_pkg::*; #(
   /// Number of switch ports under test.
   parameter int unsigned NUM_PORTS = 4,
   /// Core clock frequency in Hz, used to derive every octet period.

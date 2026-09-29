@@ -36,33 +36,13 @@
 `ifndef SW_ARBITER_SV
 `define SW_ARBITER_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_arbiter import sw_switch_pkg::*; #(
-`else
+// The shared declarations (`SW_LEN_W`, `sw_tag_width`, ...) arrive through the
+// include above and are visible at compilation-unit scope, so the port list and
+// the body below can use them directly and no import is needed.  See sw_defs.sv
+// for why a package cannot be used here.
 module sw_arbiter #(
-`endif
   parameter int unsigned NUM_PORTS     = 4,
   parameter int unsigned TX_FIFO_DEPTH = 256,
   /// Cycles a blocked head-of-line frame may wait before it is discarded.
@@ -87,6 +67,12 @@ module sw_arbiter #(
   output logic [NUM_PORTS*SW_LEN_W-1:0] dst_wr_len_o,  ///< valid with dst_fr_o
   output logic [NUM_PORTS-1:0]    dst_fr_o,           ///< first beat of a frame
   input  logic [NUM_PORTS*(sw_tx_free_width(TX_FIFO_DEPTH)+1)-1:0] dst_free_i,
+  /// Per destination: an egress port can still accept one more *complete*
+  /// frame.  Separate from `dst_free_i` because a destination has two buffers -
+  /// the payload FIFO and the frame length-descriptor FIFO - and a frame with
+  /// payload room but no descriptor can never be transmitted.  See the `slot_o`
+  /// comment in sw_tx_port for what happens without it.
+  input  logic [NUM_PORTS-1:0]    dst_slot_i,
 
   // ---- statistics -----------------------------------------------------------
   output logic [32*SW_STAT_COUNT-1:0] stat_o
@@ -202,14 +188,20 @@ module sw_arbiter #(
           // stall protection.
           blocked[i] = 1'b1;
         end else begin
-          // Blocked as soon as *any* destination lacks room for the whole frame.
+          // Blocked as soon as *any* destination cannot take the whole frame.
           // The check is made once, up front, and only one frame is ever in
           // flight, so a transfer can then never stall mid-frame.
+          //
+          // Two conditions per destination: payload room for every beat of the
+          // frame, *and* a free length descriptor to launch it with.  Checking
+          // only the first is what strands a frame in the egress buffer with
+          // nothing to serialise it.
           blocked[i] = 1'b0;
           for (int unsigned j = 0; j < NUM_PORTS; j++) begin
             if (t_dst[i*NUM_PORTS + j] &&
-                (dst_free_i[j*(FF_W+1) +: FF_W+1] <
-                 (FF_W+1)'(beats_of[i*SW_LEN_W +: SW_LEN_W]))) begin
+                (!dst_slot_i[j] ||
+                 (dst_free_i[j*(FF_W+1) +: FF_W+1] <
+                  (FF_W+1)'(beats_of[i*SW_LEN_W +: SW_LEN_W])))) begin
               blocked[i] = 1'b1;
             end
           end
@@ -473,20 +465,60 @@ module sw_arbiter #(
   // --------------------------------------------------------------------------
   // Statistics
   // --------------------------------------------------------------------------
-  // Statistics
   //
-  // A frame copy is counted when its *first* beat is written to a destination,
-  // which is `beat_fr` - not on `grant_now`.  `grant_now` is the per-beat
-  // arbitration decision and fires once for every 64 bit beat of every frame, so
-  // counting on it reports a 100 octet frame as eight frames and the transmit
-  // total ends up several times the number of frames actually put on the wire.
+  // `SW_STAT_TX_FRAMES` counts *frame copies injected into a transmit port*, so
+  // the unit of the counter is (frame, destination) and not (frame, grant).
+  //
+  // A copy is therefore counted when its *first* beat is written to a
+  // destination, which is `beat_fr` - not on `grant_now`.  `grant_now` is the
+  // per-beat arbitration decision and fires once for every 64 bit beat of every
+  // frame, so counting on it reports a 100 octet frame as eight frames and the
+  // transmit total ends up several times the number of frames actually put on
+  // the wire.
+  //
+  // `beat_fr` is one bit *per destination*, so it has to be reduced with a
+  // population count rather than with a logical OR.  Collapsing it to one bit
+  // counts grants: a broadcast to three ports is three copies on the wire but
+  // only one grant, so `|beat_fr` under-reports the total by the replication
+  // factor - a broadcast storm looks like a handful of frames, and the counter
+  // is worthless exactly when the switch is busiest.
+  //
   // The octet total belongs on the same event for the same reason: adding
-  // `t_len` on every beat of a frame would count the frame once per beat.
+  // `beat_len` on every beat of a frame would count the frame once per beat,
+  // and adding it once per grant would count only the first copy.
   // --------------------------------------------------------------------------
-  logic [31:0] cnt_tx_frames, cnt_tx_octets, cnt_tx_stalled;
+  /// Bits needed for a replication count in [0, NUM_PORTS].
+  localparam int unsigned CPY_W = (NUM_PORTS <= 1) ? 1 : $clog2(NUM_PORTS + 1);
 
-  logic tx_frame_start;
-  assign tx_frame_start = beat_write && (|beat_fr);
+  logic [NUM_PORTS-1:0] tx_copy_b;   ///< per-destination first-beat qualifier
+  logic [CPY_W-1:0]     tx_copies;  ///< how many copies start this clock
+  logic [31:0]          tx_octets_inc;
+
+  for (genvar gc = 0; gc < NUM_PORTS; gc++) begin : g_tx_copy
+    assign tx_copy_b[gc] = beat_write && beat_fr[gc];
+  end
+
+  /// Population count of a port mask.
+  ///
+  /// A function rather than an accumulating `always_comb`: a block that writes an
+  /// accumulator and then reads it back puts that signal in the block's own
+  /// implicit sensitivity list, and Icarus Verilog then re-triggers on its own
+  /// output and never settles - the run hangs with time standing still.  A
+  /// function keeps no sensitivity list at all, so the accumulator is safe there
+  /// and the logic is unchanged.
+  function automatic logic [31:0] count_copies(input logic [NUM_PORTS-1:0] v);
+    logic [31:0] n;
+    n = 32'd0;
+    for (int unsigned b = 0; b < NUM_PORTS; b++) n = n + {31'd0, v[b]};
+    count_copies = n;
+  endfunction
+
+  assign tx_copies = CPY_W'(count_copies(tx_copy_b));
+  // The multiplier is CPY_W wide, not 32: `tx_copies` can only reach NUM_PORTS,
+  // so this is a short shift-add chain rather than a general multiplier.
+  assign tx_octets_inc = {21'd0, beat_len[10:0]} * {{(32-CPY_W){1'b0}}, tx_copies};
+
+  logic [31:0] cnt_tx_frames, cnt_tx_octets, cnt_tx_stalled;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -494,9 +526,9 @@ module sw_arbiter #(
       cnt_tx_octets  <= 32'd0;
       cnt_tx_stalled <= 32'd0;
     end else begin
-      if (tx_frame_start) begin
-        cnt_tx_frames <= cnt_tx_frames + 32'd1;
-        cnt_tx_octets <= cnt_tx_octets + {21'd0, beat_len[10:0]};
+      if (tx_copies != '0) begin
+        cnt_tx_frames <= cnt_tx_frames + {{(32-CPY_W){1'b0}}, tx_copies};
+        cnt_tx_octets <= cnt_tx_octets + tx_octets_inc;
       end
       if (stall_fire) cnt_tx_stalled <= cnt_tx_stalled + 32'd1;
     end
