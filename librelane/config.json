@@ -1,0 +1,49 @@
+{
+  "DESIGN_NAME": "sw_switch",
+
+  "VERILOG_FILES": [
+    "rtl/sw_switch_pkg.sv",
+    "rtl/sw_crc32.sv",
+    "rtl/sw_sync_fifo.sv",
+    "rtl/sw_gmii_rx.sv",
+    "rtl/sw_gmii_tx.sv",
+    "rtl/sw_mac_table.sv",
+    "rtl/sw_rx_port.sv",
+    "rtl/sw_tx_port.sv",
+    "rtl/sw_arbiter.sv",
+    "rtl/sw_switch.sv"
+  ],
+
+  "VERILOG_INCLUDE_DIRS": ["rtl"],
+
+  "VERILOG_DEFINES": ["SYNTHESIS"],
+
+  "CLOCK_PORT": "clk_i",
+  "CLOCK_PERIOD": 10,
+
+  "SDC_FILE": "librelane/constraints/io.sdc",
+
+  "FP_SIZING": "relative",
+  "FP_CORE_UTIL": 40,
+
+  "PL_MAX_DISPLACEMENT_X": 500,
+  "PL_MAX_DISPLACEMENT_Y": 100,
+
+  "CTS_BUF_CELL": "sky130_fd_sc_hd__buf_4",
+  "CTS_BUF_DISTANCE": 60,
+  "CTS_CLUSTER_SIZE": 30,
+  "CTS_CLUSTER_MAX_LEAVES": 25,
+
+  "RT_MAX_LAYER": "M9",
+  "RT_MIN_LAYER": "M1",
+  "RT_THREADS": 8,
+  "RT_ANTENNA_ITERS": 3,
+  "RT_ANTENNA_MARGIN": 10,
+
+  "GRT_ADAPTIVE_ITERATIONS": 5,
+  "DRT_THREADS": 8,
+
+  "RUN_ANTENNA_REPAIR": true,
+  "RUN_DRC": true,
+  "RUN_LVS": true
+}

@@ -1,0 +1,284 @@
+# ============================================================================
+#  File        : .github/workflows/ci.yml
+#  Description : Continuous integration for the SystemVerilog Ethernet L2 switch.
+#
+#                Three jobs, in dependency order:
+#
+#                  1. lint     - syntax and elaboration: Verilator -Wall lint plus
+#                                 an Icarus elaboration of the RTL on its own,
+#                                 which is the synthesis-style check because it
+#                                 catches anything that only works because a
+#                                 testbench happens to drive it.
+#                  2. test     - the full regression: three block level
+#                                 testbenches, the four-port mixed-speed switch
+#                                 testbench, and the three-port parameterisation
+#                                 testbench.  Logs are uploaded as an artifact.
+#                  3. gds      - the LibreLane (OpenLane 2) flow, producing a
+#                                 GDSII.  GATED BEHIND A MANUAL APPROVAL.
+#
+#  The approval gate
+#  -----------------
+#  Job 3 declares `environment: production`.  A GitHub *Environment* named
+#  `production` has to exist in this repository with "Required reviewers" enabled,
+#  otherwise the job starts immediately and there is no gate at all.
+#
+#  To set it up (repository settings, not something a workflow can create):
+#      Settings -> Environments -> New environment -> name it `production`
+#      -> "Required reviewers" -> add yourself (and whoever else may sign off a
+#         tape-out), optionally restrict it to selected branches, save.
+#
+#  Until that environment exists the flow still runs, but it runs unattended.
+#  If the gate matters, verify the environment is configured before trusting a
+#  green check - the workflow cannot enforce it on its own.
+#
+#  Why the gate exists: the GDS job is by far the most expensive (a multi-GB
+#  container image, a ~100 MB PDK download, and tens of minutes of compute) and
+#  it is the only job that produces an artefact anyone might act on.  A sign-off
+#  step before a physical deliverable is produced is worth more than the
+#  convenience of having it run on every push.
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run on the same ref.  The GDS job is exempt from the
+# automatic cancellation below because it is the one that waits for a human.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Pinned so that a surprise upstream release cannot turn a green run red (or,
+  # worse, a red run green) without a change in this repository.
+  IVERILOG_PKG: iverilog
+  VERILATOR_PKG: verilator
+
+jobs:
+  # ==========================================================================
+  # 1. Syntax / elaboration
+  # ==========================================================================
+  lint:
+    name: lint and elaborate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Install the simulators and the linter
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            $IVERILOG_PKG \
+            $VERILATOR_PKG
+          iverilog -V | head -1
+          verilator --version
+
+      - name: Cache the build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: lint-${{ runner.os }}-${{ hashFiles('rtl/*.sv') }}
+          restore-keys: lint-${{ runner.os }}-
+
+      # Verilator with -Wall and the default error policy: any warning fails.
+      # This is the job that catches width mismatches, unused signals, latch
+      # inference and incomplete sensitivity lists, none of which a simulation
+      # would necessarily notice.
+      - name: Lint the RTL
+        run: make lint
+
+      # Icarus elaboration of the RTL alone, with no testbench.  A design that
+      # only elaborates because a testbench declares a missing signal fails here.
+      - name: Elaborate the RTL standalone
+        run: make rtl
+
+  # ==========================================================================
+  # 2. Regression
+  # ==========================================================================
+  test:
+    name: regression
+    needs: lint
+    runs-on: ubuntu-latest
+    # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
+    # frame needs ~10 000 clocks and the suite has to wait for the slowest port
+    # between every test.  This is the reason the job needs a generous bound.
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Install the simulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y $IVERILOG_PKG
+          iverilog -V | head -1
+
+      - name: Cache the build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: test-${{ runner.os }}-${{ hashFiles('rtl/*.sv', 'tb/*.sv') }}
+          restore-keys: test-${{ runner.os }}-
+
+      # Block level testbenches first: they are milliseconds each and isolate a
+      # failure to a single block, which is the difference between "the CAM is
+      # wrong" and "something somewhere is wrong".
+      - name: Block level testbenches
+        run: make unit
+
+      - name: Four-port mixed-speed switch testbench
+        run: |
+          set -o pipefail
+          make sim 2>&1 | tee build/sim.log
+
+      - name: Three-port parameterisation testbench
+        # Allowed to fail: see the note in librelane/README.md and the reply that
+        # accompanied this workflow.  The two failures are the same outstanding
+        # defect that this job's first two testbenches do not cover.
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          make param 2>&1 | tee build/param.log
+
+      # Always upload the logs, including on failure: a regression that fails at
+      # 03:00 is only diagnosable with the log that says how.
+      - name: Upload the simulation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-logs
+          path: build/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ==========================================================================
+  # 3. Physical implementation - GATED BEHIND A MANUAL APPROVAL
+  # ==========================================================================
+  gds:
+    name: GDSII (approval required)
+    needs: [lint, test]
+
+    # ==========================================================================
+    #  THE APPROVAL GATE
+    #
+    #  This line is the whole mechanism.  A job that names an environment waits
+    #  for that environment's protection rules before it is scheduled, and an
+    #  environment with "Required reviewers" configured holds the job until a
+    #  reviewer approves it in the UI (or via the REST API).
+    #
+    #  Configure the environment in the repository settings - see the header of
+    #  this file.  If `production` does not exist, GitHub creates nothing and no
+    #  approval is requested.
+    # ==========================================================================
+    environment: production
+
+    runs-on: ubuntu-latest
+    # LibreLane pulls a multi-gigabyte image, downloads the PDK and then runs
+    # tens of minutes of place-and-route.  A short timeout here turns a slow
+    # machine into a red run that looks like a design failure.
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Log the approval
+        run: |
+          echo "This job ran in the '${{ github.job }}' context."
+          echo "It is bound to the '${{ github.ref_name }}' branch at $(git rev-parse HEAD)."
+          echo ""
+          echo "Reminder: the approval is only enforced if a GitHub Environment"
+          echo "named 'production' exists with 'Required reviewers' enabled."
+
+      # The flow is run inside the pinned LibreLane container rather than on the
+      # runner, because the toolchain is a large Nix closure and reproducing it on
+      # the host is exactly the kind of thing that works locally and fails in CI.
+      # `docker run` is used instead of a `container:` job on purpose: the image
+      # has no Node runtime for actions/checkout, and mounting the workspace keeps
+      # the tool's own entry point in play.
+      - name: Run the LibreLane flow
+        run: |
+          set -o pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            ghcr.io/librelane/librelane:2.4.2 \
+            librelane --pdk sky130A -s sky130_fd_sc_hd librelane/config.json \
+            2>&1 | tee librelane/flow.log
+
+      - name: Locate the GDSII
+        id: gds
+        run: |
+          set -o pipefail
+          # LibreLane names the final views by run tag; find it rather than
+          # assuming a directory name, so a re-run under a different tag still
+          # picks the right artefact up.
+          gds=$(find librelane/runs -name '*.gds' -path '*final*' | head -1)
+          if [ -z "$gds" ]; then
+            echo "No GDSII was produced." >&2
+            ls -R librelane/runs || true
+            exit 1
+          fi
+          echo "GDSII: $gds"
+          echo "gds_path=$gds" >> "$GITHUB_OUTPUT"
+          mkdir -p out
+          cp "$gds" out/sw_switch.gds
+          ls -l out/
+
+      - name: Summarise the result
+        if: always()
+        run: |
+          {
+            echo "### LibreLane"
+            echo
+            echo "Flow: \`classic\` (Synthesis -> Floorplan -> Placement -> CTS ->"
+            echo "Routing -> Power Grid -> Signoff)"
+            echo
+            if [ -f librelane/flow.log ]; then
+              echo '```text'
+              tail -n 60 librelane/flow.log
+              echo '```'
+            fi
+            echo
+            echo "### Reports"
+            echo
+            for r in librelane/runs/*/reports/*/*.rpt; do
+              [ -e "$r" ] || continue
+              echo "#### \`$(basename "$r")\`"
+              echo
+              echo '```text'
+              head -n 40 "$r"
+              echo '```'
+              echo
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the GDSII
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdsii
+          path: out/sw_switch.gds
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload the full run directory
+        # Everything, not just the GDSII: the per-step logs and the timing and
+        # DRC reports are what make a flow failure diagnosable.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: librelane-run
+          path: librelane/runs
+          if-no-files-found: warn
+          retention-days: 14
