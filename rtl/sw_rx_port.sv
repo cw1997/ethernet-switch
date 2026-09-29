@@ -51,33 +51,13 @@
 `ifndef SW_RX_PORT_SV
 `define SW_RX_PORT_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_rx_port import sw_switch_pkg::*; #(
-`else
+// The shared declarations (`SW_LEN_W`, `SW_STAT_COUNT`, `sw_tag_width`) arrive
+// through the include above and are visible at compilation-unit scope, which is
+// what lets them appear in a port range.  See sw_defs.sv for why a package cannot
+// be used here.
 module sw_rx_port #(
-`endif
   /// Total number of switch ports (the port index must be < NUM_PORTS).
   parameter int unsigned NUM_PORTS      = 4,
   /// Index of this port; drives the ingress source index and the CAM learn.
@@ -168,7 +148,7 @@ module sw_rx_port #(
     for (int unsigned k = 0; k < 8; k++) begin
       if (k < n) r[63 - k*8 -: 8] = d[63 - k*8 -: 8];
     end
-    return r;
+    mask_octets = r;
   endfunction
 
   // --------------------------------------------------------------------------
@@ -265,7 +245,16 @@ module sw_rx_port #(
   // 4. Ingress forwarding policy, evaluated in S_DEC
   //
   //  * A frame whose source address is the port's own address is a reflected
-  //    frame and is never sent back out of the port it arrived on.
+  //    frame: it has come back around to the port it came from, so it is neither
+  //    forwarded nor learned.
+  //  * A frame whose *destination* is the port's own address and that arrived on
+  //    that port has reached its destination here.  It must not be flooded out of
+  //    the other ports: that would leak a unicast onto every other segment of the
+  //    network.  The port's own address can never be in the CAM - the source rule
+  //    above prevents it from ever being learned - so without this test the
+  //    address would simply miss the lookup and be treated as an unknown unicast,
+  //    which is how a frame addressed to port 2 silently appears on ports 0
+  //    and 1.
   //  * The broadcast address is always flooded to every other port.
   //  * A group (multicast) address is flooded only when the policy asks for it.
   //  * A unicast address known to the CAM goes to the single learned port; if
@@ -317,7 +306,13 @@ module sw_rx_port #(
     fwd_flood = 1'b0;
     fwd_drop  = 1'b1;
     if (src_mac_q != PORT_MAC) begin
-      if (dst_is_bcast) begin
+      if (dst_mac_q == PORT_MAC) begin
+        // Addressed to this port and arriving on this port: consumed here, never
+        // leaked to the other ports.  `fwd_mask` stays zero and `fwd_drop` set.
+        fwd_mask  = '0;
+        fwd_flood = 1'b0;
+        fwd_drop  = 1'b1;
+      end else if (dst_is_bcast) begin
         fwd_mask  = ~port_bit;
         fwd_flood = 1'b1;
         fwd_drop  = 1'b0;

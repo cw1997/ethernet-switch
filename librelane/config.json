@@ -2,7 +2,7 @@
   "DESIGN_NAME": "sw_switch",
 
   "VERILOG_FILES": [
-    "rtl/sw_switch_pkg.sv",
+    "rtl/sw_defs.sv",
     "rtl/sw_crc32.sv",
     "rtl/sw_sync_fifo.sv",
     "rtl/sw_gmii_rx.sv",
@@ -17,6 +17,16 @@
   "VERILOG_INCLUDE_DIRS": ["rtl"],
 
   "VERILOG_DEFINES": ["SYNTHESIS"],
+
+  "SYNTH_PARAMETERS": [
+    "MAX_FRAME_LEN=256",
+    "RX_FIFO_DEPTH=64",
+    "TX_FIFO_DEPTH=64",
+    "TAG_FIFO_DEPTH=8",
+    "WF_DEPTH=8",
+    "CAM_SETS=16",
+    "CAM_WAYS=2"
+  ],
 
   "CLOCK_PORT": "clk_i",
   "CLOCK_PERIOD": 10,
@@ -34,8 +44,8 @@
   "CTS_CLUSTER_SIZE": 30,
   "CTS_CLUSTER_MAX_LEAVES": 25,
 
-  "RT_MAX_LAYER": "M9",
-  "RT_MIN_LAYER": "M1",
+  "RT_MAX_LAYER": "met5",
+  "RT_MIN_LAYER": "met1",
   "RT_THREADS": 8,
   "RT_ANTENNA_ITERS": 3,
   "RT_ANTENNA_MARGIN": 10,

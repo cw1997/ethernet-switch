@@ -28,13 +28,14 @@
 
 `include "sw_tb_pkg.sv"
 
-// Both packages are named in the module header import clause.  That is required
-// here rather than cosmetic: the parameter and port lists need items from both
-// (IFG_OCTETS comes from the RTL package, the frame types from the testbench
-// package), and a transitive import - one that reaches the RTL package only
-// through sw_tb_pkg - is not visible to a parameter default or to a subroutine
-// argument type in Icarus Verilog.
-module sw_gmii_if import sw_tb_pkg::*, sw_switch_pkg::*; #(
+// The testbench package is named in the module header import clause.  That is
+// required here rather than cosmetic: the frame and record types used in the task
+// and function argument lists come from `sw_tb_pkg`, and a transitive import -
+// one that reaches them only through some other path - is not visible to a
+// subroutine argument type in Icarus Verilog.  The RTL declarations
+// (`SW_IFG_OCTETS`, `sw_mac_t`, ...) need no import: they arrive at
+// compilation-unit scope through `rtl/sw_defs.sv`, which the DUT pulls in.
+module sw_gmii_if import sw_tb_pkg::*; #(
   /// Port index, used only in diagnostic messages.
   parameter int unsigned PORT_ID    = 0,
   /// `clk_i` cycles per GMII octet time on this port.

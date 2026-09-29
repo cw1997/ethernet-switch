@@ -41,34 +41,11 @@
 `ifndef SW_GMII_RX_SV
 `define SW_GMII_RX_SV
 
-`include "sw_switch_pkg.sv"
+`include "sw_defs.sv"
 
-
-// ---------------------------------------------------------------------------
-//  Package import
-//
-//  The package is pulled in by the guarded `include` above, which is what makes
-//  its declarations visible here.  Under simulation an explicit wildcard import
-//  is added as well, because a simulator resolves a package strictly: without it
-//  the port list and the body cannot see `sw_switch_pkg` items.
-//
-//  Under synthesis the import is omitted.  The yosys frontend that OpenLane /
-//  LibreLane drive does not accept a wildcard package import at all - neither in
-//  a module header, nor inside the body, nor at file scope - and aborts with
-//
-//      syntax error, unexpected TOK_ID, expecting '(' or ';' or '#'
-//
-//  right at the module keyword, which points at the module rather than at the
-//  import.  It does, however, make the items of an *included* package visible for
-//  free, so dropping the import is both necessary and sufficient.  The two forms
-//  below therefore differ only in the two tokens between the module name and its
-//  port list; everything after the `endif is shared.
-// ---------------------------------------------------------------------------
-`ifndef SYNTHESIS
-module sw_gmii_rx import sw_switch_pkg::*; #(
-`else
+// The shared declarations arrive through the include above and are visible at
+// compilation-unit scope.  See sw_defs.sv for why a package cannot be used here.
 module sw_gmii_rx #(
-`endif
   /// `clk_i` cycles per GMII octet time (see the module header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (

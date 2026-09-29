@@ -9,9 +9,9 @@
 //                  * NUM_PORTS     = 3   (not a power of two, so the derived port
 //                                           widths are the interesting case)
 //                  * CLK_FREQ_HZ   = 50 MHz (a quarter of the canonical clock,
-//                                           so the octet clock enables are 45
+//                                           so the octet clock enables are 40
 //                                           and 4 core clocks long instead of
-//                                           125 and 10)
+//                                           100 and 10)
 //                  * PORT_SPEED    = 10 / 100 / 100 Mbit/s
 //                  * PORT_MAC      = three distinct addresses, so the per-port
 //                                    reflection filter is exercised
@@ -38,12 +38,9 @@
 
 module sw_switch_param_tb;
 
-  // The verification helpers live in sw_tb_pkg; sw_switch_pkg is imported
-  // explicitly as well, because Icarus Verilog cannot use a typedef that is
-  // only visible through a transitive package import in a subroutine
-  // argument list.
+  // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
+  // compilation-unit scope (`rtl/sw_defs.sv`) and so need no import.
   import sw_tb_pkg::*;
-  import sw_switch_pkg::*;
 
   // ==========================================================================
   // 1.  Configuration under test
@@ -165,7 +162,7 @@ module sw_switch_param_tb;
 
   /// Wait until every port has delivered all the frames it was told to expect,
   /// then report any port that is still short.  A generous bound: the slowest
-  /// port is 10 Mbit/s on a 50 MHz core, so a 100 octet frame needs 4500 clocks
+  /// port is 10 Mbit/s on a 50 MHz core, so a 100 octet frame needs 4000 clocks
   /// to arrive and the check has to outlast the frame it is waiting for.
   task automatic wait_all_settled(input int unsigned bound);
     for (int unsigned w = 0; w < bound; w++) begin
@@ -237,7 +234,7 @@ module sw_switch_param_tb;
   // Settle bound.
   //
   // Derived from the configuration rather than guessed.  The slowest port here
-  // is 10 Mbit/s on a 50 MHz core, so one octet time is BP0 (45) core clocks and
+  // is 10 Mbit/s on a 50 MHz core, so one octet time is BP0 (40) core clocks and
   // a frame of PAYLOAD octets needs BP0*(PAYLOAD+4) clocks merely to be clocked
   // out of the receive path, before the fabric and the transmit path have
   // finished with it.  A fixed count that suits a 100 Mbit/s port checks the
@@ -249,6 +246,7 @@ module sw_switch_param_tb;
 
   localparam sw_mac_t HOST_A = 48'h02_BA_BA_00_00_01;
   localparam sw_mac_t HOST_B = 48'h02_BA_BA_00_00_02;
+  localparam sw_mac_t HOST_C = 48'h02_BA_BA_00_00_03;
 
   task automatic send_on(input int unsigned port, input sw_mac_t dst,
                          input sw_mac_t src, input int unsigned len);
@@ -329,11 +327,19 @@ module sw_switch_param_tb;
     expect_eq(expected_frames[1], 0, "port 1 was not the destination");
     expect_eq(expected_frames[2], 0, "port 2 received the unicast to HOST_B");
 
-    // ---- a frame addressed to a port's own address -----------------------
-    // Port 1's address is learned from a frame it sends; a frame addressed to
-    // that address must then be delivered to port 1 and nowhere else.
-    $display("---- train port 1's own address, then address it directly ----");
-    send_on(1, SW_MAC_BROADCAST, port_mac(1), PAYLOAD);
+    // ---- a station behind port 1 is learned, then unicast to ---------------
+    // HOST_C announces itself on port 1 with a broadcast.  The switch floods the
+    // announcement and learns HOST_C behind port 1, so the next frame, from port
+    // 0, must be delivered to port 1 and to port 1 only.
+    //
+    // A *station*, not the port's own address: a frame whose source is the port's
+    // own address is a reflected frame, and the ingress filter drops it outright
+    // - it is neither forwarded nor learned.  So a port's own address can never
+    // enter the CAM and a frame addressed to it is always an unknown unicast.
+    // Both halves of that behaviour are checked below, where the PORT_MAC
+    // parameters are what is under test.
+    $display("---- learn HOST_C on port 1, then unicast to it ----");
+    send_on(1, SW_MAC_BROADCAST, HOST_C, PAYLOAD);
     expected_frames[0] = 1;
     expected_frames[2] = 1;
     wait_all_settled(SETTLE);
@@ -342,33 +348,62 @@ module sw_switch_param_tb;
     expect_eq(expected_frames[0], 0, "port 0 received port 1's broadcast");
     expect_eq(expected_frames[2], 0, "port 2 received port 1's broadcast");
 
-    send_on(0, port_mac(1), HOST_A, PAYLOAD);
+    send_on(0, HOST_C, HOST_A, PAYLOAD);
     expected_frames[1] = 1;
     wait_all_settled(SETTLE);
     repeat (200) @(posedge clk);
     drain_all();
     expect_eq(expected_frames[0], 0, "port 0 got no copy of its own unicast");
-    expect_eq(expected_frames[1], 0, "port 1 received the frame addressed to it");
+    expect_eq(expected_frames[1], 0, "port 1 received the unicast to HOST_C");
     expect_eq(expected_frames[2], 0, "port 2 was not the destination");
 
-    // ---- the reflection filter drops a port's own address -----------------
-    // A frame whose destination is the address of the port it arrives on must be
-    // discarded there rather than reflected back out of the same port.  This is
-    // the check that proves the three distinct PORT_MAC values are wired to the
-    // right ports: with them permuted, the frame would be forwarded instead.
-    $display("---- a port's own address arriving on that port is dropped ----");
+    // ---- a frame addressed to a port's own address is consumed there -------
+    // A frame whose destination is the address of the port it arrives on has
+    // reached its destination and must be discarded there, not flooded out of the
+    // other ports.  This is the check that proves the three distinct PORT_MAC
+    // values are wired to the right ports: with them permuted, `dst == PORT_MAC`
+    // would be false on port 2, the address would miss the CAM, and the frame
+    // would be flooded to ports 0 and 1 instead.
+    $display("---- a port's own address arriving on that port is consumed ----");
     send_on(2, port_mac(2), HOST_A, PAYLOAD);
     repeat (SETTLE) @(posedge clk);
     drain_all();
-    expect_eq(expected_frames[0], 0, "port 0 must not see the reflected frame");
-    expect_eq(expected_frames[1], 0, "port 1 must not see the reflected frame");
+    expect_eq(expected_frames[0], 0, "port 0 must not see the addressed frame");
+    expect_eq(expected_frames[1], 0, "port 1 must not see the addressed frame");
     // Nothing was expected on port 2 either, and `drain_all` already reported any
     // frame that showed up there as unexpected, so a zero here is the whole check.
-    expect_eq(expected_frames[2], 0, "port 2 must not reflect its own address");
+    expect_eq(expected_frames[2], 0, "port 2 consumed its own address");
 
     // The ingress filter must have accounted for exactly that one frame.
     expect_eq(stat_bus[32*int'(SW_STAT_RX_FILTERED) +: 32], 1,
               "exactly one frame was dropped by the ingress filter");
+
+    // ---- a frame *sourced* from the port's own address is reflected ---------
+    // The mirror image of the check above: a frame coming *from* the port's own
+    // address has come back around, so it is dropped and - just as important -
+    // not learned.  A second frame addressed to that address therefore still
+    // misses the CAM and is flooded, which is what proves it was not learned.
+    $display("---- a frame sourced from the port's own address is dropped ----");
+    send_on(2, HOST_A, port_mac(2), PAYLOAD);
+    repeat (SETTLE) @(posedge clk);
+    drain_all();
+    expect_eq(expected_frames[0], 0, "port 0 must not see the reflected frame");
+    expect_eq(expected_frames[1], 0, "port 1 must not see the reflected frame");
+    expect_eq(expected_frames[2], 0, "port 2 must not reflect its own address");
+
+    expect_eq(stat_bus[32*int'(SW_STAT_RX_FILTERED) +: 32], 2,
+              "the ingress filter dropped two frames in total");
+
+    // The reflected source address must not have been learned either.
+    send_on(0, port_mac(2), HOST_A, PAYLOAD);
+    expected_frames[1] = 1;
+    expected_frames[2] = 1;
+    wait_all_settled(SETTLE);
+    repeat (200) @(posedge clk);
+    drain_all();
+    expect_eq(expected_frames[0], 0, "port 0 got no copy of its own unicast");
+    expect_eq(expected_frames[1], 0, "port 1 received the unicast");
+    expect_eq(expected_frames[2], 0, "port 2 received the unicast");
 
     // ==========================================================================
     // Summary

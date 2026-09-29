@@ -140,10 +140,6 @@ jobs:
           make sim 2>&1 | tee build/sim.log
 
       - name: Three-port parameterisation testbench
-        # Allowed to fail: see the note in librelane/README.md and the reply that
-        # accompanied this workflow.  The two failures are the same outstanding
-        # defect that this job's first two testbenches do not cover.
-        continue-on-error: true
         run: |
           set -o pipefail
           make param 2>&1 | tee build/param.log
@@ -204,12 +200,26 @@ jobs:
       # `docker run` is used instead of a `container:` job on purpose: the image
       # has no Node runtime for actions/checkout, and mounting the workspace keeps
       # the tool's own entry point in play.
+      #
+      # `HOME` is the container's own HOME, which is where the flow keeps its
+      # PDK download - over a gigabyte, and a few minutes of wall clock.  It is
+      # redirected into the workspace and cached below, so a network hiccup on the
+      # first run does not cost a 180-minute job.  `--user` keeps the outputs owned
+      # by the runner rather than by root, so a re-run can overwrite them.
+      - name: Cache the PDK
+        uses: actions/cache@v4
+        with:
+          path: .cache/librelane
+          key: librelane-${{ runner.os }}-sky130A
+          restore-keys: librelane-${{ runner.os }}-
+
       - name: Run the LibreLane flow
         run: |
           set -o pipefail
+          mkdir -p .cache/librelane librelane/runs
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            -e HOME=/tmp \
+            -e HOME=/work/.cache/librelane \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             ghcr.io/librelane/librelane:2.4.2 \
