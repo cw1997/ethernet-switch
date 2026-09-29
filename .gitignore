@@ -1,0 +1,27 @@
+# ============================================================================
+#  File        : .gitignore
+#  Description : Build products, simulation output and tool working directories.
+# ============================================================================
+
+# ---- build products -------------------------------------------------------
+build/
+*.vvp
+*.vcd
+*.fsdb
+*.vcd.gz
+*.shm
+*.key
+*.log
+
+# ---- LibreLane / OpenLane -------------------------------------------------
+# The flow creates one working directory per run under librelane/runs; they are
+# large, they are regenerated on demand, and a stale one is never useful.
+librelane/runs/
+out/
+
+# ---- editors / OS ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
