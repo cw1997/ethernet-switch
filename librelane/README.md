@@ -37,11 +37,21 @@ a run that fails when the network hiccups - which is exactly what happened the
 first time this flow was run here.  With a persistent `HOME` the PDK is fetched
 once and every later run reuses it.  LibreLane keys its PDK bookkeeping by a
 hash of both the PDK revision and the flow version, so a `HOME` populated by a
-2.x run is not reused by 3.x - CI puts the image tag in its cache key for the
+2.x run is not reused by 3.x - the image tag belongs in the cache key for the
 same reason.
 
 CI does the same thing in the `gds` job of `../.github/workflows/ci.yml`, behind
-a manual approval, and caches `.cache/librelane` between runs.
+a manual approval, with one difference: it bind-mounts the `HOME` from the
+*host* (`$HOME/.cache/librelane` on the runner) rather than from a directory
+inside the checkout.  `actions/checkout` runs `git clean -ffdx` at the start of
+every job, which deletes ignored files, so a PDK under `.cache/librelane` in the
+workspace is thrown away by the next run and re-fetched - over a gigabyte, and
+minutes of wall clock - every time a cache entry is evicted.  A self-hosted
+runner keeps its disk between runs, so the host directory is its own cache, no
+`actions/cache` entry is needed for it, and no eviction can reach it.  Delete
+`~/.cache/librelane` on the runner to force a re-fetch; it is the only
+difference between a local run and a CI run, and nothing else in this section
+depends on where `HOME` lives.
 
 ## 2.4 to 3.0: what changed in `config.json`
 
