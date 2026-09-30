@@ -6,20 +6,24 @@
 #
 #                Why this exists
 #                ---------------
-#                The linter, the simulator and the synthesis frontend are all
-#                installed from the runner image's package archive rather than
-#                from a pinned artefact, which is deliberate: it means the flow
-#                uses distribution builds with security updates, and it means
-#                there is no third-party repository in the supply path.
+#                The linter, the simulator and the synthesis frontend come from
+#                the toolchain container image declared in
+#                `.github/workflows/ci.yml`, not from a pinned artefact, which is
+#                deliberate: it means the flow uses distribution builds with
+#                security updates, and it means there is no third-party
+#                repository in the supply path.
 #
 #                The cost of that choice is that the tool versions are a property
-#                of the *runner image*, not of this repository.  The runner label
-#                in `.github/workflows/ci.yml` is pinned to make that property
-#                predictable, and this script is what makes the pinning real: if
-#                the image moves and a tool crosses a major version, the job fails
-#                here with a message that says which tool and which version,
-#                rather than a job that goes red somewhere inside `make lint`
-#                with a warning nobody can attribute.
+#                of the *image*, not of this repository.  That image is pinned by
+#                tag, and this script is what makes the pin real: if the image is
+#                rebuilt on a different base distribution and a tool crosses a
+#                major version, the job fails here with a message that says which
+#                tool and which version, rather than a job that goes red
+#                somewhere inside `make lint` with a warning nobody can
+#                attribute.  For the same reason the base distribution is
+#                asserted (see ASSERT_OS below) rather than merely reported: a
+#                tag that is repointed at, say, the next Ubuntu release is the
+#                most likely way for this contract to be broken by accident.
 #
 #                This is not hypothetical for this design.  Verilator 5.020
 #                reports `WIDTHEXPAND` for `3'(8 - beat_left)`; 5.032 and later
@@ -29,11 +33,16 @@
 #                See AGENTS.md section 2.2.
 #
 #                Usage      : ci/check-toolchain.sh
+#                             ASSERT_OS=1 ci/check-toolchain.sh
+#                                                    ^ also assert the base
+#                                                      distribution; CI does,
+#                                                      a local run does not
 #                Requires   : the three tools on PATH.  Each is probed, not
 #                             assumed, so a partially installed toolchain is
 #                             reported as a missing tool rather than as a
 #                             version mismatch.
-#  Language    : POSIX-ish bash (runs on the ubuntu runner and in WSL)
+#  Language    : POSIX-ish bash (runs inside the CI toolchain container, on a
+#                bare Ubuntu host, and in WSL)
 # ============================================================================
 set -euo pipefail
 
@@ -49,9 +58,13 @@ readonly IVERILOG_MAJOR="${IVERILOG_MAJOR:-12}"
 readonly VERILATOR_MAJOR="${VERILATOR_MAJOR:-5}"
 readonly YOSYS_MIN="${YOSYS_MIN:-0.33}"
 
-# The runner image, when there is one.  Local runs and WSL are not GitHub
-# runners, so the OS is reported but not asserted.
+# The base distribution the toolchain is expected to have been built on, as the
+# `/etc/os-release` `VERSION_ID`.  CI sets ASSERT_OS=1, which turns a mismatch
+# into a failure; a local run leaves it off, because a WSL distribution is not
+# a CI toolchain and should not have to masquerade as one.  A local run still
+# gets the answer, printed as `not asserted`.
 readonly EXPECTED_OS="${EXPECTED_OS:-24.04}"
+readonly ASSERT_OS="${ASSERT_OS:-0}"
 
 # ----------------------------------------------------------------------------
 # Helpers
@@ -63,8 +76,8 @@ row() {
 }
 
 # $1 >= $2, version-number aware (5.9 < 5.20 < 6.0).  `sort -V` is in coreutils
-# on every runner image; a lexicographic comparison would get 5.020 vs 5.20 wrong
-# in exactly the way that matters here.
+# on every Linux image and distribution; a lexicographic comparison would get
+# 5.020 vs 5.20 wrong in exactly the way that matters here.
 version_ge() {
   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
 }
@@ -147,24 +160,43 @@ else
   rc=1
 fi
 
-printf '  %-10s %-12s %-12s %s\n' 'host OS' "$EXPECTED_OS" "$os_version" \
-  "$([ "$os_version" = "$EXPECTED_OS" ] && printf 'ok' || printf 'not a runner')"
+# The base distribution.  Under CI this is the toolchain *image*'s base, and a
+# mismatch means the tag in ci.yml now points at a different build than the one
+# this contract was written against - which is a plausible accident and a silent
+# one, because the tool versions are printed right above it and may well still
+# satisfy the contract by luck.  A local run only reports.
+if [ "$os_version" = "$EXPECTED_OS" ]; then
+  row 'base OS' "$EXPECTED_OS" "$os_version" ok
+elif [ "$ASSERT_OS" = "1" ]; then
+  row 'base OS' "$EXPECTED_OS" "$os_version" 'MISMATCH'
+  rc=1
+else
+  row 'base OS' "$EXPECTED_OS" "$os_version" 'not asserted'
+fi
 printf '\n'
 
 if [ "$rc" -ne 0 ]; then
   cat >&2 <<'EOF'
 check-toolchain: the toolchain does not match the contract in ci/check-toolchain.sh.
 
-  This is a deliberate gate, not an inconvenience.  One of two things is true:
+  This is a deliberate gate, not an inconvenience.  One of three things is true:
 
-    1. The runner image moved and a tool crossed a major version.  The gates in
-       `Makefile` were written against the old major.  Either the new one is
-       compatible - in which case raise the expected version here and say so in
-       the commit message - or it is not, in which case the regression found by
-       a newer major is a real one and the RTL needs the fix.
+    1. The toolchain image moved - a different base distribution, or a rebuilt
+       tag - and a tool crossed a major version.  The gates in `Makefile` were
+       written against the old major.  Either the new one is compatible - in
+       which case raise the expected version here and say so in the commit
+       message - or it is not, in which case the regression found by a newer
+       major is a real one and the RTL needs the fix.
 
     2. The expected version here is wrong.  Correct it against what the image
        actually ships.
+
+    3. Only the base distribution row failed, with every tool version still
+       matching.  Then nothing has broken *yet*: the image is simply not the
+       one this contract was written against, and the versions it happens to
+       ship today are not a promise about tomorrow.  Re-point EXPECTED_OS in
+       the workflow only after checking what the new base actually ships - a
+       distribution that is merely newer is not evidence of a newer Verilator.
 
   Do not widen a gate to make this check pass.  Verilator in particular gets
   *quieter* across majors, so a silent bump removes findings rather than adding

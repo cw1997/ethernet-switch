@@ -1,6 +1,7 @@
 # ============================================================================
 #  File        : .github/workflows/ci.yml
-#  Description : Continuous integration for the SystemVerilog Ethernet L2 switch.
+#  Description : Continuous integration for the SystemVerilog Ethernet L2 switch,
+#                running on a SELF-HOSTED runner.
 #
 #                Three jobs, in dependency order:
 #
@@ -19,30 +20,125 @@
 #                                 BEHIND A MANUAL APPROVAL.
 #
 #  ---------------------------------------------------------------------------
+#  The runner, and who provides what
+#  ---------------------------------------------------------------------------
+#  Every job runs on `[self-hosted, linux, x64]` - the label set the runner
+#  application registers with by default, so nothing has to be added to the
+#  machine for the labels to match.  The split of responsibilities is the part
+#  worth reading before changing anything:
+#
+#    * The HOST provides Docker, and nothing else.  Docker is needed twice over:
+#      it runs the two container jobs, and it runs the LibreLane image in the
+#      `gds` job.  This workflow installs nothing on the host, on purpose - the
+#      host is a machine that is kept, not an image that is thrown away, and an
+#      `apt-get install` in a job that runs on every push is a way to end up
+#      with a toolchain nobody can reconstruct.
+#
+#    * The EDA TOOLCHAIN comes from a container image, declared per job with
+#      `container:`.  That image is the pin the runner label used to be:
+#      iverilog, verilator and yosys are whatever it ships.  `EXPECTED_OS` below
+#      and `ci/check-toolchain.sh` are what hold it still - a tool that crosses
+#      a major version inside a rebuilt image fails the job by name, instead of
+#      quietly changing what `make lint` reports.  See AGENTS.md section 2.2 for
+#      why a *silent* bump in the dangerous direction is the one to fear.
+#
+#  Two requirements on that image, both of which fail in ways that do not name
+#  the cause:
+#
+#    - It must be glibc-based (Debian or Ubuntu), NOT Alpine.  A container job
+#      runs its JavaScript action steps inside the image, using a Node binary
+#      bind-mounted in from the runner, and that binary does not start against
+#      musl.  On Alpine the failure is a dynamic-loader error in the *first*
+#      step, which reads like a broken runner.
+#    - It needs `git`, `bash`, `make` and the three EDA tools on PATH.
+#      `ci/check-toolchain.sh` names a missing EDA tool, which is the intended
+#      failure, but it cannot name a missing `make`.
+#
+#  The image is written at each `container:` site rather than in `env` because
+#  the `env` context is not available in `jobs.<job_id>.container.image`:
+#  GitHub allows only `github`, `needs`, `strategy`, `matrix`, `vars` and
+#  `inputs` there, and an unset expression there is a hard error rather than an
+#  empty string.  So the two sites have to be kept in step by hand.  The
+#  alternative, if that becomes annoying, is a repository variable and
+#  `vars.TOOLCHAIN_IMAGE` in both.
+#
+#  ---------------------------------------------------------------------------
+#  What a self-hosted runner changes, beyond the label
+#  ---------------------------------------------------------------------------
+#  A GitHub-hosted runner is created empty and destroyed afterwards, so most of
+#  what follows never shows up there.
+#
+#  1. ROOT-OWNED FILES IN THE WORKSPACE.  A container job runs as the image's
+#     default user, which for a build image is root, and the workspace is a bind
+#     mount of the runner's own directory.  Everything the job writes is
+#     therefore root-owned, and the *next* run's `actions/checkout` does
+#     `git clean -ffdx && git reset --hard` as the unprivileged runner user,
+#     which cannot unlink them.  The symptom is the second run of a job failing
+#     in its first step with EACCES and no mention of permissions.  The
+#     `if: always()` chown step at the end of each container job hands the tree
+#     back.  If a run is cancelled hard enough that even that step is skipped,
+#     recover on the host with
+#         sudo chown -R "$(id -u):$(id -g)" <runner-dir>/_work
+#  2. NO PARALLELISM.  A runner executes one job at a time, so the three jobs
+#     serialise even though `needs:` would allow overlap.  The timeouts are per
+#     job, not for the workflow as a whole.
+#  3. THE PDK LIVES ON THE HOST, not in the workspace.  `git clean -ffdx`
+#     deletes ignored files, so a PDK under `.cache/librelane` inside the
+#     checkout is destroyed by the next job and has to be re-downloaded -
+#     over a gigabyte, and minutes of wall clock - every time a cache entry is
+#     evicted.  The machine does not go away between runs, so the directory is
+#     its own cache and `actions/cache` is not used for it.  See the `gds` job.
+#  4. `pull_request` RUNS UNTRUSTED CODE ON YOUR MACHINE.  This is the one that
+#     is not a papercut.  A pull request from a fork is checked out and
+#     executed on the self-hosted runner with that runner's token, its network
+#     and its filesystem - and the `gds` job hands a container the right to
+#     write into the workspace.  If this repository takes pull requests from
+#     people you do not control, that is a remote code execution path into
+#     whatever machine the runner is on.  GitHub's own guidance is not to run
+#     untrusted workflows on self-hosted runners.  The ways out, in the order
+#     they are worth considering:
+#       - do not accept pull requests from outside the repository (push to a
+#         branch instead, and gate on branch protection);
+#       - run the untrusted half on GitHub-hosted runners and keep the physical
+#         flow on the self-hosted one, which is the split this file would have
+#         if only the `gds` job were self-hosted;
+#       - put the runner on a disposable machine or VM with nothing else on it.
+#     Nothing in this workflow can enforce any of that - it is a property of who
+#     may push here, not of the YAML.
+#
+#  ---------------------------------------------------------------------------
+#  The toolchain contract
+#  ---------------------------------------------------------------------------
+#  `EXPECTED_OS` is the `/etc/os-release` `VERSION_ID` the toolchain image is
+#  expected to report, and it is asserted rather than reported: the lint and
+#  test jobs run `ci/check-toolchain.sh` with `ASSERT_OS=1`, so a toolchain image
+#  that was rebuilt on a different base distribution fails the job instead of
+#  quietly changing which Verilator is grading the RTL.  A local run leaves the
+#  assertion off, because a local WSL distribution is not a CI toolchain and
+#  should not have to be.  The three tool versions are the single place that
+#  contract is written down; nothing here repeats them.
+#
+#  When the toolchain moves, `ci/check-toolchain.sh` and `EXPECTED_OS` here have
+#  to be updated in the same commit, and the regression re-run - not just the
+#  job that failed.
+#
+#  ---------------------------------------------------------------------------
 #  Dependency policy - read this before changing a version below
 #  ---------------------------------------------------------------------------
-#  Every dependency here is pinned to a *major* version, and that is the whole
-#  policy.  Pinning the exact patch is not possible for half of them (see
-#  below) and pretending otherwise produces a lock file that is quietly wrong.
-#
-#    * The GitHub actions are pinned to their major tag (`@v7`, `@v6`).  A major
-#      tag moves with the project, so patch and minor security updates arrive
-#      without a commit, and a major change requires a review of this file.
-#    * The EDA tools come from the *runner image's* package archive, not from a
-#      pinned artefact.  That is deliberate: distribution builds carry security
-#      updates, and adding a third-party APT repository to get a newer Verilator
-#      would put an unaudited package manager in the supply path of the job that
-#      gates every commit.  The runner label is therefore pinned
-#      (`ubuntu-24.04`), and `ci/check-toolchain.sh` fails the job if a tool
-#      crosses a major version anyway.  See the header of that script for why a
-#      silent Verilator bump is the dangerous direction.
-#    * The LibreLane image is pinned to an exact tag.  It is a Nix closure, the
-#      design is elaborated against the yosys inside it, and a floating tag would
-#      make a GDSII irreproducible.
-#
-#  When one of these moves, `ci/check-toolchain.sh` (for the EDA tools) or this
-#  file (for everything else) has to be updated in the same commit, and the
-#  regression has to be re-run - not just the job that failed.
+#  * The GitHub actions are pinned to their major tag (`@v7`, `@v6`).  A major
+#    tag moves with the project, so patch and minor security updates arrive
+#    without a commit, and a major change requires a review of this file.
+#  * The EDA tools come from the toolchain container image, and that image is
+#    pinned by tag.  The reasoning is the one the runner-image pin used to
+#    carry: distribution builds carry security updates, and a third-party APT
+#    repository in the supply path of the job that gates every commit is not
+#    worth a newer Verilator.  The difference is that the pin is now one tag the
+#    repository controls rather than a property of somebody else's image, so
+#    `ci/check-toolchain.sh` is what stops the tag from being repointed at a
+#    base distribution with a different tool generation.
+#  * The LibreLane image is pinned to an exact tag.  It is a Nix closure, the
+#    design is elaborated against the yosys inside it, and a floating tag would
+#    make a GDSII irreproducible.
 #
 #  ---------------------------------------------------------------------------
 #  The approval gate
@@ -65,6 +161,13 @@
 #  it is the only job that produces an artefact anyone might act on.  A sign-off
 #  step before a physical deliverable is produced is worth more than the
 #  convenience of having it run on every push.
+#
+#  One consequence of a single self-hosted runner is worth knowing: a job waiting
+#  for an environment approval is *not* dispatched to a runner, so a GDS job
+#  sitting in the approval queue blocks nothing.  A GDS job that has been
+#  approved and started does - it holds the runner alone for up to its
+#  180-minute budget, and the next push's `lint` job waits behind it.  If that
+#  latency is a problem the fix is a second runner, not a shorter timeout.
 # ============================================================================
 
 name: CI
@@ -82,13 +185,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # ---- packages from the runner image ------------------------------------
-  # Names only.  The versions come from the pinned runner label and are asserted
-  # by ci/check-toolchain.sh, which is the single place the expected versions
-  # are written down.
-  IVERILOG_PKG: iverilog
-  VERILATOR_PKG: verilator
-  YOSYS_PKG: yosys
+  # ---- the toolchain contract --------------------------------------------
+  # See "The toolchain contract" in the header.  This is the *image's* base
+  # distribution, not the host's: the jobs that assert it run inside the
+  # toolchain container, so this is also a check that the container is the one
+  # that was intended and not a stale local build.
+  EXPECTED_OS: "24.04"
 
   # ---- the physical flow -------------------------------------------------
   # An exact tag, not a floating `latest`: this is a Nix closure, the RTL is
@@ -104,25 +206,25 @@ jobs:
   # ==========================================================================
   lint:
     name: lint and elaborate
-    # Pinned, not `ubuntu-latest`.  The EDA packages come from this image's
-    # archive, so the label is what determines the linter and the synthesis
-    # frontend - and this design's lint result is version sensitive (see
-    # ci/check-toolchain.sh).  `ubuntu-24.04` is the current GA LTS; bump it
-    # deliberately, with a full regression, not by deleting the suffix.
-    runs-on: ubuntu-24.04
+    # The default self-hosted label set, which every runner registers with and
+    # which therefore needs no extra configuration on the machine.  Adding a
+    # custom label (say `eda`) to this list is how you keep a job off a machine
+    # that has Docker but not the disk for it; the runner then needs that label
+    # at registration time.
+    runs-on: [self-hosted, linux, x64]
+
+    # The EDA toolchain: glibc-based, with git / bash / make / iverilog /
+    # verilator / yosys on PATH.  ** REPLACE the tag, and keep it in step with
+    # the `test` job below - there is no env var to keep in step, see the
+    # header. **
+    container:
+      image: ghcr.io/cw1997/sw-toolchain:replace-me
+
     timeout-minutes: 10
 
     steps:
       - name: Check out the sources
         uses: actions/checkout@v7
-
-      - name: Install the simulators, the linter and the synthesis frontend
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            $IVERILOG_PKG \
-            $VERILATOR_PKG \
-            $YOSYS_PKG
 
       # Runs before any gate, so that a toolchain that moved is reported as a
       # toolchain problem rather than as a mysterious Verilator warning.
@@ -130,6 +232,11 @@ jobs:
       # carrying an executable bit, which a Windows checkout will not set.
       - name: Check the toolchain against the CI contract
         run: bash ci/check-toolchain.sh
+        env:
+          # Assert the base distribution here and not in a local run: see the
+          # header.  This is what stops a rebuilt toolchain image from silently
+          # changing the linter.
+          ASSERT_OS: "1"
 
       - name: Cache the build directory
         uses: actions/cache@v6
@@ -158,13 +265,40 @@ jobs:
       - name: Synthesise the RTL with yosys
         run: make synth
 
+      # LAST, and `always()`, because this is a cleanup step and a cleanup step
+      # that does not run is the bug.  See "What a self-hosted runner changes"
+      # item 1 in the header for the failure this prevents.
+      - name: Hand the workspace back to the runner user
+        if: always()
+        run: |
+          # `/__w` is created by the runner, not by the container, so its
+          # ownership is the runner user's - which is the ownership the next
+          # job's checkout needs to be able to `git clean`.  Silently skipped
+          # when the image already runs as that user, or when the container is
+          # not on the Linux bind-mount layout and `stat` finds nothing.
+          host_uid=$(stat -c '%u' /__w 2>/dev/null) || host_uid=
+          host_gid=$(stat -c '%g' /__w 2>/dev/null) || host_gid=
+          if [ -n "$host_uid" ] && [ "$host_uid" != "$(id -u)" ]; then
+            chown -R "$host_uid:$host_gid" "$GITHUB_WORKSPACE" || true
+          fi
+
   # ==========================================================================
   # 2. Regression
   # ==========================================================================
   test:
     name: regression
     needs: lint
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
+
+    # ** Keep in step with the `lint` job. **  A job-level `container:` applies
+    # to the whole job, which is why the image has to be a complete toolchain
+    # rather than one with iverilog in it: the same image has to satisfy the
+    # contract the lint job asserts, and a test job that silently ran a
+    # different simulator than the one the gates were written against is exactly
+    # the failure the toolchain contract exists to catch.
+    container:
+      image: ghcr.io/cw1997/sw-toolchain:replace-me
+
     # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
     # frame needs ~10 000 clocks and the suite has to wait for the slowest port
     # between every test.  This is the reason the job needs a generous bound.
@@ -174,11 +308,15 @@ jobs:
       - name: Check out the sources
         uses: actions/checkout@v7
 
-      - name: Install the simulator
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y $IVERILOG_PKG
-          iverilog -V | head -1
+      # The same gate as the lint job, and asserted the same way.  It is cheap
+      # (a few hundred milliseconds) and it is the difference between a
+      # regression that fails because the design changed and one that fails
+      # because the simulator did.  It also prints the version table, which
+      # replaces the `iverilog -V | head -1` this step used to run.
+      - name: Check the toolchain against the CI contract
+        run: bash ci/check-toolchain.sh
+        env:
+          ASSERT_OS: "1"
 
       - name: Cache the build directory
         uses: actions/cache@v6
@@ -214,6 +352,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Hand the workspace back to the runner user
+        if: always()
+        run: |
+          host_uid=$(stat -c '%u' /__w 2>/dev/null) || host_uid=
+          host_gid=$(stat -c '%g' /__w 2>/dev/null) || host_gid=
+          if [ -n "$host_uid" ] && [ "$host_uid" != "$(id -u)" ]; then
+            chown -R "$host_uid:$host_gid" "$GITHUB_WORKSPACE" || true
+          fi
+
   # ==========================================================================
   # 3. Physical implementation - GATED BEHIND A MANUAL APPROVAL
   # ==========================================================================
@@ -235,7 +382,15 @@ jobs:
     # ==========================================================================
     environment: production
 
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
+
+    # NOTE: no `container:` here, and that is not an oversight.  This job starts
+    # a container of its own (the LibreLane image) and a container cannot nest
+    # inside another one without a Docker socket mount, which would be a
+    # privilege escalation on the host for no benefit.  So this job runs on the
+    # host, and the host needs the tools it actually uses - docker, git, find,
+    # tee - and none of the EDA ones.
+
     # LibreLane pulls a multi-gigabyte image, downloads the PDK and then runs
     # tens of minutes of place-and-route.  A short timeout here turns a slow
     # machine into a red run that looks like a design failure.
@@ -244,6 +399,62 @@ jobs:
     steps:
       - name: Check out the sources
         uses: actions/checkout@v7
+
+      # A self-hosted host is a machine somebody maintains, so the things that
+      # are guaranteed on a GitHub-hosted image are not guaranteed here.  Each
+      # of these has a way of failing *late* and looking like a design problem,
+      # which is the reason they are checked up front: a Docker daemon the
+      # runner user cannot reach makes the flow step fail on a socket permission
+      # after the 180-minute budget has been spent waiting, and a full disk
+      # makes place-and-route die in the middle of a run.
+      - name: Check the host prerequisites
+        run: |
+          set -euo pipefail
+
+          for tool in docker git make; do
+            command -v "$tool" >/dev/null 2>&1 || {
+              echo "The runner host has no '$tool' on PATH." >&2
+              echo "This job runs on the host, not in a container, and needs it." >&2
+              exit 1
+            }
+          done
+
+          if ! docker info >/dev/null 2>&1; then
+            echo "The Docker daemon is not reachable as $(id -un) (uid $(id -u))." >&2
+            echo "Add this user to the 'docker' group, or make the socket" >&2
+            echo "world-writable, and restart the runner service." >&2
+            exit 1
+          fi
+
+          if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+            echo "HOME is unset or missing; the PDK directory cannot be placed." >&2
+            exit 1
+          fi
+
+          # Created here rather than in the flow step so that the filesystem it
+          # lands on is the one just measured, and so that a runner account
+          # without a writable home is reported before the image is pulled.
+          mkdir -p "$HOME/.cache/librelane"
+
+          # 20 GiB on each of the two filesystems, not on their sum.  A
+          # judgement call rather than a measurement: the image is a few GB, the
+          # PDK over one, and a run directory is several more once the detailed
+          # routes and the GDS are in it.  They are two paths rather than one
+          # because the PDK deliberately does *not* live in the workspace (see
+          # the flow step), and on a runner whose home is on a different volume
+          # - a separate data disk, which is the usual way to get the space at
+          # all - checking only the workspace measures the wrong one.
+          for dir in "$GITHUB_WORKSPACE" "$HOME/.cache/librelane"; do
+            avail_kb=$(df -Pk "$dir" | awk 'NR == 2 { print $4 }')
+            if [ "${avail_kb:-0}" -lt 20971520 ]; then
+              echo "Only $((avail_kb / 1024)) MiB free on the filesystem holding" >&2
+              echo "$dir; the flow needs about 20 GiB for the image, the PDK" >&2
+              echo "and a run." >&2
+              exit 1
+            fi
+            echo "  $((avail_kb / 1024)) MiB free on $dir"
+          done
+          echo "host ok: $(nproc) cpus, docker reachable as $(id -un)"
 
       - name: Log the approval
         run: |
@@ -256,34 +467,34 @@ jobs:
       # The flow is run inside the pinned LibreLane container rather than on the
       # runner, because the toolchain is a large Nix closure and reproducing it on
       # the host is exactly the kind of thing that works locally and fails in CI.
-      # `docker run` is used instead of a `container:` job on purpose: the image
-      # has no Node runtime for actions/checkout, and mounting the workspace keeps
-      # the tool's own entry point in play.
+      # `docker run` is used instead of a `container:` job on purpose: this job
+      # is already the one that cannot nest containers (see above), and mounting
+      # the workspace keeps the tool's own entry point in play.
       #
-      # `HOME` is the container's own HOME, which is where the flow keeps its
-      # PDK download - over a gigabyte, and a few minutes of wall clock.  It is
-      # redirected into the workspace and cached below, so a network hiccup on the
-      # first run does not cost a 180-minute job.  `--user` keeps the outputs owned
-      # by the runner rather than by root, so a re-run can overwrite them.
+      # `HOME` is where the flow keeps its PDK download - over a gigabyte, and a
+      # few minutes of wall clock - and it is bind-mounted from the *host* rather
+      # than from a directory inside the workspace.  That is the one place this
+      # job differs from a GitHub-hosted flow, and it is deliberate:
+      # `actions/checkout` runs `git clean -ffdx` at the start of every job,
+      # which deletes ignored files, so a PDK under `.cache/librelane` in the
+      # checkout is thrown away by the *next* run and re-fetched whenever the
+      # `actions/cache` entry is evicted.  A self-hosted runner keeps its disk
+      # between runs, so `$HOME/.cache/librelane` is its own cache, it cannot be
+      # deleted by a checkout, and no cache eviction can reach it.  Delete that
+      # directory by hand to force a re-fetch.
       #
-      # The image tag is part of the cache key: LibreLane keys its PDK
-      # bookkeeping by a hash of the PDK revision *and* the flow version, so a
-      # 2.x cache is not merely stale for 3.x, it is in the wrong namespace.
-      - name: Cache the PDK
-        uses: actions/cache@v6
-        with:
-          path: .cache/librelane
-          key: librelane-${{ runner.os }}-${{ env.LIBRELANE_IMAGE }}-${{ env.LIBRELANE_PDK }}
-          restore-keys: librelane-${{ runner.os }}-${{ env.LIBRELANE_IMAGE }}-
-
+      # `--user` keeps the outputs owned by the runner rather than by root, so
+      # that the next job's checkout can clean them and a local run can overwrite
+      # them.
       - name: Run the LibreLane flow
         run: |
           set -o pipefail
-          mkdir -p .cache/librelane librelane/runs
+          mkdir -p "$HOME/.cache/librelane" librelane/runs
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            -e HOME=/work/.cache/librelane \
+            -e HOME=/pdks \
             -v "$GITHUB_WORKSPACE:/work" \
+            -v "$HOME/.cache/librelane:/pdks" \
             -w /work \
             "$LIBRELANE_IMAGE" \
             librelane --pdk "$LIBRELANE_PDK" -s "$LIBRELANE_SCL" librelane/config.json \

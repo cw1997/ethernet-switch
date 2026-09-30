@@ -24,8 +24,10 @@ librelane/runs_prev/
 out/
 
 # The container's HOME, which is where the flow keeps its (multi-gigabyte) PDK
-# download.  Local runs and CI share it through the `-e HOME=` flag in the `gds`
-# job; see librelane/README.md.
+# download.  A local run points it here, inside the workspace, through the
+# `-e HOME=` flag in librelane/README.md.  CI does not: it bind-mounts the PDK
+# from the runner host's own ~/.cache/librelane, because `actions/checkout`
+# runs `git clean -ffdx` and would delete this directory on the next run.
 .cache/
 
 # ---- editors / OS ---------------------------------------------------------

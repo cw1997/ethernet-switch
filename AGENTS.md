@@ -39,11 +39,17 @@ testbenches. If you are about to add a constant, put it there.
 | `make synth` | yosys `read_verilog -sv` | everything the simulators happily accept and silicon will not |
 | CI job `gds` | LibreLane 3.0.14, sky130A | timing, hold, DRC, LVS against the standard cells |
 
-The runner image is pinned to `ubuntu-24.04` and the EDA packages come from its
-archive rather than from a pinned artefact - distribution builds carry security
-updates, and a third-party APT repository in the supply path of the job that
-gates every commit is not worth a newer linter. The pin is what makes that
-choice predictable, and `ci/check-toolchain.sh` is what makes the pin real.
+CI runs on a **self-hosted** runner, and the split of responsibilities is worth
+knowing before you change anything there. The host provides Docker and nothing
+else; the EDA toolchain comes from a container image declared per job with
+`container:`, and that image is the pin that the runner label used to be.
+Distribution builds carry security updates, and a third-party APT repository in
+the supply path of the job that gates every commit is not worth a newer linter.
+`ci/check-toolchain.sh` is what makes the pin real: CI runs it with
+`ASSERT_OS=1`, so a toolchain image whose base distribution moved fails by name
+rather than quietly changing what `make lint` reports. A local run leaves the
+assertion off, which is why `bash wsl.sh "make lint"` works on a WSL
+distribution that is not the CI one.
 
 ### 2.1 The three hard yosys restrictions
 
@@ -86,8 +92,8 @@ frontend rather than an approximation of it.
   declaration-only file.
 - `-Wno-DECLFILENAME` is passed on the command line because the module name is
   the file name; that is deliberate, not a suppressed defect.
-- The lint result is **version sensitive**. CI installs the distribution's
-  Verilator from the pinned `ubuntu-24.04` image, which is 5.020, and 5.020
+- The lint result is **version sensitive**. CI's toolchain image carries the
+  distribution's Verilator, which was 5.020 when this was written, and 5.020
   reports `WIDTHEXPAND` for `3'(8 - beat_left)`. Verilator 5.032 and 5.046
   report nothing at all for the same line, so a newer tool lints *cleaner* than
   the one CI runs. Three consequences: the width discipline in §3.2 has to be
@@ -95,7 +101,11 @@ frontend rather than an approximation of it.
   silently extended; a warning you only see on an older Verilator must be fixed
   by making the operand widths match, not by wrapping the expression in a wider
   cast; and `ci/check-toolchain.sh` exists so that a major bump fails the job
-  loudly instead of quietly removing findings.
+  loudly instead of quietly removing findings. Note that a self-hosted runner
+  makes this *more* likely, not less: the toolchain image is rebuilt on the
+  host rather than re-pulled from a dated runner image, so "the tag is the same"
+  no longer implies "the tools are the same". The assertion in §2 is the only
+  thing standing between a rebuilt base image and a silently weaker lint gate.
 
 ### 2.3 The flow configuration is strict too
 
@@ -304,13 +314,23 @@ make synth     # ~3 min  - yosys; needs yosys on PATH, not part of `make all`
 ```
 
 On Windows the toolchain lives in WSL; `bash wsl.sh "make lint"` runs a command
-there. (CI uses Linux directly and never needs it.)
+there. (CI uses Linux directly and never needs it.) A local
+`ci/check-toolchain.sh` reports the base distribution rather than asserting it —
+only CI passes `ASSERT_OS=1` — so a WSL distribution newer than the CI toolchain
+image is not an error locally.
 
 **Run `make synth` before you call a change done.** `make all` does not include
 it (it is slow and needs yosys, and `all` is what you want while iterating), but
 the CI lint job does. The simulators are far more permissive than the synthesis
 frontend, and a design can pass every testbench and still be unreadable by the
 flow. It is the only gate that catches §2.1.
+
+A green local run is not a green CI run any more, for one reason: CI grades the
+RTL with the Verilator inside the toolchain image, and your WSL one need not be
+the same major version. If a lint warning appears locally that CI does not
+report, that is the version difference from §2.2 and not a spurious finding —
+but the *reverse* is the dangerous direction, and it is the one the toolchain
+contract in §2 exists to catch.
 
 Definition of done:
 
@@ -324,6 +344,10 @@ Definition of done:
 - [ ] A change to `librelane/config.json` is recorded in
       `librelane/README.md`, and every key in it is a variable the pinned
       LibreLane declares.
+- [ ] A change to the toolchain contract — the expected tool versions in
+      `ci/check-toolchain.sh`, or `EXPECTED_OS` in the workflow — is made in
+      this file's §2 terms: say which tool moved and what the regression said
+      about it. Do not widen the contract to make the job green.
 - [ ] The file header still describes what the module is for.
 
 ## 6. Things that will bite you
