@@ -17,6 +17,10 @@ build/
 # The flow creates one working directory per run under librelane/runs; they are
 # large, they are regenerated on demand, and a stale one is never useful.
 librelane/runs/
+# ...and it renames the previous one to runs_prev/ when a new run starts, so
+# that a multi-gigabyte directory is one `git add -A` away from being committed.
+# Both are ignored, and flow.log is ignored by the *.log rule above.
+librelane/runs_prev/
 out/
 
 # The container's HOME, which is where the flow keeps its (multi-gigabyte) PDK

@@ -19,6 +19,7 @@ this design in a way a testbench could not see.
 ```
 rtl/           the design.  One file per block, sw_<block>.sv / module sw_<block>
 tb/            self-checking testbenches.  Never synthesised, never linted by CI
+ci/            the CI toolchain contract (check-toolchain.sh)
 librelane/     the physical implementation flow (config.json + README.md)
 Makefile       every gate; the target list is documented in its own header
 ```
@@ -31,11 +32,18 @@ testbenches. If you are about to add a constant, put it there.
 
 | Gate | Tool | What it catches that the others do not |
 |---|---|---|
+| `ci/check-toolchain.sh` | shell | a linter, simulator or synthesis frontend that has crossed a major version since the gates were written |
 | `make lint` | Verilator `--lint-only -Wall` | width mismatches, unused signals, latches, incomplete case coverage, implicit sensitivity issues. **Any warning fails the build.** |
 | `make rtl` | Icarus `-g2012`, RTL only | anything that only elaborates because a testbench happens to declare a missing signal |
 | `make unit` / `sim` / `param` | Icarus + `vvp` | behaviour |
 | `make synth` | yosys `read_verilog -sv` | everything the simulators happily accept and silicon will not |
-| CI job `gds` | LibreLane 2.4.2, sky130A | timing, DRC, LVS against the standard cells |
+| CI job `gds` | LibreLane 3.0.14, sky130A | timing, hold, DRC, LVS against the standard cells |
+
+The runner image is pinned to `ubuntu-24.04` and the EDA packages come from its
+archive rather than from a pinned artefact - distribution builds carry security
+updates, and a third-party APT repository in the supply path of the job that
+gates every commit is not worth a newer linter. The pin is what makes that
+choice predictable, and `ci/check-toolchain.sh` is what makes the pin real.
 
 ### 2.1 The three hard yosys restrictions
 
@@ -61,7 +69,13 @@ full; the short form:
 
 The synthesis command also runs with **`-noautowire`**, so an implicit net is
 already an error there. Rule 3.1 below extends that protection to the linter
-and the simulators.
+and the simulators. That is not a coincidence: LibreLane reads the design with
+exactly the command in the `synth` target -
+
+    read_verilog -defer -noautowire -sv -I<dir>... -D<define>... <file>
+
+one file at a time - so `make synth` is a faithful stand-in for the flow's
+frontend rather than an approximation of it.
 
 ### 2.2 Verilator's policy in this repository
 
@@ -73,14 +87,36 @@ and the simulators.
 - `-Wno-DECLFILENAME` is passed on the command line because the module name is
   the file name; that is deliberate, not a suppressed defect.
 - The lint result is **version sensitive**. CI installs the distribution's
-  Verilator (5.020 on `ubuntu-latest` at the time of writing), and 5.020 reports
-  `WIDTHEXPAND` for `3'(8 - beat_left)`. Verilator 5.032 and 5.046 report
-  nothing at all for that same line, so a newer tool lints *cleaner* than the one
-  CI runs. Two consequences: the width discipline in §3.2 has to be
+  Verilator from the pinned `ubuntu-24.04` image, which is 5.020, and 5.020
+  reports `WIDTHEXPAND` for `3'(8 - beat_left)`. Verilator 5.032 and 5.046
+  report nothing at all for the same line, so a newer tool lints *cleaner* than
+  the one CI runs. Three consequences: the width discipline in §3.2 has to be
   self-imposed — do not rely on the linter to tell you that an operand was
-  silently extended — and a warning you only see on an older Verilator must be
-  fixed by making the operand widths match, not by wrapping the expression in a
-  wider cast.
+  silently extended; a warning you only see on an older Verilator must be fixed
+  by making the operand widths match, not by wrapping the expression in a wider
+  cast; and `ci/check-toolchain.sh` exists so that a major bump fails the job
+  loudly instead of quietly removing findings.
+
+### 2.3 The flow configuration is strict too
+
+`librelane/config.json` is not a place for comments. LibreLane's config loader
+validates every key against the variables the flow declares, and an unrecognised
+key is a **hard error** - `Unknown key '<name>' provided` - raised while the
+configuration is read, before the first synthesis step. (Keys beginning with `#`
+or containing `_OPT` are silently skipped, but that is an implementation detail
+rather than a documented convention, so do not build on it.)
+
+This is worth knowing because the failure is expensive: it costs a multi-GB
+image pull and a PDK download before telling you that one key is spelled wrong.
+The two files that decide what is valid are in the pinned image's source tree:
+
+    librelane/config/removals.py   variables that existed and were removed
+    Changelog.md                   the per-step notes, under the version heading
+
+and a key can be checked against the declarations with
+`grep -rn '"VARIABLE_NAME"' librelane/`. If you rename anything in
+`config.json`, record it in `librelane/README.md` in the same commit - the
+migration table there is the only record of which name went where.
 
 ## 3. RTL style rules
 
@@ -258,6 +294,7 @@ They are still held to:
 Run these in order; they are ordered by how fast they fail.
 
 ```sh
+ci/check-toolchain.sh  # ~0.1 s  - the tools match the versions the gates assume
 make lint      # ~1 s    - Verilator -Wall, any warning is an error
 make rtl       # ~1 s    - Icarus elaboration of the RTL alone
 make unit      # ~25 s   - CRC-32, FIFO, CAM, and the fabric regression
@@ -277,12 +314,16 @@ flow. It is the only gate that catches §2.1.
 
 Definition of done:
 
-- [ ] `make lint`, `make rtl`, `make unit`, `make sim`, `make param` all pass.
+- [ ] `ci/check-toolchain.sh`, `make lint`, `make rtl`, `make unit`, `make sim`,
+      `make param` all pass.
 - [ ] `make synth` elaborates and synthesises `sw_switch`.
 - [ ] A behavioural change has a test that fails without it.
 - [ ] No new `verilator lint_off`, and no new `initial` block.
 - [ ] New shared constants are in `sw_defs.sv`; new module parameters are
       `localparam`-derived and documented in the port list.
+- [ ] A change to `librelane/config.json` is recorded in
+      `librelane/README.md`, and every key in it is a variable the pinned
+      LibreLane declares.
 - [ ] The file header still describes what the module is for.
 
 ## 6. Things that will bite you
@@ -299,6 +340,9 @@ this is the short list.
 | Memory read in `always_comb` | same hang, less obviously | §3.3 |
 | Loop-indexed store into an array | store silently dropped, learned entry never appears | §3.3 |
 | `package` / `import` / `return` | passes every simulator, fails in the flow | §2.1 |
+| A comment key in `config.json` | hard error, after a multi-GB image pull | §2.3 |
+| A renamed flow variable | hard error, same cost; `removals.py` is the list | §2.3 |
 | Counter left to wrap by overflow | only correct when the count is 2**n | §3.2 |
 | `32 * 32` for two counts | a real multiplier array in the netlist | §3.2 |
 | Comment that contradicts the code | worse than no comment — see `tx_octets_inc` | §3.6 |
+| Assuming a non-2**n octet period works | 1000BASE-T on a 50 MHz core runs at 400 Mbit/s | `sw_byte_period` |

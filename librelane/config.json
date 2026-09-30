@@ -31,7 +31,7 @@
   "CLOCK_PORT": "clk_i",
   "CLOCK_PERIOD": 10,
 
-  "SDC_FILE": "librelane/constraints/io.sdc",
+  "FALLBACK_SDC": "librelane/constraints/io.sdc",
 
   "FP_SIZING": "relative",
   "FP_CORE_UTIL": 40,
@@ -39,21 +39,15 @@
   "PL_MAX_DISPLACEMENT_X": 500,
   "PL_MAX_DISPLACEMENT_Y": 100,
 
-  "CTS_BUF_CELL": "sky130_fd_sc_hd__buf_4",
-  "CTS_BUF_DISTANCE": 60,
-  "CTS_CLUSTER_SIZE": 30,
-  "CTS_CLUSTER_MAX_LEAVES": 25,
+  "CTS_CLK_BUFFERS": ["sky130_fd_sc_hd__buf_*"],
+  "CTS_DISTANCE_BETWEEN_BUFFERS": 60,
 
   "RT_MAX_LAYER": "met5",
   "RT_MIN_LAYER": "met1",
-  "RT_THREADS": 8,
-  "RT_ANTENNA_ITERS": 3,
-  "RT_ANTENNA_MARGIN": 10,
-
-  "GRT_ADAPTIVE_ITERATIONS": 5,
   "DRT_THREADS": 8,
+  "DRT_ANTENNA_REPAIR_ITERS": 3,
+  "DRT_ANTENNA_REPAIR_MARGIN": 10,
 
   "RUN_ANTENNA_REPAIR": true,
-  "RUN_DRC": true,
   "RUN_LVS": true
 }

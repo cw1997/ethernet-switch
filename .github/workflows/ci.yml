@@ -4,23 +4,49 @@
 #
 #                Three jobs, in dependency order:
 #
-#                  1. lint     - syntax and elaboration: Verilator -Wall lint, an
-#                                 Icarus elaboration of the RTL on its own,
-#                                 which is the synthesis-style check because it
-#                                 catches anything that only works because a
-#                                 testbench happens to drive it, and a yosys
-#                                 read + elaborate + synthesise, which is the
-#                                 only gate that enforces the synthesis
-#                                 restrictions the simulators cannot see.
+#                  1. lint     - syntax, elaboration and synthesis: a Verilator
+#                                 -Wall lint, an Icarus elaboration of the RTL on
+#                                 its own, and a yosys read + elaborate +
+#                                 synthesise, which is the only gate that
+#                                 enforces the synthesis restrictions the
+#                                 simulators cannot see.  The toolchain is
+#                                 asserted against a written contract first.
 #                  2. test     - the full regression: three block level
 #                                 testbenches, the four-port mixed-speed switch
 #                                 testbench, and the three-port parameterisation
 #                                 testbench.  Logs are uploaded as an artifact.
-#                  3. gds      - the LibreLane (OpenLane 2) flow, producing a
-#                                 GDSII.  GATED BEHIND A MANUAL APPROVAL.
+#                  3. gds      - the LibreLane flow, producing a GDSII.  GATED
+#                                 BEHIND A MANUAL APPROVAL.
 #
+#  ---------------------------------------------------------------------------
+#  Dependency policy - read this before changing a version below
+#  ---------------------------------------------------------------------------
+#  Every dependency here is pinned to a *major* version, and that is the whole
+#  policy.  Pinning the exact patch is not possible for half of them (see
+#  below) and pretending otherwise produces a lock file that is quietly wrong.
+#
+#    * The GitHub actions are pinned to their major tag (`@v7`, `@v6`).  A major
+#      tag moves with the project, so patch and minor security updates arrive
+#      without a commit, and a major change requires a review of this file.
+#    * The EDA tools come from the *runner image's* package archive, not from a
+#      pinned artefact.  That is deliberate: distribution builds carry security
+#      updates, and adding a third-party APT repository to get a newer Verilator
+#      would put an unaudited package manager in the supply path of the job that
+#      gates every commit.  The runner label is therefore pinned
+#      (`ubuntu-24.04`), and `ci/check-toolchain.sh` fails the job if a tool
+#      crosses a major version anyway.  See the header of that script for why a
+#      silent Verilator bump is the dangerous direction.
+#    * The LibreLane image is pinned to an exact tag.  It is a Nix closure, the
+#      design is elaborated against the yosys inside it, and a floating tag would
+#      make a GDSII irreproducible.
+#
+#  When one of these moves, `ci/check-toolchain.sh` (for the EDA tools) or this
+#  file (for everything else) has to be updated in the same commit, and the
+#  regression has to be re-run - not just the job that failed.
+#
+#  ---------------------------------------------------------------------------
 #  The approval gate
-#  -----------------
+#  ---------------------------------------------------------------------------
 #  Job 3 declares `environment: production`.  A GitHub *Environment* named
 #  `production` has to exist in this repository with "Required reviewers" enabled,
 #  otherwise the job starts immediately and there is no gate at all.
@@ -56,28 +82,39 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Package names, not versions.  Pinning the *version* here would make this job
-  # fail to install the moment ubuntu-latest moves on, which is a worse failure
-  # than a stricter linter, so the flow tracks the distribution instead and the
-  # RTL is written to satisfy every version of the flow in use rather than one
-  # of them.  See AGENTS.md section 2.2 for what that means in practice: the lint
-  # result is version sensitive, so the width discipline has to be self-imposed.
+  # ---- packages from the runner image ------------------------------------
+  # Names only.  The versions come from the pinned runner label and are asserted
+  # by ci/check-toolchain.sh, which is the single place the expected versions
+  # are written down.
   IVERILOG_PKG: iverilog
   VERILATOR_PKG: verilator
   YOSYS_PKG: yosys
 
+  # ---- the physical flow -------------------------------------------------
+  # An exact tag, not a floating `latest`: this is a Nix closure, the RTL is
+  # elaborated against the yosys inside it, and a GDSII has to be reproducible
+  # from the tag it claims to come from.
+  LIBRELANE_IMAGE: ghcr.io/librelane/librelane:3.0.14
+  LIBRELANE_PDK: sky130A
+  LIBRELANE_SCL: sky130_fd_sc_hd
+
 jobs:
   # ==========================================================================
-  # 1. Syntax / elaboration
+  # 1. Syntax / elaboration / synthesis
   # ==========================================================================
   lint:
     name: lint and elaborate
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`.  The EDA packages come from this image's
+    # archive, so the label is what determines the linter and the synthesis
+    # frontend - and this design's lint result is version sensitive (see
+    # ci/check-toolchain.sh).  `ubuntu-24.04` is the current GA LTS; bump it
+    # deliberately, with a full regression, not by deleting the suffix.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
       - name: Check out the sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install the simulators, the linter and the synthesis frontend
         run: |
@@ -86,12 +123,16 @@ jobs:
             $IVERILOG_PKG \
             $VERILATOR_PKG \
             $YOSYS_PKG
-          iverilog -V | head -1
-          verilator --version
-          yosys -V
+
+      # Runs before any gate, so that a toolchain that moved is reported as a
+      # toolchain problem rather than as a mysterious Verilator warning.
+      # Invoked through `bash` so that the step does not depend on the file
+      # carrying an executable bit, which a Windows checkout will not set.
+      - name: Check the toolchain against the CI contract
+        run: bash ci/check-toolchain.sh
 
       - name: Cache the build directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build
           key: lint-${{ runner.os }}-${{ hashFiles('rtl/*.sv') }}
@@ -114,8 +155,6 @@ jobs:
       # or import, no `return` in a function, a package-width port declaration -
       # so a change that violates one passes every other job and then fails in
       # the physical flow, tens of minutes into the most expensive job there is.
-      # It was out of CI only because yosys was not installed on the runner; see
-      # AGENTS.md section 2.1 and the `synth` target in the Makefile.
       - name: Synthesise the RTL with yosys
         run: make synth
 
@@ -125,7 +164,7 @@ jobs:
   test:
     name: regression
     needs: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
     # frame needs ~10 000 clocks and the suite has to wait for the slowest port
     # between every test.  This is the reason the job needs a generous bound.
@@ -133,7 +172,7 @@ jobs:
 
     steps:
       - name: Check out the sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install the simulator
         run: |
@@ -142,7 +181,7 @@ jobs:
           iverilog -V | head -1
 
       - name: Cache the build directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build
           key: test-${{ runner.os }}-${{ hashFiles('rtl/*.sv', 'tb/*.sv') }}
@@ -168,7 +207,7 @@ jobs:
       # 03:00 is only diagnosable with the log that says how.
       - name: Upload the simulation logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: simulation-logs
           path: build/*.log
@@ -196,7 +235,7 @@ jobs:
     # ==========================================================================
     environment: production
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # LibreLane pulls a multi-gigabyte image, downloads the PDK and then runs
     # tens of minutes of place-and-route.  A short timeout here turns a slow
     # machine into a red run that looks like a design failure.
@@ -204,7 +243,7 @@ jobs:
 
     steps:
       - name: Check out the sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log the approval
         run: |
@@ -226,12 +265,16 @@ jobs:
       # redirected into the workspace and cached below, so a network hiccup on the
       # first run does not cost a 180-minute job.  `--user` keeps the outputs owned
       # by the runner rather than by root, so a re-run can overwrite them.
+      #
+      # The image tag is part of the cache key: LibreLane keys its PDK
+      # bookkeeping by a hash of the PDK revision *and* the flow version, so a
+      # 2.x cache is not merely stale for 3.x, it is in the wrong namespace.
       - name: Cache the PDK
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/librelane
-          key: librelane-${{ runner.os }}-sky130A
-          restore-keys: librelane-${{ runner.os }}-
+          key: librelane-${{ runner.os }}-${{ env.LIBRELANE_IMAGE }}-${{ env.LIBRELANE_PDK }}
+          restore-keys: librelane-${{ runner.os }}-${{ env.LIBRELANE_IMAGE }}-
 
       - name: Run the LibreLane flow
         run: |
@@ -242,21 +285,33 @@ jobs:
             -e HOME=/work/.cache/librelane \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
-            ghcr.io/librelane/librelane:2.4.2 \
-            librelane --pdk sky130A -s sky130_fd_sc_hd librelane/config.json \
+            "$LIBRELANE_IMAGE" \
+            librelane --pdk "$LIBRELANE_PDK" -s "$LIBRELANE_SCL" librelane/config.json \
             2>&1 | tee librelane/flow.log
 
+      # LibreLane runs the GDSII stream-out twice - once per tool - and only the
+      # *primary* one (PRIMARY_GDSII_STREAMOUT_TOOL) is written as the plain
+      # `<design>.gds`; the other is `<design>.<tool>.gds`.  Glob for the plain
+      # name and fall back to any GDS, because which tool is primary is a flow
+      # variable and not something this workflow should hard-code.
+      #
+      # This replaces a `-path '*final*'` glob, which matched nothing: no step of
+      # this flow creates a directory called `final`, so the step reported "No
+      # GDSII was produced" after a run that had in fact produced one.
       - name: Locate the GDSII
         id: gds
         run: |
           set -o pipefail
-          # LibreLane names the final views by run tag; find it rather than
-          # assuming a directory name, so a re-run under a different tag still
-          # picks the right artefact up.
-          gds=$(find librelane/runs -name '*.gds' -path '*final*' | head -1)
+          gds=$(find librelane/runs -mindepth 3 -maxdepth 3 -type f \
+                  -name 'sw_switch.gds' | sort | head -1)
+          if [ -z "$gds" ]; then
+            gds=$(find librelane/runs -type f -name '*.gds' \
+                    ! -name '*.magic.gds' ! -name '*.klayout.gds' | sort | head -1)
+          fi
           if [ -z "$gds" ]; then
             echo "No GDSII was produced." >&2
-            ls -R librelane/runs || true
+            echo "GDS files the flow did produce:" >&2
+            find librelane/runs -type f -name '*.gds' >&2 || true
             exit 1
           fi
           echo "GDSII: $gds"
@@ -265,37 +320,75 @@ jobs:
           cp "$gds" out/sw_switch.gds
           ls -l out/
 
+      # The step directories are numbered (`34-openroad-cts`) and the numbering
+      # changes with the flow version, so the reports are found by name rather
+      # than by a path pattern.  This used to glob `runs/*/reports/*/*.rpt`,
+      # which is two levels too shallow: the reports live at
+      # `runs/RUN_.../<NN>-<step>/...`, and the glob silently produced an empty
+      # summary.
       - name: Summarise the result
         if: always()
         run: |
           {
             echo "### LibreLane"
             echo
-            echo "Flow: \`classic\` (Synthesis -> Floorplan -> Placement -> CTS ->"
-            echo "Routing -> Power Grid -> Signoff)"
+            echo "Image: \`${LIBRELANE_IMAGE}\`  PDK: \`${LIBRELANE_PDK}/${LIBRELANE_SCL}\`"
             echo
             if [ -f librelane/flow.log ]; then
               echo '```text'
-              tail -n 60 librelane/flow.log
+              tail -n 40 librelane/flow.log
               echo '```'
             fi
+
             echo
-            echo "### Reports"
+            echo "### Signoff"
             echo
-            for r in librelane/runs/*/reports/*/*.rpt; do
-              [ -e "$r" ] || continue
-              echo "#### \`$(basename "$r")\`"
+            # The post-CTS timing report is the number worth quoting: the
+            # pre-place figure is dominated by the unbuffered reset net and says
+            # nothing about the design.  See librelane/README.md.
+            #
+            # One worst-slack report and one unconstrained-endpoint report are
+            # picked out per run, by name.  Taking the first few files
+            # alphabetically instead would select `checks.rpt` and `clock.rpt`
+            # and bury `max.rpt`, which is the one anyone reads.
+            for r in $(find librelane/runs -type f -path '*stapostpnr*' \
+                         \( -name 'max.rpt' -o -name 'checks.rpt' \) | sort | head -3); do
+              echo "#### \`$(basename "$r")\` — corner \`$(basename "$(dirname "$r")")\`"
               echo
               echo '```text'
-              head -n 40 "$r"
+              head -n 25 "$r"
               echo '```'
               echo
+            done
+
+            echo "### Synthesis"
+            echo
+            for r in $(find librelane/runs -type f -path '*synthesis*' -name 'stat.rpt' | sort | head -1); do
+              echo '```text'
+              head -n 30 "$r"
+              echo '```'
+            done
+
+            echo
+            echo "### DRC / LVS / XOR"
+            echo
+            for pat in drc lvs xor; do
+              echo "#### $pat"
+              echo
+              for f in $(find librelane/runs -type f -iname "*${pat}*" \
+                           \( -name '*.rpt' -o -name '*.log' \) | sort | head -3); do
+                echo "\`$f\`"
+                echo '```text'
+                grep -iE 'violation|error|warning|mismatch|total|pass|fail' "$f" | head -n 8 || true
+                echo '```'
+                echo
+              done
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the GDSII
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gdsii
           path: out/sw_switch.gds
@@ -306,7 +399,7 @@ jobs:
         # Everything, not just the GDSII: the per-step logs and the timing and
         # DRC reports are what make a flow failure diagnosable.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: librelane-run
           path: librelane/runs
