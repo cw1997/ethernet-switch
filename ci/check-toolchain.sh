@@ -7,21 +7,23 @@
 #                Why this exists
 #                ---------------
 #                The linter, the simulator and the synthesis frontend come from
-#                the toolchain container image declared in
-#                `.github/workflows/ci.yml`, not from a pinned artefact, which is
-#                deliberate: it means the flow uses distribution builds with
-#                security updates, and it means there is no third-party
-#                repository in the supply path.
+#                the toolchain container image built from
+#                ci/toolchain/Dockerfile by the `images` job of
+#                `.github/workflows/ci.yml`, which is deliberate: it means the
+#                flow uses distribution builds with security updates, and it
+#                means there is no third-party repository in the supply path.
 #
 #                The cost of that choice is that the tool versions are a property
-#                of the *image*, not of this repository.  That image is pinned by
-#                tag, and this script is what makes the pin real: if the image is
-#                rebuilt on a different base distribution and a tool crosses a
-#                major version, the job fails here with a message that says which
-#                tool and which version, rather than a job that goes red
-#                somewhere inside `make lint` with a warning nobody can
-#                attribute.  For the same reason the base distribution is
-#                asserted (see ASSERT_OS below) rather than merely reported: a
+#                of the *image*, not of this repository.  The Dockerfile pins
+#                the base distribution but not the apt packages inside it, so a
+#                rebuilt image can still carry a newer tool generation, and this
+#                script is what makes the pin real: if the image is rebuilt on a
+#                different base distribution and a tool crosses a major version,
+#                the job fails here with a message that says which tool and
+#                which version, rather than a job that goes red somewhere
+#                inside `make lint` with a warning nobody can attribute.  For
+#                the same reason the base distribution is asserted (see
+#                ASSERT_OS below) rather than merely reported: a
 #                tag that is repointed at, say, the next Ubuntu release is the
 #                most likely way for this contract to be broken by accident.
 #
@@ -62,8 +64,9 @@ readonly YOSYS_MIN="${YOSYS_MIN:-0.33}"
 # `/etc/os-release` `VERSION_ID`.  CI sets ASSERT_OS=1, which turns a mismatch
 # into a failure; a local run leaves it off, because a WSL distribution is not
 # a CI toolchain and should not have to masquerade as one.  A local run still
-# gets the answer, printed as `not asserted`.
-readonly EXPECTED_OS="${EXPECTED_OS:-24.04}"
+# gets the answer, printed as `not asserted`.  Keep this in step with the
+# `FROM` line of ci/toolchain/Dockerfile and `EXPECTED_OS` in the workflow.
+readonly EXPECTED_OS="${EXPECTED_OS:-26.04}"
 readonly ASSERT_OS="${ASSERT_OS:-0}"
 
 # ----------------------------------------------------------------------------

@@ -3,8 +3,13 @@
 #  Description : Continuous integration for the SystemVerilog Ethernet L2 switch,
 #                running on a SELF-HOSTED runner.
 #
-#                Three jobs, in dependency order:
+#                Four jobs, in dependency order:
 #
+#                  0. images   - builds the toolchain container image from
+#                                 ci/toolchain/Dockerfile into the runner's
+#                                 local Docker store.  Runs on the bare host,
+#                                 because a container job starts *inside* its
+#                                 image and cannot build the image it needs.
 #                  1. lint     - syntax, elaboration and synthesis: a Verilator
 #                                 -Wall lint, an Icarus elaboration of the RTL on
 #                                 its own, and a yosys read + elaborate +
@@ -35,12 +40,15 @@
 #      with a toolchain nobody can reconstruct.
 #
 #    * The EDA TOOLCHAIN comes from a container image, declared per job with
-#      `container:`.  That image is the pin the runner label used to be:
-#      iverilog, verilator and yosys are whatever it ships.  `EXPECTED_OS` below
-#      and `ci/check-toolchain.sh` are what hold it still - a tool that crosses
-#      a major version inside a rebuilt image fails the job by name, instead of
-#      quietly changing what `make lint` reports.  See AGENTS.md section 2.2 for
-#      why a *silent* bump in the dangerous direction is the one to fear.
+#      `container:`.  The image is built from `ci/toolchain/Dockerfile` by the
+#      `images` job, so the pin is the Dockerfile - a file this repository
+#      controls - rather than a property of somebody else's registry tag.
+#      iverilog, verilator and yosys are whatever that image ships.
+#      `EXPECTED_OS` below and `ci/check-toolchain.sh` are what hold it still -
+#      a tool that crosses a major version inside a rebuilt image fails the job
+#      by name, instead of quietly changing what `make lint` reports.  See
+#      AGENTS.md section 2.2 for why a *silent* bump in the dangerous direction
+#      is the one to fear.
 #
 #  Two requirements on that image, both of which fail in ways that do not name
 #  the cause:
@@ -54,8 +62,15 @@
 #      `ci/check-toolchain.sh` names a missing EDA tool, which is the intended
 #      failure, but it cannot name a missing `make`.
 #
-#  The image is written at each `container:` site rather than in `env` because
-#  the `env` context is not available in `jobs.<job_id>.container.image`:
+#  Both are enforced twice over, because both have failed before: the Dockerfile
+#  builds on an Ubuntu base and installs the six tools by name, and the
+#  `images` job smoke-tests the built image for exactly those tools before any
+#  job runs in it.  A Dockerfile edit that drops one is caught there, with a
+#  message that names the missing tool, rather than as a pull/start failure in
+#  the next job.
+#
+#  The image name is written at each `container:` site rather than in `env`
+#  because the `env` context is not available in `jobs.<job_id>.container.image`:
 #  GitHub allows only `github`, `needs`, `strategy`, `matrix`, `vars` and
 #  `inputs` there, and an unset expression there is a hard error rather than an
 #  empty string.  So the two sites have to be kept in step by hand.  The
@@ -129,13 +144,13 @@
 #    tag moves with the project, so patch and minor security updates arrive
 #    without a commit, and a major change requires a review of this file.
 #  * The EDA tools come from the toolchain container image, and that image is
-#    pinned by tag.  The reasoning is the one the runner-image pin used to
-#    carry: distribution builds carry security updates, and a third-party APT
-#    repository in the supply path of the job that gates every commit is not
-#    worth a newer Verilator.  The difference is that the pin is now one tag the
-#    repository controls rather than a property of somebody else's image, so
-#    `ci/check-toolchain.sh` is what stops the tag from being repointed at a
-#    base distribution with a different tool generation.
+#    built from ci/toolchain/Dockerfile by the `images` job on every run.  The
+#    reasoning is the one the runner-image pin used to carry: distribution
+#    builds carry security updates, and a third-party APT repository in the
+#    supply path of the job that gates every commit is not worth a newer
+#    Verilator.  The pin is the Dockerfile itself - a file this repository
+#    controls - so `ci/check-toolchain.sh` is what stops the base distribution
+#    from moving underneath it to a different tool generation.
 #  * The LibreLane image is pinned to an exact tag.  It is a Nix closure, the
 #    design is elaborated against the yosys inside it, and a floating tag would
 #    make a GDSII irreproducible.
@@ -190,7 +205,19 @@ env:
   # distribution, not the host's: the jobs that assert it run inside the
   # toolchain container, so this is also a check that the container is the one
   # that was intended and not a stale local build.
-  EXPECTED_OS: "24.04"
+  #
+  # 26.04 is what ci/toolchain/Dockerfile builds on.  A contract change here is
+  # a three-file change - this value, the Dockerfile base, and the default in
+  # ci/check-toolchain.sh - and the regression is re-run, not just the job that
+  # failed.
+  EXPECTED_OS: "26.04"
+
+  # ---- the toolchain image -------------------------------------------------
+  # Built on the runner host from ci/toolchain/Dockerfile - see that file for
+  # why it is a local tag and not a registry reference.  Both container jobs
+  # reference this name; there is no env context in jobs.<id>.container.image,
+  # so the two sites are kept in step by hand.
+  TOOLCHAIN_IMAGE: sw-toolchain:26.04
 
   # ---- the physical flow -------------------------------------------------
   # An exact tag, not a floating `latest`: this is a Nix closure, the RTL is
@@ -202,6 +229,81 @@ env:
 
 jobs:
   # ==========================================================================
+  # 0. Build the toolchain image
+  # ==========================================================================
+  # A container job starts *inside* its image, so no step of the lint job can
+  # create that image: the pull happens before the first step runs.  This job
+  # therefore runs on the bare host (it needs nothing but Docker), builds
+  # ci/toolchain/Dockerfile into the local Docker store, and both the lint and
+  # test jobs then reference the tag.  The build is layer-cached by Docker, so
+  # a warm run takes seconds and only a change to the Dockerfile (or its base
+  # image) rebuilds anything.
+  #
+  # The image is not pushed anywhere: the runner is a machine that is kept, so
+  # its local Docker store *is* the registry.  A fresh runner has to build it
+  # once, by hand, before the first CI run - the same way it has to install the
+  # runner itself.
+  images:
+    name: build the toolchain image
+    runs-on: [self-hosted, linux, x64]
+
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v7
+
+      - name: Check the Docker daemon is reachable
+        run: |
+          if ! docker info >/dev/null 2>&1; then
+            echo "The Docker daemon is not reachable as $(id -un) (uid $(id -u))." >&2
+            echo "Add this user to the 'docker' group and restart the runner service." >&2
+            exit 1
+          fi
+
+      # Layer-cached, so a second run is a no-op: every command in the
+      # Dockerfile is a layer whose inputs are the base image and the apt
+      # package lists.  When the Dockerfile changes, only the changed layers
+      # and everything below them are rebuilt.
+      - name: Build the toolchain image
+        run: docker build -t "$TOOLCHAIN_IMAGE" ci/toolchain/
+
+      # Fail here rather than inside a container job that cannot start: the
+      # image has to carry the tools the contract names, and a build that
+      # silently produced an empty image would otherwise be reported as a
+      # mysterious pull failure in the next job.
+      - name: Smoke-test the image
+        run: |
+          docker run --rm "$TOOLCHAIN_IMAGE" bash -c '
+            for tool in iverilog verilator yosys make git bash; do
+              command -v "$tool" >/dev/null 2>&1 || {
+                echo "The toolchain image has no '$tool' on PATH." >&2
+                exit 1
+              }
+            done
+            iverilog -V | head -1
+            verilator --version
+            yosys -V | head -1
+          '
+
+      # LAST, and `always()`, because this is a cleanup step and a cleanup step
+      # that does not run is the bug.  See "What a self-hosted runner changes"
+      # item 1 in the header for the failure this prevents.
+      - name: Hand the workspace back to the runner user
+        if: always()
+        run: |
+          # `/__w` is created by the runner, not by the container, so its
+          # ownership is the runner user's - which is the ownership the next
+          # job's checkout needs to be able to `git clean`.  Silently skipped
+          # when the image already runs as that user, or when the container is
+          # not on the Linux bind-mount layout and `stat` finds nothing.
+          host_uid=$(stat -c '%u' /__w 2>/dev/null) || host_uid=
+          host_gid=$(stat -c '%g' /__w 2>/dev/null) || host_gid=
+          if [ -n "$host_uid" ] && [ "$host_uid" != "$(id -u)" ]; then
+            chown -R "$host_uid:$host_gid" "$GITHUB_WORKSPACE" || true
+          fi
+
+  # ==========================================================================
   # 1. Syntax / elaboration / synthesis
   # ==========================================================================
   lint:
@@ -212,13 +314,15 @@ jobs:
     # that has Docker but not the disk for it; the runner then needs that label
     # at registration time.
     runs-on: [self-hosted, linux, x64]
+    needs: images
 
     # The EDA toolchain: glibc-based, with git / bash / make / iverilog /
-    # verilator / yosys on PATH.  ** REPLACE the tag, and keep it in step with
-    # the `test` job below - there is no env var to keep in step, see the
-    # header. **
+    # verilator / yosys on PATH.  Built from ci/toolchain/Dockerfile by the
+    # `images` job this one depends on.  ** Keep the tag in step with the
+    # `test` job below - there is no env var available in
+    # jobs.<id>.container.image, see the header. **
     container:
-      image: ghcr.io/cw1997/sw-toolchain:replace-me
+      image: sw-toolchain:26.04
 
     timeout-minutes: 10
 
@@ -290,14 +394,13 @@ jobs:
     needs: lint
     runs-on: [self-hosted, linux, x64]
 
-    # ** Keep in step with the `lint` job. **  A job-level `container:` applies
-    # to the whole job, which is why the image has to be a complete toolchain
-    # rather than one with iverilog in it: the same image has to satisfy the
-    # contract the lint job asserts, and a test job that silently ran a
-    # different simulator than the one the gates were written against is exactly
-    # the failure the toolchain contract exists to catch.
+    # The EDA toolchain: glibc-based, with git / bash / make / iverilog /
+    # verilator / yosys on PATH.  Built from ci/toolchain/Dockerfile by the
+    # `images` job this one depends on.  ** Keep the tag in step with the
+    # `lint` job above - there is no env var available in
+    # jobs.<id>.container.image, see the header. **
     container:
-      image: ghcr.io/cw1997/sw-toolchain:replace-me
+      image: sw-toolchain:26.04
 
     # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
     # frame needs ~10 000 clocks and the suite has to wait for the slowest port

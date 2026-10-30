@@ -4,12 +4,38 @@ A parameterised, store-and-forward Ethernet Layer-2 switch core in
 synthesizable SystemVerilog, with a self-checking regression and a LibreLane
 implementation flow down to GDSII.
 
-```
-rtl/         the design
-tb/          the testbenches
-librelane/   the physical implementation flow
-ci/          the CI toolchain contract
-```
+**English** | [简体中文](README.zh-Hans.md)
+
+## Repository map
+
+| Path | What is in it |
+|---|---|
+| `rtl/` | the design. One file per block, `sw_<block>.sv` / module `sw_<block>` |
+| `tb/` | the self-checking testbenches; never synthesised, never linted by CI |
+| `ci/` | the CI toolchain contract (`check-toolchain.sh`) and the toolchain image definition (`toolchain/Dockerfile`) |
+| `librelane/` | the physical implementation flow (`config.json`, constraints, and its own README) |
+| `Makefile` | every gate; the target list is documented in its own header |
+| `AGENTS.md` | the style and portability contract - read it before changing anything under `rtl/` |
+
+## Contents
+
+* [What this is, and what it is not](#what-this-is-and-what-it-is-not)
+* [The datapath, end to end](#the-datapath-end-to-end)
+  - [The shape of the datapath](#the-shape-of-the-datapath)
+  - [One clock, and clock enables instead of clocks](#one-clock-and-clock-enables-instead-of-clocks)
+  - [Receive: octets to a buffered, described frame](#receive-octets-to-a-buffered-described-frame)
+  - [The forwarding database](#the-forwarding-database)
+  - [The fabric](#the-fabric)
+  - [Transmit: beats back to a wire-legal frame](#transmit-beats-back-to-a-wire-legal-frame)
+* [The life of one frame](#the-life-of-one-frame)
+* [The blocks](#the-blocks)
+* [The frame descriptor](#the-frame-descriptor)
+* [Statistics](#statistics)
+* [Parameters](#parameters)
+* [The PHY interface](#the-phy-interface)
+* [Building and testing](#building-and-testing)
+* [Physical implementation](#physical-implementation)
+* [Working on the design](#working-on-the-design)
 
 ## What this is, and what it is not
 
@@ -38,6 +64,57 @@ of in a `package`, because the synthesis frontend rejects a package in three
 separate places and neither simulator notices.
 
 ## The datapath, end to end
+
+### The shape of the datapath
+
+The pipeline one frame travels through, drawn for one port. Everything in the
+diagram except the CAM and the fabric exists once per port; `sw_mac_table` and
+`sw_arbiter` are single shared instances that serve every port in the same
+clock:
+
+```
+            GMII RX octets (clock-enable qualified)
+                 |
+                 v
+          +-------------+   octets -> 64-bit beats; the FCS is checked at
+          | sw_gmii_rx  |   the octet rate, with one clock of hold margin
+          +-------------+
+                 |
+                 v  beats
+          +-------------+     lookup (answer one clock later)
+          |             | <----------------------------> +-------------+
+          | sw_rx_port  |     learn, queued and drained    | sw_mac_table|
+          |  (ingress)  |     one per clock                | (shared CAM)|
+          +-------------+                                  +-------------+
+                 |
+                 v  payload beats + one tag descriptor per frame
+          +-------------+   pops the descriptor, checks that every egress in
+          | sw_arbiter  |   the mask can take the whole frame, then copies
+          |  (fabric)   |   each beat to every port in the mask in the same
+          +-------------+   clock
+                 |
+                 v  payload beats + one length descriptor per frame
+          +-------------+   egress beat buffer; the per-frame length is
+          | sw_tx_port  |   popped in step with the first beat
+          +-------------+
+                 |
+                 v  beats
+          +-------------+   beats -> wire-legal frame: preamble, SFD,
+          | sw_gmii_tx  |   zero-padded client data, a fresh FCS and a
+          +-------------+   12-octet inter-frame gap
+                 |
+                 v
+            GMII TX octets
+```
+
+The ingress side of every port produces two streams that must never drift
+apart: **payload beats** in a `sw_sync_fifo` of `RX_FIFO_DEPTH` entries, and
+**frame descriptors** (the tag word below) in a second FIFO. The fabric
+(`sw_arbiter`) reads the descriptor first, checks that every destination egress
+can take the whole frame, then copies the payload beats into the egress
+buffers - one beat to every port in the destination mask in the same clock.
+Egress buffers the beats the same way, described by a per-frame length
+descriptor, and `sw_gmii_tx` re-serialises the result.
 
 ### One clock, and clock enables instead of clocks
 
@@ -217,6 +294,54 @@ holds the final result and the first FCS octet follows with no bubble and no
 extra pipeline register. A request is latched rather than acted on immediately,
 so every octet window of a frame is exactly `BYTE_PERIOD` clocks long even when
 the request arrives mid-window.
+
+## The life of one frame
+
+The sections above describe each block; this walks one unicast frame from
+port 0 to port 3 and names the guarantee that is exercised at each step.
+
+1. **Octets arrive.** `sw_gmii_rx` samples the GMII octet stream on a
+   free-running phase counter, checks the FCS as the octets stream by, and
+   assembles 64-bit beats. The last beat is deliberately held until the next
+   octet or the link idle, so the end-of-frame marker cannot be lost.
+2. **The header is parsed.** `sw_rx_port`'s state machine stitches the
+   destination and source addresses out of the first one or two beats (a third
+   if the frame is 802.1Q tagged) and resolves the frame size - from the
+   legacy length field when the header carries one, otherwise measured on the
+   wire.
+3. **The CAM is asked.** The lookup is issued while the payload is still
+   streaming into the buffer, and the answer arrives one clock later - which
+   is why there is no lookup latency to hide in the parser.
+4. **The verdict is frozen.** The frame is fully received *before* the
+   forwarding decision is committed: store and forward. A frame that fails the
+   FCS, length or ingress-policy checks is rewound out of the payload FIFO with
+   a single write-pointer rollback - one pointer move, no data read back - and
+   no descriptor is ever written for it.
+5. **The source address is learned.** The (now validated) source address is
+   handed to the CAM's learn queue; if another port learned in the same clock,
+   this request waits one cycle in the queue and neither is lost. An address
+   already present is *relocated*, not duplicated, so a station that moves
+   ports leaves no stale entry behind.
+6. **The fabric grants the whole frame.** `sw_arbiter` pops the descriptor,
+   verifies that every egress port in the mask has payload room for all of the
+   frame's beats *and* a free length descriptor, and only then starts the
+   transfer. One frame is in flight at a time; a new grant cannot race the
+   last beat of the previous frame. The transfer therefore cannot stall
+   mid-frame and cannot drop beats.
+7. **Beats fan out.** Each payload beat is written to every port in the mask
+   in the same clock - flooding is not a special case, it is what the fabric
+   does. The first beat is flagged so the egress knows which descriptor the
+   beats belong to.
+8. **The frame is re-serialised.** `sw_tx_port` waits until a descriptor is
+   available *and* the inter-frame gap has elapsed, pops the descriptor at the
+   same moment the beats start, and `sw_gmii_tx` emits preamble, SFD, the
+   client data (zero-padded to the 802.3 minimum, padding covered by the FCS)
+   and a freshly computed FCS. The FCS LFSR runs one octet ahead of the wire,
+   so the last client octet is followed by the first FCS octet with no bubble.
+
+A broadcast is the same walk with a multi-bit mask at step 6, and the fabric
+counts it as N copies - one per port that received it - on the first beat of
+each copy.
 
 ## The blocks
 
