@@ -9,7 +9,6 @@
 #                    regression in its fast and slow-port forms
 #    make sim        the main four-port switch testbench
 #    make param      the parameterisation testbench (3 ports, 50 MHz)
-#    make phy        the synchronous GMII/MII/RMII/RGMII adapter tests
 #    make synth      read + elaborate + synthesise the RTL with yosys (needs
 #                    yosys on PATH; not part of `all`, but it *is* a CI gate -
 #                    see the comment above the target)
@@ -50,9 +49,7 @@ RTL_SRCS := \
   $(RTL_DIR)/sw_mac_table.sv \
   $(RTL_DIR)/sw_gmii_tx.sv \
   $(RTL_DIR)/sw_tx_port.sv \
-  $(RTL_DIR)/sw_phy_adapter.sv \
-  $(RTL_DIR)/sw_switch.sv \
-  $(RTL_DIR)/sw_switch_phy.sv
+  $(RTL_DIR)/sw_switch.sv
 
 TB_COMMON := \
   $(TB_DIR)/sw_tb_pkg.sv \
@@ -72,9 +69,9 @@ UNIT_TBS := sw_crc32_tb sw_sync_fifo_tb sw_mac_table_tb
 # of minutes.
 FLOOD_TBS := sw_flood_tb sw_flood_tb_slow
 
-.PHONY: all rtl lint unit sim param phy synth clean
+.PHONY: all rtl lint unit sim param synth clean
 
-all: lint unit sim param phy
+all: lint unit sim param
 
 # ---------------------------------------------------------------------------
 # Elaborate the RTL on its own.  This is the synthesis-style check: it catches
@@ -162,23 +159,6 @@ $(BUILD)/tb_sw_switch.vvp: $(RTL_SRCS) $(TB_COMMON) \
 # ---------------------------------------------------------------------------
 param: $(BUILD)/sw_switch_param_tb.vvp
 	$(VVP) $(BUILD)/sw_switch_param_tb.vvp
-
-phy: $(BUILD)/sw_phy_adapter_tb.vvp $(BUILD)/sw_switch_phy_tb.vvp
-	@echo "--- sw_phy_adapter_tb ---"
-	@$(VVP) $(BUILD)/sw_phy_adapter_tb.vvp
-	@echo "--- sw_switch_phy_tb ---"
-	@$(VVP) $(BUILD)/sw_switch_phy_tb.vvp
-
-$(BUILD)/sw_phy_adapter_tb.vvp: $(RTL_DIR)/sw_defs.sv \
-                               $(RTL_DIR)/sw_phy_adapter.sv \
-                               $(TB_DIR)/sw_phy_adapter_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_phy_adapter_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_phy_adapter.sv \
-	  $(TB_DIR)/sw_phy_adapter_tb.sv
-
-$(BUILD)/sw_switch_phy_tb.vvp: $(RTL_SRCS) $(TB_DIR)/sw_switch_phy_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_switch_phy_tb $(RTL_SRCS) \
-	  $(TB_DIR)/sw_switch_phy_tb.sv
 
 $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
                                 $(TB_DIR)/sw_switch_param_tb.sv | $(BUILD)
