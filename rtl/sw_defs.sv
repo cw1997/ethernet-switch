@@ -123,25 +123,6 @@ typedef enum logic [1:0] {
   SW_SPEED_NONE  = 2'd3   ///< port administratively down
 } sw_speed_e;
 
-// External PHY bus encodings used by sw_phy_adapter and sw_switch_phy.  The adapters deliberately
-// keep the pins in the clk_i domain: this project models a synchronous wrapper,
-// not the I/O-clock and CDC logic that belongs in a board-specific shell.
-//
-// The encoding is 3 bits wide even though only four values are assigned, so
-// that a future MAC interface (SGMII, XGMII, ...) is added by giving it the
-// next value here - without renumbering the existing four and without
-// re-widening PORT_PHY_IF in every instantiation.  An unassigned encoding is
-// not an error: the adapters hold every output idle (see the default arm of
-// the mode case in sw_phy_adapter), which is also the safe state for a port
-// that is elaborated but not yet modelled.
-typedef enum logic [2:0] {
-  SW_PHY_GMII = 3'd0,  ///< one 8-bit sample per octet time
-  SW_PHY_MII  = 3'd1,  ///< two 4-bit samples per octet time
-  SW_PHY_RMII = 3'd2,  ///< four 2-bit samples per octet time
-  SW_PHY_RGMII = 3'd3  ///< two 4-bit DDR samples, packed into one 8-bit word
-  // 3'd4 .. 3'd7 reserved for future MAC interfaces.
-} sw_phy_if_e;
-
 /// Nominal line rate in bit/s for a link speed.  Used by the byte-period
 /// helper below; a down port reports 1 so that the division never degenerates.
 function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
