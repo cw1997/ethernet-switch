@@ -424,6 +424,37 @@ built) rather than as a mysterious frame loss later.
 
 ## The PHY interface
 
+The original `sw_switch` module exposes `gmii_rx_*` and `gmii_tx_*` as GMII-style
+8-bit interfaces. `sw_switch_phy` adds a selectable PHY-facing wrapper: each
+port chooses `SW_PHY_GMII`, `SW_PHY_MII`, `SW_PHY_RMII`, or `SW_PHY_RGMII` through
+`PORT_PHY_IF` (3 bits per port, port p at bits `[3*p +: 3]`). All four
+representations are synchronous to the existing `clk_i`; this wrapper
+deliberately does not consume raw PHY clocks or infer DDR I/O cells.
+
+* GMII presents one 8-bit sample per octet time.
+* MII presents the low nibble, then the high nibble, over two equal windows.
+* RMII presents bit pairs `[1:0]`, `[3:2]`, `[5:4]`, then `[7:6]`.
+* RGMII is represented by a captured rise/fall nibble pair and a synchronous
+  `*_rx_ce_i` / `*_tx_ce_o` event. RX CE marks an active captured byte and need
+  not be asserted during idle; RX_CTL low still terminates the frame. The outer
+  I/O shell performs the physical DDR capture and launch.
+
+MII and RMII symbol boundaries must be phase-aligned by the synchronous outer
+shell to the adapter's derived byte period. The wrapper does not consume an
+independent PHY clock or perform CDC.
+
+The encoding is deliberately wider than the four assigned values: `sw_phy_if_e`
+is 3 bits, values `4` through `7` are reserved, and an adapter instantiated with
+one of them holds every output idle even when its pins are driven. A future MAC
+interface (SGMII, XGMII, ...) is therefore added by giving it the next enum
+value in `sw_defs.sv` and adding its case arms in `sw_phy_adapter` — no
+renumbering of the existing modes and no port-width change anywhere else. The
+reserved-encoding idle behaviour is covered by `make phy`.
+
+`PHY_RX_PREAMBLE` selects whether an adapter expects the physical receive stream
+as `55 x 7, D5, frame` (1) or the normal MAC-style `frame` stream (0). A PHY
+coding error suppresses the damaged frame rather than creating a false boundary.
+
 `gmii_rx_*` and `gmii_tx_*` are GMII-style 8-bit interfaces qualified by a clock
 enable and synchronous to `clk_i`:
 
@@ -445,11 +476,12 @@ yosys.
     make rtl       # Icarus elaboration of the RTL alone, no testbench
     make unit      # block-level testbenches and the fabric regression (~25 s)
     make param     # the three-port, 50 MHz parameterisation testbench (~4 s)
+    make phy       # the synchronous PHY adapter and wrapper tests
     make sim       # the four-port mixed-speed switch testbench (~6 min)
     make synth     # yosys read + elaborate + synthesise (~3 min)
 
-`make all` runs lint, unit, sim and param. The gates are ordered by how fast they
-fail, and each one catches something the others do not - see
+`make all` runs lint, unit, sim, param and phy. The gates are ordered by how fast
+they fail, and each one catches something the others do not - see
 [AGENTS.md](AGENTS.md#2-the-tool-flow-and-what-each-tool-rejects) for what each
 is actually good for.
 
