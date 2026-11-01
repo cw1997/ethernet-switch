@@ -33,15 +33,17 @@
 #  worth reading before changing anything:
 #
 #    * The HOST provides Docker, and nothing else.  Docker is needed twice over:
-#      it runs the two container jobs, and it runs the LibreLane image in the
+#      it runs the toolchain image for lint/test via `docker run`, and it runs
+#      the LibreLane image in the
 #      `gds` job.  This workflow installs nothing on the host, on purpose - the
 #      host is a machine that is kept, not an image that is thrown away, and an
 #      `apt-get install` in a job that runs on every push is a way to end up
 #      with a toolchain nobody can reconstruct.
 #
-#    * The EDA TOOLCHAIN comes from a container image, declared per job with
-#      `container:`.  The image is built from `ci/toolchain/Dockerfile` by the
-#      `images` job, so the pin is the Dockerfile - a file this repository
+#    * The EDA TOOLCHAIN comes from a container image built from
+#      `ci/toolchain/Dockerfile` by the `images` job, and each lint/test gate
+#      executes inside that image via `docker run`.  The pin is the Dockerfile
+#      - a file this repository
 #      controls - rather than a property of somebody else's registry tag.
 #      iverilog, verilator and yosys are whatever that image ships.
 #      `EXPECTED_OS` below and `ci/check-toolchain.sh` are what hold it still -
@@ -69,13 +71,8 @@
 #  message that names the missing tool, rather than as a pull/start failure in
 #  the next job.
 #
-#  The image name is written at each `container:` site rather than in `env`
-#  because the `env` context is not available in `jobs.<job_id>.container.image`:
-#  GitHub allows only `github`, `needs`, `strategy`, `matrix`, `vars` and
-#  `inputs` there, and an unset expression there is a hard error rather than an
-#  empty string.  So the two sites have to be kept in step by hand.  The
-#  alternative, if that becomes annoying, is a repository variable and
-#  `vars.TOOLCHAIN_IMAGE` in both.
+#  The image name is kept in `env` (`TOOLCHAIN_IMAGE`) and consumed by shell
+#  steps, so lint/test use the same tag as the image build step.
 #
 #  ---------------------------------------------------------------------------
 #  What a self-hosted runner changes, beyond the label
@@ -214,9 +211,8 @@ env:
 
   # ---- the toolchain image -------------------------------------------------
   # Built on the runner host from ci/toolchain/Dockerfile - see that file for
-  # why it is a local tag and not a registry reference.  Both container jobs
-  # reference this name; there is no env context in jobs.<id>.container.image,
-  # so the two sites are kept in step by hand.
+  # why it is a local tag and not a registry reference.  The lint/test jobs run
+  # all gates through `docker run` and both consume this tag.
   TOOLCHAIN_IMAGE: sw-toolchain:26.04
 
   # ---- the physical flow -------------------------------------------------
@@ -316,31 +312,35 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: images
 
-    # The EDA toolchain: glibc-based, with git / bash / make / iverilog /
-    # verilator / yosys on PATH.  Built from ci/toolchain/Dockerfile by the
-    # `images` job this one depends on.  ** Keep the tag in step with the
-    # `test` job below - there is no env var available in
-    # jobs.<id>.container.image, see the header. **
-    container:
-      image: sw-toolchain:26.04
-
     timeout-minutes: 10
 
     steps:
       - name: Check out the sources
         uses: actions/checkout@v7
 
+      # GitHub always tries to pull an image declared via `container:`, so a
+      # local tag is never enough for job startup.  Run on the host and execute
+      # each gate inside `docker run` so this workflow can consume the image
+      # built by `images` from ci/toolchain/Dockerfile.
+      - name: Ensure the toolchain image exists on this runner
+        run: |
+          docker image inspect "$TOOLCHAIN_IMAGE" >/dev/null 2>&1 \
+            || docker build -t "$TOOLCHAIN_IMAGE" ci/toolchain/
+
       # Runs before any gate, so that a toolchain that moved is reported as a
       # toolchain problem rather than as a mysterious Verilator warning.
       # Invoked through `bash` so that the step does not depend on the file
       # carrying an executable bit, which a Windows checkout will not set.
       - name: Check the toolchain against the CI contract
-        run: bash ci/check-toolchain.sh
-        env:
-          # Assert the base distribution here and not in a local run: see the
-          # header.  This is what stops a rebuilt toolchain image from silently
-          # changing the linter.
-          ASSERT_OS: "1"
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e EXPECTED_OS="$EXPECTED_OS" \
+            -e ASSERT_OS=1 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'bash ci/check-toolchain.sh'
 
       - name: Cache the build directory
         uses: actions/cache@v6
@@ -354,12 +354,24 @@ jobs:
       # inference and incomplete sensitivity lists, none of which a simulation
       # would necessarily notice.
       - name: Lint the RTL
-        run: make lint
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'make lint'
 
       # Icarus elaboration of the RTL alone, with no testbench.  A design that
       # only elaborates because a testbench declares a missing signal fails here.
       - name: Elaborate the RTL standalone
-        run: make rtl
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'make rtl'
 
       # yosys read + elaborate + synthesise.  This is the only gate that enforces
       # the three synthesis restrictions the simulators cannot see - no package
@@ -367,24 +379,13 @@ jobs:
       # so a change that violates one passes every other job and then fails in
       # the physical flow, tens of minutes into the most expensive job there is.
       - name: Synthesise the RTL with yosys
-        run: make synth
-
-      # LAST, and `always()`, because this is a cleanup step and a cleanup step
-      # that does not run is the bug.  See "What a self-hosted runner changes"
-      # item 1 in the header for the failure this prevents.
-      - name: Hand the workspace back to the runner user
-        if: always()
         run: |
-          # `/__w` is created by the runner, not by the container, so its
-          # ownership is the runner user's - which is the ownership the next
-          # job's checkout needs to be able to `git clean`.  Silently skipped
-          # when the image already runs as that user, or when the container is
-          # not on the Linux bind-mount layout and `stat` finds nothing.
-          host_uid=$(stat -c '%u' /__w 2>/dev/null) || host_uid=
-          host_gid=$(stat -c '%g' /__w 2>/dev/null) || host_gid=
-          if [ -n "$host_uid" ] && [ "$host_uid" != "$(id -u)" ]; then
-            chown -R "$host_uid:$host_gid" "$GITHUB_WORKSPACE" || true
-          fi
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'make synth'
 
   # ==========================================================================
   # 2. Regression
@@ -393,14 +394,6 @@ jobs:
     name: regression
     needs: lint
     runs-on: [self-hosted, linux, x64]
-
-    # The EDA toolchain: glibc-based, with git / bash / make / iverilog /
-    # verilator / yosys on PATH.  Built from ci/toolchain/Dockerfile by the
-    # `images` job this one depends on.  ** Keep the tag in step with the
-    # `lint` job above - there is no env var available in
-    # jobs.<id>.container.image, see the header. **
-    container:
-      image: sw-toolchain:26.04
 
     # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
     # frame needs ~10 000 clocks and the suite has to wait for the slowest port
@@ -411,15 +404,26 @@ jobs:
       - name: Check out the sources
         uses: actions/checkout@v7
 
+      - name: Ensure the toolchain image exists on this runner
+        run: |
+          docker image inspect "$TOOLCHAIN_IMAGE" >/dev/null 2>&1 \
+            || docker build -t "$TOOLCHAIN_IMAGE" ci/toolchain/
+
       # The same gate as the lint job, and asserted the same way.  It is cheap
       # (a few hundred milliseconds) and it is the difference between a
       # regression that fails because the design changed and one that fails
       # because the simulator did.  It also prints the version table, which
       # replaces the `iverilog -V | head -1` this step used to run.
       - name: Check the toolchain against the CI contract
-        run: bash ci/check-toolchain.sh
-        env:
-          ASSERT_OS: "1"
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e EXPECTED_OS="$EXPECTED_OS" \
+            -e ASSERT_OS=1 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'bash ci/check-toolchain.sh'
 
       - name: Cache the build directory
         uses: actions/cache@v6
@@ -432,17 +436,31 @@ jobs:
       # failure to a single block, which is the difference between "the CAM is
       # wrong" and "something somewhere is wrong".
       - name: Block level testbenches
-        run: make unit
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'make unit'
 
       - name: Four-port mixed-speed switch testbench
         run: |
-          set -o pipefail
-          make sim 2>&1 | tee build/sim.log
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'set -o pipefail; make sim 2>&1 | tee build/sim.log'
 
       - name: Three-port parameterisation testbench
         run: |
-          set -o pipefail
-          make param 2>&1 | tee build/param.log
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'set -o pipefail; make param 2>&1 | tee build/param.log'
 
       # Always upload the logs, including on failure: a regression that fails at
       # 03:00 is only diagnosable with the log that says how.
@@ -455,14 +473,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Hand the workspace back to the runner user
-        if: always()
-        run: |
-          host_uid=$(stat -c '%u' /__w 2>/dev/null) || host_uid=
-          host_gid=$(stat -c '%g' /__w 2>/dev/null) || host_gid=
-          if [ -n "$host_uid" ] && [ "$host_uid" != "$(id -u)" ]; then
-            chown -R "$host_uid:$host_gid" "$GITHUB_WORKSPACE" || true
-          fi
 
   # ==========================================================================
   # 3. Physical implementation - GATED BEHIND A MANUAL APPROVAL
