@@ -102,6 +102,27 @@
 `endif
 
 // ============================================================================
+// 0.  MAC interface selection (by top module; default GMII)
+// ============================================================================
+// The switch core (`sw_switch_core`) is interface-agnostic: it only talks a
+// canonical, clock-enable-qualified octet stream.  The physical MAC pins are
+// added by one of three top-level wrappers, one per interface, each in its own
+// file, and the interface in use is chosen by which wrapper is elaborated:
+//
+//   sw_switch_gmii     GMII-style 8-bit pins (`gmii_*`; the default top)
+//   sw_switch_mii      MII pins, two 4-bit nibbles per octet (`mii_*`)
+//   sw_switch_rmii     RMII pins, four 2-bit chunks per octet (`rmii_*`)
+//
+// All three wrap the same core: the MII/RMII pin groups are adapted onto the
+// canonical octet stream by sw_mii / sw_rmii, so the datapath, the CAM and the
+// statistics map never see a difference.  Both narrow interfaces are 10/100
+// Mbit/s front-ends only - a port configured for 1000 Mbit/s is rejected at
+// elaboration time in those wrappers.
+//
+// The Makefile `lint` / `rtl` / `synth` gates and the CI run all three top
+// modules, so every wrapper is compiled on every change.
+
+// ============================================================================
 // 1.  Link speed model
 // ============================================================================
 // The switch core is fully synchronous to a single `clk_i`.  The three
@@ -110,7 +131,7 @@
 // design free of clock-domain crossings.
 //
 // A port only needs one elaboration-time constant: BYTE_PERIOD, the number of
-// `clk_i` cycles that make up one GMII octet time.
+// `clk_i` cycles that make up one octet time of the canonical octet stream.
 //
 //                  octet rate   BYTE_PERIOD @125 MHz
 //     10 Mbit/s      2.5 MHz          100
@@ -139,7 +160,7 @@ function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
   end
 endfunction
 
-/// Number of `clk_i` cycles that make up one GMII octet time.
+/// Number of `clk_i` cycles that make up one octet time of the canonical stream.
 ///
 ///   period = clk_freq_hz * 8 / baud        (rounded to nearest, min 1)
 ///

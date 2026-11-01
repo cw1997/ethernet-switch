@@ -5,7 +5,7 @@
 #                (`--binary --timing`, i.e. a self-contained simulation).
 #
 #  Usage       : sim/run_verilator.sh <top-module> [extra verilator flags]
-#  Example     : sim/run_verilator.sh sw_switch_tb
+#  Example     : sim/run_verilator.sh tb_sw_switch
 #
 #  The script is simulator agnostic about the host: run it directly on a Linux
 #  host, or through the WSL helper in the repository root on Windows.

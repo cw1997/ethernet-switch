@@ -39,11 +39,11 @@ implementation flow down to GDSII.
 
 ## What this is, and what it is not
 
-It is a **switching core**, not a network interface card. It sits between GMII
-PHY interfaces and does the Layer-2 work: it terminates the MAC framing on each
-port, parses the header, resolves the destination against a learned forwarding
-database, buffers the frame, and re-serialises it onto the destination port(s)
-with a freshly computed FCS.
+It is a **switching core**, not a network interface card. It sits between
+Ethernet PHY interfaces and does the Layer-2 work: it terminates the MAC
+framing on each port, parses the header, resolves the destination against a
+learned forwarding database, buffers the frame, and re-serialises it onto the
+destination port(s) with a freshly computed FCS.
 
 It deliberately does **not** contain: a PCS or PMA, autonegotiation, link
 monitoring, flow control (802.3x pause frames), spanning tree, VLAN filtering or
@@ -350,12 +350,17 @@ each copy.
 | CRC-32 | `sw_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one shared table |
 | Elastic buffer | `sw_sync_fifo.sv` | first-word-fall-through FIFO with a frame-granular rewind and a hard flush |
 | GMII receive | `sw_gmii_rx.sv` | octet stream to 64-bit beats, plus the FCS check |
+| MII adapter | `sw_mii.sv` | MII nibbles to and from the canonical octet stream (`sw_switch_mii` builds) |
+| RMII adapter | `sw_rmii.sv` | RMII 2-bit chunks to and from the canonical octet stream (`sw_switch_rmii` builds) |
 | Ingress | `sw_rx_port.sv` | header parse, CAM lookup, ingress policy, buffering, descriptor generation |
 | CAM | `sw_mac_table.sv` | the shared forwarding database: `NUM_SETS` x `NUM_WAYS`, one parallel read per port, a serialising learn queue |
 | Fabric | `sw_arbiter.sv` | round-robin scheduling, whole-frame admission, one-to-many beat copy |
 | GMII transmit | `sw_gmii_tx.sv` | beats to a wire-legal frame, FCS generated one octet ahead of the wire |
 | Egress | `sw_tx_port.sv` | egress beat buffer, per-frame length descriptors, transmit statistics |
-| Top level | `sw_switch.sv` | port instances, CAM, fabric, statistics aggregation, elaboration-time checks |
+| Core | `sw_switch_core.sv` | the interface-agnostic datapath: port instances, CAM, fabric, statistics aggregation, elaboration-time checks |
+| Top level (GMII) | `sw_switch_gmii.sv` | GMII pins passed straight through to the core (the default top) |
+| Top level (MII) | `sw_switch_mii.sv` | MII pins adapted onto the octet stream by `sw_mii` per port |
+| Top level (RMII) | `sw_switch_rmii.sv` | RMII pins adapted onto the octet stream by `sw_rmii` per port |
 | Declarations | `sw_defs.sv` | every shared constant, type and helper, at compilation-unit scope |
 
 ## The frame descriptor
@@ -424,8 +429,26 @@ built) rather than as a mysterious frame loss later.
 
 ## The PHY interface
 
-`gmii_rx_*` and `gmii_tx_*` are GMII-style 8-bit interfaces qualified by a clock
-enable and synchronous to `clk_i`:
+Each port's front-end pins are one of three MAC interfaces. The core
+(`sw_switch_core`) is interface-agnostic - it only talks a canonical octet
+stream - and the interface in use is chosen by which top-level wrapper is
+elaborated (`sw_mii` and `sw_rmii` sit between the pins and the canonical
+octet stream, so everything behind them is identical in all three builds):
+
+| top module | pins | symbol width | line rates |
+|---|---|---|---|
+| `sw_switch_gmii` | `gmii_rx_*` / `gmii_tx_*` | 8-bit octets | 10 / 100 / 1000 Mbit/s |
+| `sw_switch_mii` | `mii_*` | two 4-bit nibbles per octet | 10 / 100 Mbit/s |
+| `sw_switch_rmii` | `rmii_*` | four 2-bit chunks per octet | 10 / 100 Mbit/s |
+
+The interface is selected by which wrapper is elaborated - `make mii` and
+`make rmii` build the MII / RMII tops, and the CI `lint` / `rtl` / `synth`
+gates run all three. Only the pins of the selected interface exist in a given
+build, so there is nothing to leave unconnected. A port configured for
+1000 Mbit/s in an MII or RMII build is rejected at elaboration time.
+
+All three carry the same clock-enable-qualified octet stream, synchronous to
+`clk_i`:
 
 * one octet every `BYTE_PERIOD` clocks;
 * the enable is asserted for the whole octet time and the data is stable for the
@@ -433,8 +456,11 @@ enable and synchronous to `clk_i`:
 * the enable is de-asserted for at least one clock during the inter-frame gap.
 
 The preamble and the start-of-frame delimiter are removed by the PHY on receive
-and re-inserted on transmit, exactly as a real GMII MAC does. A PHY running on
-its own clock needs asynchronous FIFOs around the core; nothing inside changes.
+and re-inserted on transmit, exactly as a real MAC does. The adapters are
+synchronous models - a real PHY's own clock (`RX_CLK`/`TX_CLK`, or the RMII
+`REF_CLK`) is handled by a board-specific shell, exactly as it is for the GMII
+build; a shell that cannot meet the single-clock contract needs asynchronous
+FIFOs around the core and nothing inside changes.
 
 ## Building and testing
 
@@ -444,12 +470,18 @@ yosys.
     make lint      # Verilator -Wall; any warning fails the build
     make rtl       # Icarus elaboration of the RTL alone, no testbench
     make unit      # block-level testbenches and the fabric regression (~25 s)
+    make mii       # full switch with the MII pin front-end, two PHY models
+    make rmii      # full switch with the RMII pin front-end, two PHY models
     make param     # the three-port, 50 MHz parameterisation testbench (~4 s)
     make sim       # the four-port mixed-speed switch testbench (~6 min)
     make synth     # yosys read + elaborate + synthesise (~3 min)
 
-`make all` runs lint, unit, sim and param. The gates are ordered by how fast they
-fail, and each one catches something the others do not - see
+`make all` runs lint, mii, rmii, unit, sim and param. `make lint`, `make rtl`
+and `make synth` each run **three** top modules - `sw_switch_gmii`,
+`sw_switch_mii` and `sw_switch_rmii` - because each wrapper has its own port
+list and generate code, and a wrapper that is never compiled is a wrapper that
+silently rots. The gates are ordered
+by how fast they fail, and each one catches something the others do not - see
 [AGENTS.md](AGENTS.md#2-the-tool-flow-and-what-each-tool-rejects) for what each
 is actually good for.
 

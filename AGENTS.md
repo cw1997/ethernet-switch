@@ -26,7 +26,14 @@ Makefile       every gate; the target list is documented in its own header
 
 `rtl/sw_defs.sv` holds **every** shared constant, type and helper function, at
 compilation-unit scope. It is included by every other RTL file and by the
-testbenches. If you are about to add a constant, put it there.
+testbenches. If you are about to add a constant, put it there. Section 0 of
+that file documents the **MAC interface selection**: the interface-agnostic
+core (`sw_switch_core`) is wrapped by one of three per-interface top modules —
+`sw_switch_gmii` (default GMII), `sw_switch_mii` and `sw_switch_rmii` — and the
+interface in use is chosen by which wrapper is elaborated. `make lint`,
+`make rtl` and `make synth` each run **all three** top modules, so changing a
+wrapper means making it green in all three — a wrapper that is never compiled
+silently rots.
 
 ## 2. The tool flow, and what each tool rejects
 
@@ -238,10 +245,11 @@ Two narrow, documented exceptions exist:
   `initial` block anywhere, and never let one produce a value that a write path
   depends on — see the `WAY_LAST` comment in `sw_mac_table.sv` for a design that
   got that wrong.
-- `sw_switch.sv` reports elaboration-time parameter checks with `$error` /
-  `$warning` inside `` `ifndef SYNTHESIS ``, because yosys has no implementation
-  for them and aborts on a design that contains one. Keep any new parameter
-  check in that same block.
+- `sw_switch_core.sv` and the `sw_switch_mii` / `sw_switch_rmii` wrappers
+  report elaboration-time parameter checks with `$error` / `$warning` inside
+  `` `ifndef SYNTHESIS ``, because yosys has no implementation for them and
+  aborts on a design that contains one. Keep any new parameter check in that
+  same block.
 
 ### 3.5 Naming
 
@@ -336,7 +344,8 @@ Definition of done:
 
 - [ ] `ci/check-toolchain.sh`, `make lint`, `make rtl`, `make unit`, `make sim`,
       `make param` all pass.
-- [ ] `make synth` elaborates and synthesises `sw_switch`.
+- [ ] `make synth` elaborates and synthesises the three wrapper top modules
+      (`sw_switch_gmii`, `sw_switch_mii`, `sw_switch_rmii`).
 - [ ] A behavioural change has a test that fails without it.
 - [ ] No new `verilator lint_off`, and no new `initial` block.
 - [ ] New shared constants are in `sw_defs.sv`; new module parameters are

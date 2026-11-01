@@ -1,20 +1,22 @@
 // ============================================================================
 //  File        : sw_gmii_rx.sv
-//  Description : GMII octet receive adapter.
+//  Description : Canonical octet-stream receive adapter.
 //
-//                Converts the octet-serial, clock-enable qualified GMII receive
-//                interface of a PHY into the 64-bit "beat" stream consumed by
-//                the switching datapath, and performs the FCS check in the same
-//                module so that the CRC always advances at the octet rate.
+//                Converts the octet-serial, clock-enable qualified receive
+//                stream of the PHY front-end - raw GMII pins, or the octets
+//                reassembled by the MII/RMII symbol adapters - into the 64-bit
+//                "beat" stream consumed by the switching datapath, and performs
+//                the FCS check in the same module so that the CRC always
+//                advances at the octet rate.
 //
 //                ------------------------------------------------------------------------
 //                Clock-enable (single clock domain) contract
 //                ------------------------------------------------------------------------
-//                `gmii_en_i` / `gmii_d_i` are synchronous to `clk_i`:
+//                `oct_en_i` / `oct_d_i` are synchronous to `clk_i`:
 //                  * one octet is transferred every BYTE_PERIOD clock cycles,
-//                  * `gmii_en_i` is asserted for the whole octet time and
-//                    `gmii_d_i` is stable for the same window,
-//                  * `gmii_en_i` is de-asserted for at least one clock during
+//                  * `oct_en_i` is asserted for the whole octet time and
+//                    `oct_d_i` is stable for the same window,
+//                  * `oct_en_i` is de-asserted for at least one clock during
 //                    the inter-frame gap,
 //                  * BYTE_PERIOD = 1 for 1000BASE-T (full line rate, one octet
 //                    per clock), 10 for 100BASE-TX and 100 for 10BASE-T on a
@@ -52,15 +54,15 @@
 // The shared declarations arrive through the include above and are visible at
 // compilation-unit scope.  See sw_defs.sv for why a package cannot be used here.
 module sw_gmii_rx #(
-  /// `clk_i` cycles per GMII octet time (see the module header).
+  /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
 
-  // ---- GMII receive interface (clock-enable qualified) --------------------
-  input  logic        gmii_en_i,   ///< TX_EN from the PHY
-  input  logic [7:0]  gmii_d_i,    ///< octet from the PHY
+  // ---- canonical octet receive interface (clock-enable qualified) ----------
+  input  logic        oct_en_i,   ///< octet-stream enable from the front-end
+  input  logic [7:0]  oct_d_i,    ///< octet from the front-end
 
   // ---- core beat interface -------------------------------------------------
   output logic        beat_valid_o,   ///< a 64-bit beat is available
@@ -89,7 +91,7 @@ module sw_gmii_rx #(
 
   // Sample on the final cycle of the octet time for maximum hold margin.
   logic sample;
-  assign sample = gmii_en_i && (phase == PHASE_LAST);
+  assign sample = oct_en_i && (phase == PHASE_LAST);
 
   // --------------------------------------------------------------------------
   // Octet assembler.
@@ -103,7 +105,7 @@ module sw_gmii_rx #(
   //
   // A full beat is deliberately *held* rather than pushed into the pipeline the
   // moment the eighth octet arrives.  Whether a frame has ended is only
-  // observable from `gmii_en_i`, and the PHY is free to hold that signal high
+  // observable from `oct_en_i`, and the PHY is free to hold that signal high
   // for the remainder of the final octet time - which, for a port slower than
   // 1000 Mbit/s, is several clocks *after* the octet was sampled.  Emitting the
   // beat eagerly would therefore push it out of the two stage pipeline as an
@@ -114,7 +116,7 @@ module sw_gmii_rx #(
   // the next octet is sampled, so one beat still leaves every eight clocks.
   //
   // IMPORTANT: the assembler state may only be cleared when the link is really
-  // idle (`!gmii_en_i`).  Between two octet samples of the same frame the link
+  // idle (`!oct_en_i`).  Between two octet samples of the same frame the link
   // is still enabled, so the state has to be held for up to BYTE_PERIOD-1
   // clocks.  Clearing it on `!sample` instead would destroy the beat
   // accumulation for every port slower than 1000 Mbit/s.
@@ -124,10 +126,10 @@ module sw_gmii_rx #(
   logic [63:0] acc;
   logic       acc_sof;
 
-  // The PHY de-asserts `gmii_en_i` for at least one clock between frames; the
+  // The PHY de-asserts `oct_en_i` for at least one clock between frames; the
   // first such clock after an octet is the end-of-frame indication.
   logic       fend;
-  assign fend = !gmii_en_i && in_frame;
+  assign fend = !oct_en_i && in_frame;
 
   // --------------------------------------------------------------------------
   // FCS check over the complete received octet sequence, FCS included.
@@ -141,14 +143,14 @@ module sw_gmii_rx #(
   logic        crc_en, crc_clr, crc_resid_ok;
 
   assign crc_en  = sample;
-  assign crc_clr = !gmii_en_i;
+  assign crc_clr = !oct_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
   sw_crc32 u_crc (
       .clk_i     (clk_i),
       .rst_ni    (rst_ni),
       .en_i      (crc_en),
-      .din_i     (gmii_d_i),
+      .din_i     (oct_d_i),
       .clr_i     (crc_clr),
       .crc_fin_o (),      // unused: the receive side checks instead of generating
       .resid_ok_o(crc_resid_ok)
@@ -243,7 +245,7 @@ module sw_gmii_rx #(
         // assignment below) and the assembler restarts on the new octet.
         in_frame <= 1'b1;
         bcnt     <= 4'd1;
-        acc      <= {56'd0, gmii_d_i};
+        acc      <= {56'd0, oct_d_i};
         acc_sof  <= 1'b0;
       end else if (close_full || close_part) begin
         // The closing beat leaves; nothing is left in the assembler.
@@ -255,22 +257,22 @@ module sw_gmii_rx #(
         if (bcnt == 4'd8) begin
           // Impossible in a well-formed stream: the beat was already released
           // by `full_and_more` above.  Held for simulation robustness.
-          acc     <= {acc[55:0], gmii_d_i};
+          acc     <= {acc[55:0], oct_d_i};
           acc_sof <= 1'b0;
         end else if (bcnt == 4'd0) begin
           // First octet of a new frame.
           in_frame <= 1'b1;
           bcnt     <= 4'd1;
-          acc      <= {56'd0, gmii_d_i};
+          acc      <= {56'd0, oct_d_i};
           acc_sof  <= 1'b1;
         end else begin
           bcnt <= bcnt + 4'd1;
-          acc  <= {acc[55:0], gmii_d_i};
+          acc  <= {acc[55:0], oct_d_i};
         end
-      end else if (!gmii_en_i) begin
+      end else if (!oct_en_i) begin
         // The link is genuinely idle (inter-frame gap): restart the assembler.
         // Note that this is *not* entered between two octet samples of the
-        // same frame, where `gmii_en_i` is still high.
+        // same frame, where `oct_en_i` is still high.
         in_frame <= 1'b0;
         bcnt     <= 4'd0;
         acc_sof  <= 1'b0;

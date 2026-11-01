@@ -18,8 +18,13 @@ TESTS=(
   sw_crc32_tb
   sw_sync_fifo_tb
   sw_mac_table_tb
+  sw_mii_tb
+  sw_rmii_tb
+  sw_flood_tb
   sw_switch_param_tb
-  sw_switch_tb
+  tb_sw_switch
+  tb_sw_switch_mii
+  tb_sw_switch_rmii
 )
 
 pass=0

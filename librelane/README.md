@@ -1,7 +1,7 @@
 # LibreLane build
 
-Physical implementation of `sw_switch` down to a GDSII, with LibreLane 3.0 and
-the open-source `sky130A` PDK.
+Physical implementation of `sw_switch_gmii` (the GMII top of the switch) down
+to a GDSII, with LibreLane 3.0 and the open-source `sky130A` PDK.
 
 ## Layout
 
@@ -78,6 +78,13 @@ name went where:
 `RT_MAX_LAYER`, `DRT_THREADS`, `RUN_ANTENNA_REPAIR` and `RUN_LVS` are unchanged
 and keep their meaning.
 
+> **`DESIGN_NAME` changed from `sw_switch` to `sw_switch_gmii`** (the RTL was
+> split into an interface-agnostic `sw_switch_core` plus three per-interface top
+> wrappers `sw_switch_gmii` / `sw_switch_mii` / `sw_switch_rmii`; the flow runs
+> the GMII top).  The synthesised netlist and GDS are therefore named
+> `sw_switch_gmii.nl.v` / `sw_switch_gmii.gds`, and the CI `gds` job globs for
+> that name.
+
 To re-derive the table rather than trust it, the two files that decide it are
 in the source tree of whatever tag is pinned:
 
@@ -115,9 +122,9 @@ CI meaningful.  It is the knob to relax or tighten - a period that is too small
 shows up as a routing failure, never as a wrong GDSII.
 
 **`VERILOG_DEFINES = ["SYNTHESIS"]`**.  The RTL tests for it: the
-elaboration-time `$error` / `$warning` checks in `sw_switch` are simulation only,
-because yosys has no implementation for those system tasks and aborts on a
-design containing them.
+elaboration-time `$error` / `$warning` checks in `sw_switch_core` and the MII /
+RMII wrappers are simulation only, because yosys has no implementation for
+those system tasks and aborts on a design containing them.
 
 **`RT_MIN_LAYER` / `RT_MAX_LAYER` are `met1` / `met5`.**  These name *tech LEF
 routing layers*, and sky130's routing layers are `li1`, `met1` … `met5` - there
@@ -161,7 +168,7 @@ size will move.  Re-measure rather than re-deriving them from these.
 
 The reduced-instance figures are what LibreLane's own yosys reported at the
 synthesis step: `Number of cells: 132678`, of which
-`sky130_fd_sc_hd__dfxtp_2` 42 748, and `Chip area for module '\sw_switch':
+`sky130_fd_sc_hd__dfxtp_2` 42 748, and `Chip area for module '\sw_switch_gmii':
 1911082.88` um^2.  The full-size figures come from the same tool with the module
 defaults.  (`make synth`, which uses the locally installed yosys rather than
 the container's, reports 137 413 cells for the same instance; the 3.5%
@@ -234,7 +241,7 @@ this failure only appears once the design is handed to the flow, and the message
 points at the `return` token rather than at anything semantically wrong.
 
 **3. No `$error` / `$warning` in the netlist.**  Already handled by the
-`SYNTHESIS` guard in `sw_switch`.
+`SYNTHESIS` guard in `sw_switch_core` and the MII / RMII wrappers.
 
 ### Checking it without the container
 
@@ -243,11 +250,13 @@ confirm the RTL is flow-readable without downloading the image:
 
     yosys -p 'read_verilog -defer -noautowire -sv -I rtl \
               rtl/sw_defs.sv rtl/sw_crc32.sv rtl/sw_sync_fifo.sv \
-              rtl/sw_gmii_rx.sv rtl/sw_rx_port.sv rtl/sw_arbiter.sv \
+              rtl/sw_gmii_rx.sv rtl/sw_mii.sv rtl/sw_rmii.sv \
+              rtl/sw_rx_port.sv rtl/sw_arbiter.sv \
               rtl/sw_mac_table.sv rtl/sw_gmii_tx.sv rtl/sw_tx_port.sv \
-              rtl/sw_switch.sv; \
-            hierarchy -check -top sw_switch; \
-            synth -top sw_switch -flatten; stat'
+              rtl/sw_switch_core.sv rtl/sw_switch_gmii.sv \
+              rtl/sw_switch_mii.sv rtl/sw_switch_rmii.sv; \
+            hierarchy -check -top sw_switch_gmii; \
+            synth -top sw_switch_gmii -flatten; stat'
 
 That is the same command the flow runs, not an approximation of it.  LibreLane
 3.0 reads the design with
@@ -303,12 +312,12 @@ it against a timing corner's liberty, and applies the candidate file.  The step
 directory is numbered and the numbering moves with the flow version, so the
 netlist is found by name rather than by a hard-coded path:
 
-    netlist=$(ls -t librelane/runs/*/*-yosys-synthesis/sw_switch.nl.v | head -1)
+    netlist=$(ls -t librelane/runs/*/*-yosys-synthesis/sw_switch_gmii.nl.v | head -1)
 
     sta -no_init -exit <<EOF
     read_liberty sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
     read_verilog $netlist
-    link_design sw_switch
+    link_design sw_switch_gmii
     read_sdc librelane/constraints/io.sdc
     puts "SDC-OK [get_clocks *]"
     EOF

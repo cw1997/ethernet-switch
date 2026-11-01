@@ -151,7 +151,7 @@ module tb_sw_switch;
   logic [NUM_PORTS*8-1:0]      gmii_tx_d;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
-  sw_switch #(
+  sw_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
       .CLK_FREQ_HZ    (CLK_FREQ),
       .PORT_MAC       (PORT_MAC),

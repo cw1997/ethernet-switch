@@ -5,7 +5,7 @@
 #                (`vlib` / `vlog` / `vsim` in batch mode).
 #
 #  Usage       : sim/run_questa.sh <top-module>
-#  Example     : sim/run_questa.sh sw_switch_tb
+#  Example     : sim/run_questa.sh tb_sw_switch
 #
 #  Requirements: `vlib`, `vlog` and `vsim` on the PATH, e.g.
 #                 export PATH=/tools/questa_fse/win64:$PATH
