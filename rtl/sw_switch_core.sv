@@ -1,13 +1,17 @@
 // ============================================================================
-//  File        : sw_switch.sv
-//  Description : Top level of the parameterised Ethernet Layer-2 switch core.
+//  File        : sw_switch_core.sv
+//  Description : Interface-agnostic core of the parameterised Ethernet Layer-2
+//                switch.  The physical MAC interface (GMII / MII / RMII) is not
+//                part of this module: every port speaks a canonical octet
+//                stream, adapted onto it by a top-level wrapper
+//                (`sw_switch_gmii`, `sw_switch_mii` or `sw_switch_rmii`).
 //
 //                Features
 //                --------
 //                * 10 / 100 / 1000 Mbit/s per port, selected independently at
-//                  elaboration time.  All ports share a single `clk_i`; the line
-//                  rate is handled with clock enables, so the datapath contains
-//                  no clock-domain crossings at all.
+//                  elaboration time.  All ports share a single `clk_i`; the
+//                  line rate is handled with clock enables, so the datapath
+//                  contains no clock-domain crossings at all.
 //                * Arbitrary number of ports, each with its own MAC address
 //                  (a locally administered default is derived from the port
 //                  index when a port address is left at all zero).
@@ -21,18 +25,22 @@
 //                  statistics counter block.
 //
 //                ------------------------------------------------------------------------
-//                PHY interface contract
+//                Octet-stream contract
 //                ------------------------------------------------------------------------
-//                `gmii_rx_*` and `gmii_tx_*` are GMII-style 8 bit interfaces
-//                qualified by a clock enable and synchronous to `clk_i`:
+//                Every port presents the same canonical, clock-enable-qualified
+//                octet stream, synchronous to `clk_i`:
 //                  * one octet is transferred every BYTE_PERIOD(port) clocks,
 //                  * the enable is asserted for the whole octet time and the
 //                    data is stable for the same window,
 //                  * the enable is de-asserted during the inter-frame gap.
-//                Preamble and start-of-frame delimiter are removed by the PHY
-//                on receive and re-inserted on transmit, exactly as a real GMII
-//                MAC does.  If the PHY runs on its own clock, wrap the core in
-//                asynchronous FIFOs - nothing inside the switch changes.
+//                The GMII pins carry exactly this stream; the MII and RMII
+//                wrappers assemble / serialise their narrow pins onto the same
+//                grid with the `sw_mii` / `sw_rmii` symbol adapters, so this
+//                core never sees a difference.  Preamble and start-of-frame
+//                delimiter are removed by the PHY on receive and re-inserted on
+//                transmit, exactly as a real MAC does.  If the PHY runs on its
+//                own clock, wrap the core in asynchronous FIFOs - nothing
+//                inside the switch changes.
 //
 //                ------------------------------------------------------------------------
 //                Parameter encoding
@@ -50,8 +58,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_SWITCH_SV
-`define SW_SWITCH_SV
+`ifndef SW_SWITCH_CORE_SV
+`define SW_SWITCH_CORE_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -65,7 +73,7 @@
 // compilation-unit scope, so the parameter list and the ANSI port list below can
 // use them (`sw_port_w`, `sw_tag_width`, `SW_STAT_COUNT`, ...) without an
 // import clause.  See sw_defs.sv for why a package cannot be used here.
-module sw_switch #(
+module sw_switch_core #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
   parameter int unsigned NUM_PORTS      = 4,
@@ -91,7 +99,7 @@ module sw_switch #(
   parameter int unsigned TX_FIFO_DEPTH  = 256,
   /// Frame descriptors buffered per ingress port.
   parameter int unsigned TAG_FIFO_DEPTH = 16,
-  /// Elastic beat FIFO between the GMII adapter and the parser.
+  /// Elastic beat FIFO between the octet adapter and the parser.
   parameter int unsigned WF_DEPTH       = 16,
 
   // ---- switching fabric ----------------------------------------------------
@@ -124,13 +132,16 @@ module sw_switch #(
   input  logic                                cfg_ovr_i,   ///< use run-time config
   input  logic                                cam_flush_i, ///< flush the CAM
 
-  // ---- GMII receive (clock-enable qualified, synchronous to clk_i) ---------
-  input  logic [NUM_PORTS-1:0]                gmii_rx_en_i,
-  input  logic [NUM_PORTS*8-1:0]              gmii_rx_data_i,
-
-  // ---- GMII transmit (clock-enable qualified, synchronous to clk_i) -------
-  output logic [NUM_PORTS-1:0]                gmii_tx_en_o,
-  output logic [NUM_PORTS*8-1:0]              gmii_tx_data_o,
+  // ---- canonical octet stream (interface-agnostic) -------------------------
+  //
+  // The physical MAC pins are adapted onto this stream by the top-level
+  // wrapper (sw_switch_gmii / sw_switch_mii / sw_switch_rmii); this core
+  // neither knows nor cares which PHY interface the ports expose.  See the
+  // octet-stream contract in the header.
+  input  logic [NUM_PORTS-1:0]                rx_oct_en_i,
+  input  logic [NUM_PORTS*8-1:0]              rx_oct_data_i,
+  output logic [NUM_PORTS-1:0]                tx_oct_en_o,
+  output logic [NUM_PORTS*8-1:0]              tx_oct_data_o,
 
   // ---- observability -------------------------------------------------------
   /// Packed statistics bus, 32 bits per counter, indices per sw_stat_id_e.
@@ -152,13 +163,13 @@ module sw_switch #(
   // genuinely invalid configuration fails the simulation runs just as before.
 `ifndef SYNTHESIS
   initial begin
-    if (NUM_PORTS == 0) $error("sw_switch: NUM_PORTS must be >= 1");
+    if (NUM_PORTS == 0) $error("sw_switch_core: NUM_PORTS must be >= 1");
     if (RX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
-      $warning("sw_switch: RX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will be dropped as ingress overflow",
+      $warning("sw_switch_core: RX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will be dropped as ingress overflow",
                RX_FIFO_DEPTH, sw_beats_of(MAX_FRAME_LEN));
     end
     if (TX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
-      $warning("sw_switch: TX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will stall the fabric",
+      $warning("sw_switch_core: TX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will stall the fabric",
                TX_FIFO_DEPTH, sw_beats_of(MAX_FRAME_LEN));
     end
   end
@@ -184,6 +195,12 @@ module sw_switch #(
 
   logic [32*SW_STAT_COUNT-1:0]         rx_stat [NUM_PORTS];
   logic [32*SW_STAT_COUNT-1:0]         tx_stat [NUM_PORTS];
+
+  // The canonical octet stream arrives through the rx_oct_* / tx_oct_* ports;
+  // the wrapper above adapts the physical MAC pins onto it.  The contract is
+  // the one documented at sw_gmii_rx / sw_gmii_tx: one octet every
+  // BYTE_PERIOD clocks, enable asserted for the whole octet time, data stable
+  // for the same window.
 
   // One shared CAM serves every port: NUM_PORTS parallel lookup ports and
   // NUM_PORTS learn ports, all in the same single clock domain.
@@ -215,7 +232,7 @@ module sw_switch #(
     localparam logic [47:0] MAC_G =
         (PORT_MAC[g*48 +: 48] == 48'h0) ? sw_default_mac(g) : PORT_MAC[g*48 +: 48];
 
-    // Clock enables per GMII octet for this port's link speed.
+    // Clock enables per octet for this port's link speed.
     localparam int unsigned BP_G =
         sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
 
@@ -235,8 +252,8 @@ module sw_switch #(
         .clk_i         (clk_i),
         .rst_ni        (rst_ni),
         .link_up_i     (link_up_i[g]),
-        .gmii_en_i     (gmii_rx_en_i[g]),
-        .gmii_d_i      (gmii_rx_data_i[g*8 +: 8]),
+        .oct_en_i      (rx_oct_en_i[g]),
+        .oct_d_i       (rx_oct_data_i[g*8 +: 8]),
         .cam_req_o     (cam_req[g]),
         .cam_mac_o     (cam_mac[g*48 +: 48]),
         .cam_hit_i     (cam_hit[g]),
@@ -270,8 +287,8 @@ module sw_switch #(
         .wr_data_i  (dst_wr_data[g*64 +: 64]),
         .wr_len_i   (dst_wr_len[g*SW_LEN_W +: SW_LEN_W]),
         .wr_fr_i    (dst_fr[g]),
-        .gmii_en_o  (gmii_tx_en_o[g]),
-        .gmii_d_o   (gmii_tx_data_o[g*8 +: 8]),
+        .oct_en_o  (tx_oct_en_o[g]),
+        .oct_d_o   (tx_oct_data_o[g*8 +: 8]),
         .free_o     (tx_free),
         .slot_o     (tx_slot),
         .stat_o     (tx_stat[g])
@@ -387,11 +404,11 @@ module sw_switch #(
     stat_o[32*int'(SW_STAT_CAM_FLUSH)  +: 32] = cam_flush_i ? 32'd1 : 32'd0;
   end
 
-endmodule : sw_switch
+endmodule : sw_switch_core
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_SWITCH_SV
+`endif // SW_SWITCH_CORE_SV

@@ -31,7 +31,8 @@ echo "======================================================================"
 echo " Linting the RTL with Verilator -Wall (expect: no output at all)"
 echo "======================================================================"
 for top in sw_crc32 sw_sync_fifo sw_gmii_rx sw_gmii_tx sw_mac_table \
-           sw_rx_port sw_tx_port sw_arbiter sw_switch; do
+           sw_rx_port sw_tx_port sw_arbiter sw_mii sw_rmii \
+           sw_switch_core sw_switch_gmii sw_switch_mii sw_switch_rmii; do
   printf '%-14s : ' "$top"
   out="$(verilator --lint-only --timing -Wall -Wno-DECLFILENAME \
            -Irtl -f sim/sw_rtl.f --top-module "$top" 2>&1)"
@@ -49,8 +50,9 @@ echo
 echo "======================================================================"
 echo " Linting the testbench with Verilator -Wall"
 echo "======================================================================"
-for top in sw_tb_gmii_driver sw_tb_gmii_monitor sw_crc32_tb \
-           sw_sync_fifo_tb sw_mac_table_tb sw_switch_param_tb sw_switch_tb; do
+for top in sw_gmii_if sw_mii_if sw_rmii_if sw_if_array sw_crc32_tb \
+           sw_sync_fifo_tb sw_mac_table_tb sw_mii_tb sw_rmii_tb sw_flood_tb \
+           sw_switch_param_tb tb_sw_switch tb_sw_switch_mii tb_sw_switch_rmii; do
   printf '%-20s : ' "$top"
   out="$(verilator --lint-only --timing -Wall -Wno-DECLFILENAME \
            -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHCONCAT -Wno-BLKSEQ \

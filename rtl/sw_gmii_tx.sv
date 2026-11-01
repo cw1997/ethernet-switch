@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : sw_gmii_tx.sv
-//  Description : GMII octet transmit adapter.
+//  Description : Canonical octet-stream transmit adapter.
 //
 //                Consumes the 64-bit beat stream produced by the switching
 //                fabric and generates a complete, wire-legal Ethernet frame:
@@ -10,8 +10,8 @@
 //                ------------------------------------------------------------------------
 //                Clock-enable contract (identical to sw_gmii_rx)
 //                ------------------------------------------------------------------------
-//                `gmii_en_o` is asserted for a whole GMII octet time and
-//                `gmii_d_o` is only updated on the last clock of that window,
+//                `oct_en_o` is asserted for a whole octet time and
+//                `oct_d_o` is only updated on the last clock of that window,
 //                so the octet on the wire is stable for exactly BYTE_PERIOD
 //                clocks.  BYTE_PERIOD = 1 gives full line rate on 1000BASE-T.
 //
@@ -20,7 +20,7 @@
 //                ------------------------------------------------------------------------
 //                The FCS generator is deliberately run *one octet ahead* of
 //                the wire: the CRC absorbs exactly the octet that is being
-//                registered onto `gmii_d_o` at the same clock edge.  Therefore,
+//                registered onto `oct_d_o` at the same clock edge.  Therefore,
 //                when the last client octet has left the MAC, the LFSR already
 //                holds the final result and the first FCS octet can be driven
 //                on the very next octet time.  No bubble and no extra
@@ -62,7 +62,7 @@
 // what lets them appear in a parameter default and in a port range.  See
 // sw_defs.sv for why a package cannot be used here.
 module sw_gmii_tx #(
-  /// `clk_i` cycles per GMII octet time (see the module header).
+  /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1,
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
   parameter int unsigned IFG_OCTETS  = SW_IFG_OCTETS
@@ -80,14 +80,14 @@ module sw_gmii_tx #(
   input  logic [63:0] beat_data_i,
   output logic        beat_rd_o,    ///< the current beat was consumed
 
-  // ---- GMII transmit interface --------------------------------------------
-  output logic        gmii_en_o,    ///< TX_EN towards the PHY
-  output logic [7:0]  gmii_d_o      ///< octet towards the PHY
+  // ---- canonical octet transmit interface ----------------------------------
+  output logic        oct_en_o,    ///< octet-stream enable towards the front-end
+  output logic [7:0]  oct_d_o      ///< octet towards the front-end
 );
 
   // --------------------------------------------------------------------------
   // Octet-rate clock-enable generator.  `tick` marks the last clock of every
-  // GMII octet time; it is the only place at which the output octet changes.
+  // octet time; it is the only place at which the output octet changes.
   // --------------------------------------------------------------------------
   localparam int unsigned BPW = (BYTE_PERIOD <= 1) ? 1 : $clog2(BYTE_PERIOD);
   localparam logic [BPW-1:0] PHASE_LAST = BYTE_PERIOD[BPW-1:0] - BPW'(1);
@@ -145,7 +145,7 @@ module sw_gmii_tx #(
   // register, so this does not close the combinational loop through
   // `fr_start = !len_empty && !tx_busy` in the transmit port.
   assign tx_busy_o = (state != S_IDLE) || fr_pending;
-  assign gmii_d_o  = octet;
+  assign oct_d_o  = octet;
   // The enable follows the state combinationally, so it is asserted for exactly
   // the octet windows in which `octet` holds data.  Registering it instead would
   // delay it by one clock relative to the octet register and cost the first
@@ -156,7 +156,7 @@ module sw_gmii_tx #(
   // loads an octet: the enable would drop before that octet was ever presented.
   // The sequencer below is written to avoid it - in particular the last FCS octet
   // is loaded one full octet time before the inter-frame gap starts.
-  assign gmii_en_o = (state == S_PRE)  || (state == S_LOAD) ||
+  assign oct_en_o = (state == S_PRE)  || (state == S_LOAD) ||
                      (state == S_FRAME) || (state == S_FCS);
 
   // --------------------------------------------------------------------------
@@ -450,7 +450,7 @@ module sw_gmii_tx #(
         // Frame Check Sequence, least significant octet first.
         //
         // The clock that registers the *last* FCS octet must not also leave
-        // S_FCS.  `gmii_en_o` follows `state`, so leaving S_FCS in the same clock
+        // S_FCS.  `oct_en_o` follows `state`, so leaving S_FCS in the same clock
         // would take the enable low before that octet was ever presented, and the
         // frame would be transmitted one octet short.  The sequencer therefore
         // counts to 4 and only then starts the inter-frame gap, one full octet
@@ -468,7 +468,7 @@ module sw_gmii_tx #(
         end
 
         // ---------------------------------------------------------------
-        // Inter-frame gap: `gmii_en_o` is low, which is how GMII encodes idle.
+        // Inter-frame gap: `oct_en_o` is low, which is how GMII encodes idle.
         S_IFG: begin
           if (tick) begin
             if (ifg_cnt == 8'd1) state   <= S_IDLE;

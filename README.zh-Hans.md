@@ -37,7 +37,7 @@
 
 ## 这是什么，以及它不是什么
 
-它是一个**交换核心**，不是一块网卡。它位于各 GMII PHY 接口之间，完成二层的工作：在每个端口终结 MAC 成帧、解析帧头、将目的地址与学习到的转发数据库比对、缓冲整帧，然后以重新计算的 FCS 将其重新串行化到目的端口（或多个端口）。
+它是一个**交换核心**，不是一块网卡。它位于各以太网 PHY 接口之间，完成二层的工作：在每个端口终结 MAC 成帧、解析帧头、将目的地址与学习到的转发数据库比对、缓冲整帧，然后以重新计算的 FCS 将其重新串行化到目的端口（或多个端口）。
 
 它有意**不包含**：PCS 或 PMA、自协商、链路监控、流控（802.3x 暂停帧）、生成树、VLAN 过滤或标签改写、优先级/QoS 调度，以及任何统计**读取**机制——计数器通过只读总线导出，由集成者自行读取。它包含的是每个交换机都必须做对、且最难做对的部分：帧边界处理、无描述符/载荷偏斜的存储转发缓冲、在并发访问下不会丢失表项的源地址学习，以及一个绝不会把两帧交错进同一个出口缓冲的交换矩阵。
 
@@ -189,12 +189,17 @@ GMII 八位组 -> sw_gmii_rx -> 弹性 FIFO -> sw_rx_port -> 载荷 FIFO + 标�
 | CRC-32 | `sw_crc32.sv` | 八位组串行的 IEEE 802.3 FCS 生成与校验，共享一张查找表 |
 | 弹性缓冲 | `sw_sync_fifo.sv` | 先字直通（FWFT）FIFO，带帧粒度回滚与硬冲刷 |
 | GMII 接收 | `sw_gmii_rx.sv` | 八位组流转 64 位节拍，附带 FCS 校验 |
+| MII 适配器 | `sw_mii.sv` | MII 半字节与规范八位组流互转（`sw_switch_mii` 构建） |
+| RMII 适配器 | `sw_rmii.sv` | RMII 2 位块与规范八位组流互转（`sw_switch_rmii` 构建） |
 | 入口 | `sw_rx_port.sv` | 帧头解析、CAM 查找、入口策略、缓冲、描述符生成 |
 | CAM | `sw_mac_table.sv` | 共享转发数据库：`NUM_SETS` x `NUM_WAYS`，每端口并行读，串行化学习队列 |
 | 矩阵 | `sw_arbiter.sv` | 轮转调度、整帧准入、一对多节拍复制 |
 | GMII 发送 | `sw_gmii_tx.sv` | 节拍转合法线帧，FCS 比线快一个八位组生成 |
 | 出口 | `sw_tx_port.sv` | 出口节拍缓冲、每帧长度描述符、发送统计 |
-| 顶层 | `sw_switch.sv` | 端口实例、CAM、矩阵、统计聚合、静态参数检查 |
+| 内核 | `sw_switch_core.sv` | 接口无关的数据通路：端口实例、CAM、矩阵、统计聚合、静态参数检查 |
+| 顶层（GMII） | `sw_switch_gmii.sv` | GMII 引脚直通内核（默认顶层） |
+| 顶层（MII） | `sw_switch_mii.sv` | MII 引脚经逐端口 `sw_mii` 适配到八位组流 |
+| 顶层（RMII） | `sw_switch_rmii.sv` | RMII 引脚经逐端口 `sw_rmii` 适配到八位组流 |
 | 声明 | `sw_defs.sv` | 所有共享常量、类型与辅助函数，位于编译单元作用域 |
 
 ## 帧描述符
@@ -249,13 +254,23 @@ GMII 八位组 -> sw_gmii_rx -> 弹性 FIFO -> sw_rx_port -> 载荷 FIFO + 标�
 
 ## PHY 接口
 
-`gmii_rx_*` 和 `gmii_tx_*` 是 GMII 风格的 8 位接口，由时钟使能限定并与 `clk_i` 同步：
+每个端口的前端引脚是三种 MAC 接口之一。内核（`sw_switch_core`）是接口无关的——只与规范八位组流打交道——实际使用哪种接口由"展开哪个顶层 wrapper"决定（`sw_mii` / `sw_rmii` 位于引脚与规范八位组流之间，因此三种构建中其后的一切完全相同）：
+
+| 顶层模块 | 引脚 | 符号宽度 | 线速率 |
+|---|---|---|---|
+| `sw_switch_gmii` | `gmii_rx_*` / `gmii_tx_*` | 8 位八位组 | 10 / 100 / 1000 Mbit/s |
+| `sw_switch_mii` | `mii_*` | 每八位组两个 4 位半字节 | 10 / 100 Mbit/s |
+| `sw_switch_rmii` | `rmii_*` | 每八位组四个 2 位块 | 10 / 100 Mbit/s |
+
+接口由"展开哪个顶层模块"选择——`make mii` / `make rmii` 构建 MII / RMII 顶层，CI 的 `lint` / `rtl` / `synth` 各门跑全部三种。任一构建中只存在所选接口的引脚，没有"需要留空"的引脚。MII / RMII 构建中配置为 1000 Mbit/s 的端口会在静态展开期被拒绝。
+
+三种接口都承载同一个由时钟使能限定、与 `clk_i` 同步的八位组流：
 
 * 每 `BYTE_PERIOD` 个时钟一个八位组；
 * 使能在整个八位组时间保持有效，数据在同一窗口内稳定；
 * 帧间隔期间使能至少撤销一个时钟。
 
-前导码和帧起始定界符在接收端由 PHY 剥除、在发送端重新插入，与真实 GMII MAC 完全一致。使用独立时钟的 PHY 需要在核心外加异步 FIFO；核心内部无需任何改动。
+前导码和帧起始定界符在接收端由 PHY 剥除、在发送端重新插入，与真实 MAC 完全一致。适配器是同步模型——真实 PHY 自己的时钟（`RX_CLK`/`TX_CLK`，或 RMII 的 `REF_CLK`）由板级外壳处理，与 GMII 构建完全相同；外壳若无法满足单时钟约定，就在核心外加异步 FIFO，核心内部无需任何改动。
 
 ## 构建与测试
 
@@ -264,11 +279,13 @@ GMII 八位组 -> sw_gmii_rx -> 弹性 FIFO -> sw_rx_port -> 载荷 FIFO + 标�
     make lint      # Verilator -Wall；任何警告都算失败
     make rtl       # 仅 RTL 的 Icarus 展开，不含测试台
     make unit      # 模块级测试台与矩阵回归（约 25 秒）
+    make mii       # 带 MII 引脚前端的整机冒烟，含两个 PHY 模型
+    make rmii      # 带 RMII 引脚前端的整机冒烟，含两个 PHY 模型
     make param     # 三端口、50 MHz 参数化测试台（约 4 秒）
     make sim       # 四端口混合速率交换机测试台（约 6 分钟）
     make synth     # yosys 读取 + 展开 + 综合（约 3 分钟）
 
-`make all` 运行 lint、unit、sim 和 param。各门按"失败速度"排序，每个门都能抓住其他门抓不住的问题——每个门究竟擅长什么，见 [AGENTS.md](AGENTS.md#2-the-tool-flow-and-what-each-tool-rejects)。
+`make all` 运行 lint、mii、rmii、unit、sim 和 param。`make lint`、`make rtl`、`make synth` 各自跑**三种**顶层模块——`sw_switch_gmii`、`sw_switch_mii`、`sw_switch_rmii`——因为每个 wrapper 拥有自己的端口列表与 generate 代码，而从不被编译的 wrapper 只会悄悄腐烂。各门按"失败速度"排序，每个门都能抓住其他门抓不住的问题——每个门究竟擅长什么，见 [AGENTS.md](AGENTS.md#2-the-tool-flow-and-what-each-tool-rejects)。
 
 这套回归被刻意设计得难以"侥幸通过"：
 

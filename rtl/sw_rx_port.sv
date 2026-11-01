@@ -4,10 +4,11 @@
 //
 //                Responsibilities
 //                ------------------
-//                1. Absorb the GMII octet stream into a small elastic beat FIFO.
-//                   The GMII interface itself is never stalled (a mid-frame
-//                   pause is illegal on GMII), so the parser drains this FIFO
-//                   unconditionally and discards data when it has to.
+//                1. Absorb the canonical octet stream into a small elastic beat
+//                   FIFO.  The octet interface itself is never stalled (a
+//                   mid-frame pause is illegal on GMII, and the MII/RMII symbol
+//                   adapters deliver the same contract), so the parser drains
+//                   this FIFO unconditionally and discards data when it has to.
 //
 //                2. Parse the frame header - destination MAC, source MAC, the
 //                   length/EtherType field and an optional 802.1Q / 802.1ad tag -
@@ -70,7 +71,7 @@ module sw_rx_port #(
   parameter int unsigned PORT_ID        = 0,
   /// MAC address owned by this port; frames sourced from it are not reflected.
   parameter logic [47:0]  PORT_MAC      = 48'h0,
-  /// `clk_i` cycles per GMII octet time on this port.
+  /// `clk_i` cycles per octet time of the canonical octet stream on this port.
   parameter int unsigned BYTE_PERIOD    = 1,
   /// Largest frame accepted, in octets (FCS excluded).
   parameter int unsigned MAX_FRAME_LEN  = 1518,
@@ -80,7 +81,7 @@ module sw_rx_port #(
   /// Frame descriptors buffered per port.  Bounds how many complete frames
   /// may wait for the fabric.
   parameter int unsigned TAG_FIFO_DEPTH = 16,
-  /// Elastic beat FIFO between the GMII adapter and the parser.
+  /// Elastic beat FIFO between the octet adapter and the parser.
   parameter int unsigned WF_DEPTH       = 16,
   /// Unknown / group address flooding policy (elaboration-time default).
   parameter logic [1:0]  FLOOD_MODE     = 2'd1,
@@ -91,9 +92,9 @@ module sw_rx_port #(
   input  logic                    rst_ni,
   input  logic                    link_up_i,   ///< port administratively up
 
-  // ---- GMII receive interface (clock-enable qualified) ---------------------
-  input  logic                    gmii_en_i,
-  input  logic [7:0]              gmii_d_i,
+  // ---- canonical octet receive interface (clock-enable qualified) ----------
+  input  logic                    oct_en_i,
+  input  logic [7:0]              oct_d_i,
 
   // ---- CAM lookup interface (answer valid one clock after the request) ------
   output logic                    cam_req_o,
@@ -158,7 +159,7 @@ module sw_rx_port #(
   endfunction
 
   // --------------------------------------------------------------------------
-  // 1. GMII octet adapter and elastic beat FIFO
+  // 1. Octet adapter and elastic beat FIFO
   // --------------------------------------------------------------------------
   logic        beat_valid, beat_sof, beat_eof, beat_crc_ok;
   logic [63:0] beat_data;
@@ -169,8 +170,8 @@ module sw_rx_port #(
   ) u_gmii_rx (
       .clk_i         (clk_i),
       .rst_ni        (rst_ni),
-      .gmii_en_i     (gmii_en_i & link_up_i),
-      .gmii_d_i      (gmii_d_i),
+      .oct_en_i     (oct_en_i & link_up_i),
+      .oct_d_i      (oct_d_i),
       .beat_valid_o  (beat_valid),
       .beat_data_o   (beat_data),
       .beat_sof_o    (beat_sof),

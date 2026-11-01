@@ -617,7 +617,7 @@ jobs:
         run: |
           set -o pipefail
           gds=$(find librelane/runs -mindepth 3 -maxdepth 3 -type f \
-                  -name 'sw_switch.gds' | sort | head -1)
+                  -name 'sw_switch_gmii.gds' | sort | head -1)
           if [ -z "$gds" ]; then
             gds=$(find librelane/runs -type f -name '*.gds' \
                     ! -name '*.magic.gds' ! -name '*.klayout.gds' | sort | head -1)
@@ -631,7 +631,7 @@ jobs:
           echo "GDSII: $gds"
           echo "gds_path=$gds" >> "$GITHUB_OUTPUT"
           mkdir -p out
-          cp "$gds" out/sw_switch.gds
+          cp "$gds" out/sw_switch_gmii.gds
           ls -l out/
 
       # The step directories are numbered (`34-openroad-cts`) and the numbering
@@ -705,7 +705,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: gdsii
-          path: out/sw_switch.gds
+          path: out/sw_switch_gmii.gds
           if-no-files-found: error
           retention-days: 90
 

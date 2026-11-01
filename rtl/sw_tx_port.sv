@@ -4,8 +4,8 @@
 //
 //                The fabric queues a frame as a run of 64-bit beats plus a
 //                length descriptor.  This module buffers the beats in an egress
-//                FIFO, hands them to the GMII transmit adapter one frame at a
-//                time and keeps the statistics.
+//                FIFO, hands them to the octet serialiser one frame at a time
+//                and keeps the statistics.
 //
 //                The length descriptor has its own small FIFO, written once per
 //                frame (qualified by `wr_fr_i`) while *all* beats of that frame
@@ -39,7 +39,7 @@
 // them appear in a port range.  See sw_defs.sv for why a package cannot be used
 // here.
 module sw_tx_port #(
-  parameter int unsigned BYTE_PERIOD    = 1,     ///< clk_i cycles per GMII octet
+  parameter int unsigned BYTE_PERIOD    = 1,     ///< clk_i cycles per octet
   parameter int unsigned TX_FIFO_DEPTH  = 256,   ///< egress beats buffered
   parameter int unsigned LEN_FIFO_DEPTH = 8      ///< frame length descriptors
 ) (
@@ -52,9 +52,9 @@ module sw_tx_port #(
   input  logic [SW_LEN_W-1:0]     wr_len_i,    ///< valid together with `wr_fr_i`
   input  logic                    wr_fr_i,     ///< this beat starts a new frame
 
-  // ---- GMII transmit interface ---------------------------------------------
-  output logic                    gmii_en_o,
-  output logic [7:0]              gmii_d_o,
+  // ---- canonical octet transmit interface ----------------------------------
+  output logic                    oct_en_o,
+  output logic [7:0]              oct_d_o,
 
   // ---- egress capacity (consumed by the arbiter) ---------------------------
   // Two separate limits, because there are two separate buffers, and reporting
@@ -112,8 +112,8 @@ module sw_tx_port #(
       .beat_valid_i(!data_empty),
       .beat_data_i (data_rd_data),
       .beat_rd_o  (beat_rd),
-      .gmii_en_o  (gmii_en_o),
-      .gmii_d_o   (gmii_d_o)
+      .oct_en_o  (oct_en_o),
+      .oct_d_o   (oct_d_o)
   );
 
   // ---- egress beat FIFO -----------------------------------------------------

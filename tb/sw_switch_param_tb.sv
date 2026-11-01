@@ -83,7 +83,7 @@ module sw_switch_param_tb;
   logic [NUM_PORTS*8-1:0]      gmii_tx_data;
   logic [32*SW_STAT_COUNT-1:0] stat_bus;
 
-  sw_switch #(
+  sw_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
       .CLK_FREQ_HZ    (CLK_FREQ_HZ),
       .PORT_MAC       (PORT_MAC),

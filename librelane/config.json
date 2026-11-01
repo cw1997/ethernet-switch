@@ -1,17 +1,22 @@
 {
-  "DESIGN_NAME": "sw_switch",
+  "DESIGN_NAME": "sw_switch_gmii",
 
   "VERILOG_FILES": [
     "rtl/sw_defs.sv",
     "rtl/sw_crc32.sv",
     "rtl/sw_sync_fifo.sv",
     "rtl/sw_gmii_rx.sv",
+    "rtl/sw_mii.sv",
+    "rtl/sw_rmii.sv",
     "rtl/sw_gmii_tx.sv",
     "rtl/sw_mac_table.sv",
     "rtl/sw_rx_port.sv",
     "rtl/sw_tx_port.sv",
     "rtl/sw_arbiter.sv",
-    "rtl/sw_switch.sv"
+    "rtl/sw_switch_core.sv",
+    "rtl/sw_switch_gmii.sv",
+    "rtl/sw_switch_mii.sv",
+    "rtl/sw_switch_rmii.sv"
   ],
 
   "VERILOG_INCLUDE_DIRS": ["rtl"],
