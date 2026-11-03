@@ -545,7 +545,13 @@ module sw_rx_port #(
   assign stat_o[32*int'(SW_STAT_RX_OVERFLOW)+: 32] = cnt_ovf;
   // The remaining counters are produced by the transmit path, the scheduler
   // and the CAM; the top level sums them in.
-  for (genvar gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+  // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see sw_arbiter.sv for the full note).
+  genvar gk;
+  generate
+  for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
     if ((gk != int'(SW_STAT_RX_FRAMES)) && (gk != int'(SW_STAT_RX_OCTETS)) &&
         (gk != int'(SW_STAT_RX_FILTERED)) && (gk != int'(SW_STAT_RX_CRC_ERR)) &&
         (gk != int'(SW_STAT_RX_RUNT)) && (gk != int'(SW_STAT_RX_OVERSIZE)) &&
@@ -553,6 +559,7 @@ module sw_rx_port #(
       assign stat_o[32*gk +: 32] = 32'd0;
     end
   end
+  endgenerate
 
   // --------------------------------------------------------------------------
   // 10. Main parser

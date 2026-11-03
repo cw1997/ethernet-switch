@@ -19,6 +19,9 @@ this design in a way a testbench could not see.
 ```
 rtl/           the design.  One file per block, sw_<block>.sv / module sw_<block>
 tb/            self-checking testbenches.  Never synthesised, never linted by CI
+board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
+               project (board top, pins, constraints, build.bat); its top
+               sw_de2_115_top is pure RTL and part of the same gates
 ci/            the CI toolchain contract (check-toolchain.sh)
 librelane/     the physical implementation flow (config.json + README.md)
 Makefile       every gate; the target list is documented in its own header
@@ -31,8 +34,9 @@ that file documents the **MAC interface selection**: the interface-agnostic
 core (`sw_switch_core`) is wrapped by one of three per-interface top modules —
 `sw_switch_gmii` (default GMII), `sw_switch_mii` and `sw_switch_rmii` — and the
 interface in use is chosen by which wrapper is elaborated. `make lint`,
-`make rtl` and `make synth` each run **all three** top modules, so changing a
-wrapper means making it green in all three — a wrapper that is never compiled
+`make rtl` and `make synth` each run **all four** top modules — the three
+`sw_switch_*` wrappers plus the DE2-115 board top `sw_de2_115_top` — so changing
+a wrapper means making it green in all four; a top that is never compiled
 silently rots.
 
 ## 2. The tool flow, and what each tool rejects
@@ -135,6 +139,35 @@ and a key can be checked against the declarations with
 `config.json`, record it in `librelane/README.md` in the same commit - the
 migration table there is the only record of which name went where.
 
+### 2.4 The Quartus parser has three holes of its own
+
+`board/de2_115/quartus_ii/` is compiled by Quartus II, whose Verilog frontend
+is a fourth strictness point - it accepts forms the other three tools reject
+*and* rejects forms the other three accept. All three of the following have
+already broken a real compile of this repository, and none of them is visible
+to Verilator, Icarus or yosys:
+
+1. **No inline genvar declaration.** `for (genvar gp = 0; ...)` is a syntax
+   error. Declare `genvar gp;` separately and write `for (gp = 0; ...)`.
+   A genvar may be reused by sequential (sibling) loops; loops that are
+   concurrently nested must use distinct names.
+2. **No implicit generate.** A bare module-level `for` - the implicit generate
+   block of IEEE 1800 - is rejected outright (`syntax error ... expecting
+   "endmodule"`). Every module-level loop is wrapped in an explicit
+   `generate ... endgenerate`. Procedural `for` loops inside
+   `always_*`/`function`/`initial` bodies are unaffected.
+3. **`//` comments are scanned for pragmas.** A comment line whose first word
+   after `//` is `synthesis` (or `pragma`, `synopsys`, ...) is read as a tool
+   directive: prose like "the synthesis flow" produces
+   `Unrecognized synthesis attribute "flow"` - a warning, but a confusing one.
+   Never let a comment line start with one of those words.
+4. **`initial`-initialised memories are pathologically slow.** A lookup table
+   built by an `initial` block is a constant ROM to every other tool, but
+   Quartus's constant evaluator burned 27 CPU-minutes per instance without
+   completing on a 256x32 table (Quartus Prime 25.1std), against 35 seconds
+   for the same value computed by a function. Compute elaboration-time tables
+   in `function`s, not `initial` blocks.
+
 ## 3. RTL style rules
 
 ### 3.1 Declarations
@@ -235,16 +268,19 @@ and that width must be the one you mean.**
 
 Delays (`#`), `fork`/`join`, `wait`, `disable`, `real`, `$display`/`$finish`,
 dynamic arrays, queues, classes, `assert`/`assume`/`cover` in the datapath, and
-`import`. All of them are simulation-only or unsupported by the flow.
+`import`. All of them are simulation-only or unsupported by the flow. That now
+includes `initial`: there is none left in `rtl/`.
 
 Two narrow, documented exceptions exist:
 
-- `sw_crc32.sv` builds its constant CRC table in an `initial` block. This is an
-  elaboration-time constant ROM, needs no reset and no run-time
-  initialisation, and synthesises to a constant table. Do not add a second
-  `initial` block anywhere, and never let one produce a value that a write path
-  depends on — see the `WAY_LAST` comment in `sw_mac_table.sv` for a design that
-  got that wrong.
+- `sw_crc32.sv` computes its byte-wise CRC lookup in a function rather than an
+  `initial`-initialised table. The table form was the one sanctioned `initial`
+  block until it met Quartus, whose constant evaluator needs tens of
+  CPU-minutes *per instance* on an initial-block-initialised memory (§2.4);
+  the function computes the identical value everywhere. Never reintroduce an
+  `initial` block, and never let one produce a value that a write path depends
+  on — see the `WAY_LAST` comment in `sw_mac_table.sv` for a design that got
+  that wrong.
 - `sw_switch_core.sv` and the `sw_switch_mii` / `sw_switch_rmii` wrappers
   report elaboration-time parameter checks with `$error` / `$warning` inside
   `` `ifndef SYNTHESIS ``, because yosys has no implementation for them and
@@ -368,6 +404,9 @@ this is the short list.
 |---|---|---|
 | Unsized literal in arithmetic | operand silently extended, width decided by the literal | §3.2 |
 | Size cast used to silence it | works on 5.032, still flagged on 5.020, still wrong | §3.2, §2.2 |
+| `for (genvar g = 0; ...)` inline form | Quartus parse error; invisible to every other tool | §2.4 |
+| Bare module-level `for` (implicit generate) | Quartus parse error, "expecting endmodule"; needs explicit `generate` | §2.4 |
+| Comment line starting with "synthesis" | Quartus reads it as a pragma, warns about a phantom attribute | §2.4 |
 | Unpacked array indexed at run time | stale read in Icarus, looks like a datapath fault | §3.1 |
 | Accumulator in `always_comb` | self-retriggering sensitivity, simulation hangs | §3.3 |
 | Memory read in `always_comb` | same hang, less obviously | §3.3 |

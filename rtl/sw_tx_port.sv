@@ -166,11 +166,18 @@ module sw_tx_port #(
   assign stat_o[32*int'(SW_STAT_TX_OCTETS) +: 32] = cnt_octets;
   // The remaining counters belong to the receive path, the CAM and the
   // scheduler; they are zeroed here and summed by the top level.
-  for (genvar gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+  // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see sw_arbiter.sv for the full note).
+  genvar gk;
+  generate
+  for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
     if ((gk != int'(SW_STAT_TX_FRAMES)) && (gk != int'(SW_STAT_TX_OCTETS))) begin : g_stat_zero_other
       assign stat_o[32*gk +: 32] = 32'd0;
     end
   end
+  endgenerate
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin

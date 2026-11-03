@@ -10,6 +10,7 @@
 |---|---|
 | `rtl/` | 设计本身。每个模块一个文件，`sw_<block>.sv` / 模块名 `sw_<block>` |
 | `tb/` | 自校验测试台；从不参与综合，CI 也不对其做 lint |
+| `board/` | FPGA 板级壳——Quartus II 工程（目前有 `de2_115/`，Terasic DE2-115，双端口 MII 100 Mbit/s） |
 | `ci/` | CI 工具链契约（`check-toolchain.sh`）和工具链镜像定义（`toolchain/Dockerfile`） |
 | `librelane/` | 物理实现流程（`config.json`、时序约束，以及它自己的 README） |
 | `Makefile` | 全部质量门；目标清单在其自身文件头中有说明 |

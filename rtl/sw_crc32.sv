@@ -54,26 +54,28 @@ module sw_crc32 (
 );
 
   // --------------------------------------------------------------------------
-  // Reflected CRC-32 lookup table.
+  // Reflected CRC-32 lookup, computed rather than tabulated.
   //
   // This is the standard byte-wise slicing of the reflected polynomial
-  // 0x04C11DB7, i.e. 0xEDB88320.  The table is generated once during
-  // elaboration, so it maps onto a constant ROM in the fabric and needs no
-  // run-time initialisation and no reset.
+  // 0x04C11DB7, i.e. 0xEDB88320.  An earlier revision built the 256-entry
+  // table in an `initial` block, which synthesised to a constant ROM in every
+  // tool except Quartus: its constant evaluator needs tens of CPU-minutes
+  // *per instance* to push an initial-block-initialised memory through
+  // synthesis (27 CPU-minutes without completing on Quartus Prime 25.1std,
+  // against 35 wall-clock seconds for this form).  The function computes the
+  // identical value - the same eight reflected shift steps - so the hardware
+  // is bit-exact with what the table produced, at the cost of a few hundred
+  // LUTs per instance instead of one RAM block.  See AGENTS.md 2.4.
   // --------------------------------------------------------------------------
-  logic [31:0] crc_table [0:255];
-
-  initial begin
-    for (int unsigned i = 0; i < 256; i++) begin
-      logic [31:0] c;
-      c = 32'(i);
-      // Eight reflected shift steps build the table entry for octet value i.
-      for (int unsigned b = 0; b < 8; b++) begin
-        c = c[0] ? ((c >> 1) ^ SW_CRC32_POLY) : (c >> 1);
-      end
-      crc_table[i] = c;
+  function automatic logic [31:0] crc_table_word(input logic [7:0] idx);
+    logic [31:0] c;
+    c = 32'(idx);
+    // Eight reflected shift steps build the table entry for octet value idx.
+    for (int unsigned b = 0; b < 8; b++) begin
+      c = c[0] ? ((c >> 1) ^ SW_CRC32_POLY) : (c >> 1);
     end
-  end
+    crc_table_word = c;
+  endfunction
 
   // --------------------------------------------------------------------------
   // Running LFSR.  `crc` holds the *uncomplemented* register state; both the
@@ -94,7 +96,7 @@ module sw_crc32 (
 
   logic [31:0] crc_d;
   always_comb begin
-    crc_d = (crc >> 8) ^ crc_table[tbl_idx];
+    crc_d = (crc >> 8) ^ crc_table_word(tbl_idx);
   end
 
   always_ff @(posedge clk_i) begin

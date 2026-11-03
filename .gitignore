@@ -30,6 +30,22 @@ out/
 # runs `git clean -ffdx` and would delete this directory on the next run.
 .cache/
 
+# ---- Quartus (board/de2_115/quartus_ii) ------------------------------------
+# The Quartus GUI and build.bat regenerate all of these; only the project
+# source (.qpf/.qsf/.sdc/hdl/) is checked in.  *.log is covered by the rule
+# above.
+board/de2_115/quartus_ii/db/
+board/de2_115/quartus_ii/incremental_db/
+board/de2_115/quartus_ii/output_files/
+board/de2_115/quartus_ii/greybox_tmp/
+board/de2_115/quartus_ii/*.qws
+board/de2_115/quartus_ii/*.jdi
+board/de2_115/quartus_ii/*.rpt
+board/de2_115/quartus_ii/*.smsg
+board/de2_115/quartus_ii/*.summary
+board/de2_115/quartus_ii/*.done
+board/de2_115/quartus_ii/*.srf
+
 # ---- editors / OS ---------------------------------------------------------
 .vscode/
 .idea/

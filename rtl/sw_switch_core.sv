@@ -222,11 +222,20 @@ module sw_switch_core #(
 
   // Learn port index of every port is simply the port number itself, packed.
   logic [NUM_PORTS*PW-1:0] learn_port_idx;
-  for (genvar gi = 0; gi < NUM_PORTS; gi++) begin : g_learn_idx
+  // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see sw_arbiter.sv for the full note).
+  genvar gi;
+  genvar g;
+  generate
+  for (gi = 0; gi < NUM_PORTS; gi++) begin : g_learn_idx
     assign learn_port_idx[gi*PW +: PW] = PW'(gi);
   end
+  endgenerate
 
-  for (genvar g = 0; g < NUM_PORTS; g++) begin : g_port
+  generate
+  for (g = 0; g < NUM_PORTS; g++) begin : g_port
 
     // Locally administered fallback address when the port is left unassigned.
     localparam logic [47:0] MAC_G =
@@ -298,6 +307,7 @@ module sw_switch_core #(
     assign dst_slot[g]                     = tx_slot;
 
   end
+  endgenerate
 
   // --------------------------------------------------------------------------
   // Forwarding address table

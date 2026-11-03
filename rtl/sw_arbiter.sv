@@ -125,13 +125,21 @@ module sw_arbiter #(
   logic [NUM_PORTS*NUM_PORTS-1:0]    f_dst;
   logic [NUM_PORTS*PW-1:0]           f_src;
 
-  for (genvar gf = 0; gf < NUM_PORTS; gf++) begin : g_fields
+  // Quartus's parser rejects the SV inline form `for (genvar gf = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop has to carry an
+  // explicit `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus
+  // accept all forms.  Every generate loop in rtl/ therefore declares its
+  // genvars separately and is explicitly wrapped.
+  genvar gf;
+  generate
+  for (gf = 0; gf < NUM_PORTS; gf++) begin : g_fields
     assign f_drop[gf]                              = desc_q[gf][TAG_DROP];
     assign f_flood[gf]                             = desc_q[gf][TAG_FLD];
     assign f_len [gf*SW_LEN_W   +: SW_LEN_W]       = desc_q[gf][TAG_LEN  +: SW_LEN_W];
     assign f_dst [gf*NUM_PORTS  +: NUM_PORTS]      = desc_q[gf][TAG_DSTM +: NUM_PORTS];
     assign f_src [gf*PW         +: PW]             = desc_q[gf][TAG_SRC  +: PW];
   end
+  endgenerate
 
   // --------------------------------------------------------------------------
   // Decode the latched descriptor.
@@ -158,7 +166,9 @@ module sw_arbiter #(
   logic [NUM_PORTS-1:0]              t_flood;
   logic [NUM_PORTS*SW_LEN_W-1:0]     beats_of;
 
-  for (genvar gd = 0; gd < NUM_PORTS; gd++) begin : g_decode
+  genvar gd;
+  generate
+  for (gd = 0; gd < NUM_PORTS; gd++) begin : g_decode
     assign t_drop [gd] = desc_valid[gd] && f_drop[gd];
     assign t_flood[gd] = desc_valid[gd] && f_flood[gd];
     assign t_len  [gd*SW_LEN_W  +: SW_LEN_W] =
@@ -169,6 +179,7 @@ module sw_arbiter #(
     assign beats_of[gd*SW_LEN_W +: SW_LEN_W] =
         (t_len[gd*SW_LEN_W +: SW_LEN_W] + SW_LEN_W'(SW_BEAT_BYTES - 1)) >> 3;
   end
+  endgenerate
 
   // --------------------------------------------------------------------------
   // Frame admission
@@ -255,14 +266,19 @@ module sw_arbiter #(
   logic [SW_LEN_W-1:0]   grant_beats;
 
   // The candidate scan starts at the round-robin pointer and wraps once around the
-  // port list.  `rr_order[ro]` is the port visited at scan slot `ro`, i.e.
-  // (rr_ptr + ro) mod NUM_PORTS; it is one packed vector rather than a block-local
+  // port list.  `rr_order[slot]` is the port visited at scan slot `slot`, i.e.
+  // (rr_ptr + slot) mod NUM_PORTS; it is one packed vector rather than a block-local
   // inside the process, so the block has no declarations and a port count that is
   // not a power of two still wraps correctly (integer arithmetic, not a mask).
+  // The genvar is `slot`, not `ro`, because the scan process below already uses
+  // a loop variable of that name (a module-scope genvar would shadow it).
   logic [PW*NUM_PORTS-1:0] rr_order;
-  for (genvar ro = 0; ro < NUM_PORTS; ro++) begin : g_rr_order
-    assign rr_order[ro*PW +: PW] = PW'((int'(rr_ptr) + int'(ro)) % NUM_PORTS);
+  genvar slot;
+  generate
+  for (slot = 0; slot < NUM_PORTS; slot++) begin : g_rr_order
+    assign rr_order[slot*PW +: PW] = PW'((int'(rr_ptr) + int'(slot)) % NUM_PORTS);
   end
+  endgenerate
 
   always_comb begin
     grant_now   = 1'b0;
@@ -523,9 +539,12 @@ module sw_arbiter #(
   logic [CPY_W-1:0]     tx_copies;  ///< how many copies start this clock
   logic [31:0]          tx_octets_inc;
 
-  for (genvar gc = 0; gc < NUM_PORTS; gc++) begin : g_tx_copy
+  genvar gc;
+  generate
+  for (gc = 0; gc < NUM_PORTS; gc++) begin : g_tx_copy
     assign tx_copy_b[gc] = beat_write && beat_fr[gc];
   end
+  endgenerate
 
   /// Population count of a port mask.
   ///
@@ -589,12 +608,15 @@ module sw_arbiter #(
   assign stat_o[32*int'(SW_STAT_TX_STALLED) +: 32] = cnt_tx_stalled;
   // The remaining counters belong to the receive path and the CAM; they are
   // zeroed here and summed by the top level.
-  for (genvar gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+  genvar gk;
+  generate
+  for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
     if ((gk != int'(SW_STAT_TX_FRAMES)) && (gk != int'(SW_STAT_TX_OCTETS)) &&
         (gk != int'(SW_STAT_TX_STALLED))) begin : g_stat_zero_other
       assign stat_o[32*gk +: 32] = 32'd0;
     end
   end
+  endgenerate
 
   // The `flood` and `src` descriptor fields are produced by the receive port
   // and kept for debug/observability; the fabric forwards on `dst_mask` alone.

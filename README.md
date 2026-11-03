@@ -12,6 +12,7 @@ implementation flow down to GDSII.
 |---|---|
 | `rtl/` | the design. One file per block, `sw_<block>.sv` / module `sw_<block>` |
 | `tb/` | the self-checking testbenches; never synthesised, never linted by CI |
+| `board/` | FPGA board shells — Quartus II projects with their own top, pins and build scripts (currently `de2_115/`, Terasic DE2-115, dual-port MII 100 Mbit/s) |
 | `ci/` | the CI toolchain contract (`check-toolchain.sh`) and the toolchain image definition (`toolchain/Dockerfile`) |
 | `librelane/` | the physical implementation flow (`config.json`, constraints, and its own README) |
 | `Makefile` | every gate; the target list is documented in its own header |

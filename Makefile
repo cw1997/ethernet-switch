@@ -15,11 +15,11 @@
 #                    yosys on PATH; not part of `all`, but it *is* a CI gate -
 #                    see the comment above the target)
 #
-#  `rtl`, `lint` and `synth` each run THREE top modules - sw_switch_gmii (the
-#  default GMII front-end), sw_switch_mii and sw_switch_rmii - because the
-#  three per-interface wrappers give every configuration its own pin list and
-#  generate code, and a wrapper that is never elaborated is a wrapper that
-#  silently rots.
+#  `rtl`, `lint` and `synth` each run FOUR top modules - sw_switch_gmii (the
+#  default GMII front-end), sw_switch_mii, sw_switch_rmii, and the DE2-115
+#  board top sw_de2_115_top (board/de2_115/quartus_ii) - because the
+#  per-interface wrappers and the board shell each give the design its own pin
+#  list, and a top that is never elaborated is a top that silently rots.
 #    make clean      remove build products
 #
 #  Tools
@@ -76,6 +76,15 @@ TB_COMMON := \
   $(TB_DIR)/sw_rec_q.sv \
   $(TB_DIR)/sw_gmii_if.sv
 
+# The DE2-115 board shell (board/de2_115/quartus_ii) has a top of its own: it
+# wires the MII wrapper to the board's two PHYs, divides the 50 MHz board
+# oscillator down to the 25 MHz MII TX_CLK and drives the buttons and LEDs.
+# It is pure RTL - no PLL, no vendor primitive - so it goes through the same
+# three gates as the rtl/ tops; a board top that only Quartus ever compiles
+# would rot exactly like an rtl/ wrapper that is never elaborated.
+BOARD_DIR      := board/de2_115/quartus_ii/hdl
+BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/sw_de2_115_top.sv
+
 IVFLAGS := -g2012 -I $(RTL_DIR) -I $(TB_DIR)
 
 # Block level testbenches: one top per block, no cross-port models needed.
@@ -98,22 +107,24 @@ all: lint mii rmii unit sim param
 # ---------------------------------------------------------------------------
 # Elaborate the RTL on its own.  This is the synthesis-style check: it catches
 # anything that only works because a testbench happens to drive it.  Run for
-# all three top modules: each per-interface wrapper has its own pin list and
-# generate code, so a wrapper that is only elaborated in one place can break
-# in another without any testbench noticing.
+# all four top modules: each per-interface wrapper has its own pin list and
+# generate code, and the board shell has its own clocking, so a top that is
+# only elaborated in one place can break in another without any testbench
+# noticing.
 # ---------------------------------------------------------------------------
 rtl: | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_gmii.vvp -s sw_switch_gmii $(RTL_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_mii.vvp -s sw_switch_mii $(RTL_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_rmii.vvp -s sw_switch_rmii $(RTL_SRCS)
-	@echo "RTL elaborates cleanly (sw_switch_gmii, sw_switch_mii and sw_switch_rmii tops)"
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_de2_115_top.vvp -s sw_de2_115_top $(BOARD_TOP_SRCS)
+	@echo "RTL elaborates cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
 
 $(BUILD):
 	@mkdir -p $(BUILD)
 
 # ---------------------------------------------------------------------------
 # Lint.  -Wall plus the default error policy, so any warning fails the build.
-# All three top modules, for the same reason as `rtl` above.
+# All four top modules, for the same reason as `rtl` above.
 # ---------------------------------------------------------------------------
 lint: | $(BUILD)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
@@ -122,7 +133,9 @@ lint: | $(BUILD)
 	  -I$(RTL_DIR) --top-module sw_switch_mii $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
 	  -I$(RTL_DIR) --top-module sw_switch_rmii $(RTL_SRCS)
-	@echo "RTL lints clean (sw_switch_gmii, sw_switch_mii and sw_switch_rmii tops)"
+	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
+	  -I$(RTL_DIR) --top-module sw_de2_115_top $(BOARD_TOP_SRCS)
+	@echo "RTL lints clean (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
 
 # ---------------------------------------------------------------------------
 # Block level and fabric testbenches.  These are seconds rather than minutes and
@@ -264,17 +277,18 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 # ---------------------------------------------------------------------------
 # The script has to reach yosys as a single line: a backslash-newline inside the
 # `-p` argument is passed through as a literal character, and yosys then reads the
-# first file name as if it were a command.  $(1) carries the top module: all
-# three per-interface wrappers are read, because each has its own pin list and
-# generate code, and yosys is the only gate that sees all three the way the
-# flow will.
-YOSYS_SCRIPT = read_verilog -defer -noautowire -sv -I$(RTL_DIR) -DSYNTHESIS $(RTL_SRCS); hierarchy -check -top $(1) -nokeep_prints -nokeep_asserts; synth -top $(1) -flatten; stat
+# first file name as if it were a command.  $(1) carries the top module and $(2)
+# the file list: all three per-interface wrappers plus the DE2-115 board shell
+# are read, because each has its own pin list and generate code, and yosys is
+# the only gate that sees them the way the flows will.
+YOSYS_SCRIPT = read_verilog -defer -noautowire -sv -I$(RTL_DIR) -DSYNTHESIS $(2); hierarchy -check -top $(1) -nokeep_prints -nokeep_asserts; synth -top $(1) -flatten; stat
 
 synth:
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_gmii)'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_mii)'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_rmii)'
-	@echo "synthesises cleanly (sw_switch_gmii, sw_switch_mii and sw_switch_rmii tops)"
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_gmii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_mii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_rmii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_de2_115_top,$(BOARD_TOP_SRCS))'
+	@echo "synthesises cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
 
 clean:
 	rm -rf $(BUILD)

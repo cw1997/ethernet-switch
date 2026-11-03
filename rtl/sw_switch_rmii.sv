@@ -154,7 +154,13 @@ module sw_switch_rmii #(
   );
 
   // Per-port symbol adapters: 2-bit chunks <-> canonical octets.
-  for (genvar g = 0; g < NUM_PORTS; g++) begin : g_port
+  // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see sw_arbiter.sv for the full note).
+  genvar g;
+  generate
+  for (g = 0; g < NUM_PORTS; g++) begin : g_port
     localparam int unsigned BP_G =
         sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
 
@@ -173,6 +179,7 @@ module sw_switch_rmii #(
         .oct_d_i       (tx_oct_data[g*8 +: 8])
     );
   end
+  endgenerate
 
 endmodule : sw_switch_rmii
 

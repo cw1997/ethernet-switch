@@ -19,9 +19,14 @@
 //
 //  A SystemVerilog `package` is the natural home for shared declarations, and
 //  this file used to be one (`sw_switch_pkg`).  It does not survive the
-//  synthesis flow, because the frontend that OpenLane / LibreLane drive for
-//  synthesis (yosys, through `read_verilog -sv`) is much more restricted than
-//  the simulators, and it fails in three separate places:
+//  flow's synthesis frontend (yosys, through `read_verilog -sv`), which is
+//  much more restricted than the simulators, and it fails in three separate
+//  places:
+//
+//  0b. A comment line that begins with the word "synthesis" is read by Quartus
+//      as a `// synthesis <directive>` pragma, which turns prose like
+//      "the synthesis flow" into 'Unrecognized synthesis attribute "flow"'.
+//      This file therefore has no comment line starting with that word.
 //
 //    1. Port declarations.  A package item is not a *constant range* as far as
 //       the frontend is concerned, so a width taken from the package is
