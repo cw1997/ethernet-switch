@@ -1,0 +1,11 @@
+# ---------------------------------------------------------------------------
+#  ethernet_switch.qpf - Quartus project file for the DE2-115 board project.
+#
+#  Open this file in Quartus II (Assignments > Settings holds the rest, in
+#  ethernet_switch.qsf), or build it without the GUI:  build.bat
+# ---------------------------------------------------------------------------
+QUARTUS_VERSION = "13.1"
+DATE = "2026/11/03"
+
+# Project revision
+PROJECT_REVISION = "ethernet_switch"
