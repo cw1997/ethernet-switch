@@ -67,6 +67,17 @@ RTL_SRCS := \
   $(RTL_DIR)/sw_mac_table.sv \
   $(RTL_DIR)/sw_gmii_tx.sv \
   $(RTL_DIR)/sw_tx_port.sv \
+  $(RTL_DIR)/sw_uart.sv \
+  $(RTL_DIR)/sw_mdio.sv \
+  $(RTL_DIR)/sw_phy_monitor.sv \
+  $(RTL_DIR)/sw_monitor_cache.sv \
+  $(RTL_DIR)/sw_monitor_page.sv \
+  $(RTL_DIR)/sw_decimal.sv \
+  $(RTL_DIR)/sw_lcd.sv \
+  $(RTL_DIR)/sw_monitor_display.sv \
+  $(RTL_DIR)/sw_console.sv \
+  $(RTL_DIR)/sw_ratio.sv \
+  $(RTL_DIR)/sw_monitor.sv \
   $(RTL_DIR)/sw_switch_core.sv \
   $(RTL_DIR)/sw_switch_gmii.sv \
   $(RTL_DIR)/sw_switch_mii.sv \
@@ -217,7 +228,8 @@ $(BUILD)/sw_sync_fifo_tb.vvp: | $(BUILD)
 	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_sync_fifo.sv \
 	  $(TB_DIR)/sw_sync_fifo_tb.sv
 
-$(BUILD)/sw_mac_table_tb.vvp: | $(BUILD)
+$(BUILD)/sw_mac_table_tb.vvp: $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_mac_table.sv \
+                            $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mac_table_tb \
 	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_mac_table.sv \
 	  $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv

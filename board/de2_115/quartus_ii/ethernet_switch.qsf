@@ -55,6 +55,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_arbiter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_mac_table.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_gmii_tx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_tx_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_ratio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_monitor.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_gmii.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_mii.sv

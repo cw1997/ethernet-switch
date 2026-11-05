@@ -27,12 +27,12 @@ derive_clock_uncertainty
 # in the clk_50 domain - the documented single-clock limitation of the board
 # shell, see the header of hdl/sw_de2_115_top.sv - so declaring the crossing
 # false is the honest constraint: there is no closure to be had here, and
-# TimeQuest should not pretend otherwise.  MDIO and INT_N are unused inputs.
+# TimeQuest should not pretend otherwise.  MDIO is sampled by the slow Clause 22 controller; INT_N is unused.
 set_false_path -from [get_ports {ENET0_RX_DV ENET0_RX_ER ENET0_RX_DATA[*] \
                                  ENET1_RX_DV ENET1_RX_ER ENET1_RX_DATA[*] \
                                  ENET0_MDIO ENET1_MDIO \
                                  ENET0_INT_N ENET1_INT_N \
-                                 KEY[*]}]
+                                 KEY[*] UART_RXD UART_CTS}]
 
 # The PHY reset outputs and the LEDs have no meaningful clocked relationship
 # with clk_50 from the outside.
@@ -54,5 +54,8 @@ set_output_delay -clock tx_clk0 -min 0.000 [get_ports {ENET0_TX_DATA[*] ENET0_TX
 set_output_delay -clock tx_clk1 -max 5.000 [get_ports {ENET1_TX_DATA[*] ENET1_TX_EN ENET1_TX_ER}]
 set_output_delay -clock tx_clk1 -min 0.000 [get_ports {ENET1_TX_DATA[*] ENET1_TX_EN ENET1_TX_ER}]
 
-# MDC idles low forever; no timing to check.
-set_false_path -to [get_ports {ENET0_MDC ENET1_MDC}]
+# Peripheral outputs are asynchronous to their external consumers. Their
+# protocol setup/hold intervals are generated with enables in the 50 MHz domain.
+set_false_path -to [get_ports {ENET0_MDC ENET1_MDC ENET0_MDIO ENET1_MDIO \
+  HEX0[*] HEX1[*] HEX2[*] HEX3[*] HEX4[*] HEX5[*] HEX6[*] HEX7[*] \
+  LCD_DATA[*] LCD_EN LCD_RW LCD_RS LCD_ON LCD_BLON UART_TXD UART_RTS}]

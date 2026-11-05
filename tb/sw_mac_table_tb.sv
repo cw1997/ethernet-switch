@@ -23,7 +23,10 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-module sw_mac_table_tb;
+module sw_mac_table_tb #(
+  parameter int unsigned NUM_SETS = 2,
+  parameter int unsigned NUM_WAYS = 2
+);
 
   // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
   // compilation-unit scope (`rtl/sw_defs.sv`) and so need no import.
@@ -31,8 +34,6 @@ module sw_mac_table_tb;
 
   localparam int unsigned NUM_PORTS = 2;
   localparam int unsigned PW        = 1;
-  localparam int unsigned NUM_SETS  = 2;
-  localparam int unsigned NUM_WAYS  = 2;
   /// Ageing tick: one entry per clock keeps the test fast.
   localparam int unsigned AGE_TICK  = 1;
   /// Idle limit.  The effective idle timeout is
@@ -59,6 +60,9 @@ module sw_mac_table_tb;
   logic [NUM_PORTS*PW-1:0] learn_port;
 
   logic [31:0] entries, hits, misses, learns;
+  logic mon_req=0, mon_valid;
+  logic [31:0] mon_index=0;
+  logic [127:0] mon_entry;
 
   int unsigned errors;
   int unsigned checks;
@@ -73,6 +77,8 @@ module sw_mac_table_tb;
       .AGE_TICK_CYCLES (AGE_TICK),
       .AGE_LIMIT       (AGE_LIMIT)
   ) u_dut (
+      .mon_req_i(mon_req), .mon_index_i(mon_index),
+      .mon_valid_o(mon_valid), .mon_entry_o(mon_entry),
       .clk_i        (clk),
       .rst_ni       (rst_n),
       .flush_i      (flush),
@@ -154,6 +160,21 @@ module sw_mac_table_tb;
     end
   endtask
 
+  task automatic scan_mac(input sw_mac_t address, input bit expected, input int unsigned expected_port);
+    int unsigned found;
+    found=0;
+    for(int unsigned i=0;i<NUM_SETS*NUM_WAYS;i++)begin
+      @(negedge clk);mon_req=1;mon_index=32'(i);
+      @(negedge clk);mon_req=0;
+      if(!mon_valid)$fatal(1,"CAM monitor response missing");
+      if(mon_entry[96] && mon_entry[47:0]==address)begin
+        found++;
+        expect_eq(mon_entry[95:64],expected_port,"monitor reports learned port");
+      end
+    end
+    expect_eq(found,expected?1:0,"monitor enumeration matches learned/expired/flush state");
+  endtask
+
   initial begin
     req        = '0;
     mac        = '0;
@@ -173,6 +194,11 @@ module sw_mac_table_tb;
     $display(" sw_mac_table_tb: %0d ports, %0d sets, %0d ways, ageing on",
              NUM_PORTS, NUM_SETS, NUM_WAYS);
     $display("=====================================================================");
+
+    @(negedge clk);mon_req=1;mon_index=32'(NUM_SETS*NUM_WAYS);
+    @(negedge clk);mon_req=0;
+    expect_eq(mon_valid,1,"out-of-range management request completes");
+    expect_eq(mon_entry[96],0,"out-of-range management entry is invalid");
 
     // ---- miss on an empty table ------------------------------------------
     do_lookup(0, MAC_A);
@@ -214,6 +240,10 @@ module sw_mac_table_tb;
     expect_hit(0, 1'b1, 1, "MAC_A relocated to port 1");
     expect_eq(entries, 3, "relocation does not create a second entry");
 
+    scan_mac(MAC_A,1'b1,1);
+    scan_mac(MAC_B,1'b1,0);
+    scan_mac(MAC_C,1'b1,1);
+
     // ---- flush -------------------------------------------------------------
     // Driven on the falling edge like every other input, for the same reason.
     @(negedge clk);
@@ -225,6 +255,7 @@ module sw_mac_table_tb;
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b0, 0, "lookup after the flush");
     expect_eq(entries, 0, "entry counter after the flush");
+    scan_mac(MAC_A,1'b0,0);
 
     // ---- ageing -------------------------------------------------------------
     // The table was flushed above, so the entry below is learnt fresh.  The
@@ -248,6 +279,7 @@ module sw_mac_table_tb;
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b0, 0, "entry expired by ageing");
     expect_eq(entries, 0, "entry counter after ageing");
+    scan_mac(MAC_A,1'b0,0);
 
     $display("-----------------------------------------------------------------------");
     $display(" hits %0d, misses %0d, learns %0d, entries %0d", hits, misses, learns, entries);

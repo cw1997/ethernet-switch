@@ -1,109 +1,112 @@
 # DE2-115 Quartus II 工程
 
-把本仓库的以太网交换核心跑到 Terasic **DE2-115** 开发板上的 Quartus II 工程,
-双端口 **MII / 100BASE-TX**,连同一条 Windows 一键编译脚本。
+双端口 100M 全双工 MII 交换机，带 PHY 状态、参数化监控、UART Console、LED、
+LCD 和数码管。顶层为 `hdl/sw_de2_115_top.sv`，器件为 `EP4CE115F29C7`。
+JP1 必须置于 **MII**，JP7 保持默认 2.5 V。
 
-## 目录内容
+## 编译与连接
 
-| 文件 | 说明 |
-|---|---|
-| `ethernet_switch.qpf` | Quartus 工程文件(GUI 从这里打开) |
-| `ethernet_switch.qsf` | 工程设置:器件、源文件、引脚、IO 电平、宏 |
-| `de2_115.sdc` | TimeQuest 时序约束 |
-| `hdl/sw_de2_115_top.sv` | 板级顶层(纯 RTL,无任何厂商原语) |
-| `build.bat` | Windows 编译脚本(探测工具 → 完整编译 → PASS/FAIL) |
-
-顶层 `sw_de2_115_top` 实例化 `sw_switch_mii #(.NUM_PORTS(2), .CLK_FREQ_HZ(50_000_000))`,
-两个端口固定 100 Mbit/s。它是纯 RTL,因此也被仓库门禁覆盖:
-`make lint`、`make rtl`、`make synth` 会把它当作第 4 个顶层一起检查。
-
-## 环境要求
-
-* **Quartus II 13.0sp1 / 13.1 Web Edition**(DE2-115 官方配套版本),或任何仍支持
-  Cyclone IV E 的 Quartus(到 Quartus Prime 18.1 为止;19.1 起官方移除了 Cyclone IV)。
-* 安装时勾选 **Cyclone IV E 器件库**(缺了它会在 Fitter 阶段才报"器件不存在",
-  `build.bat` 的探测会直接把这种安装判为不可用)。
-* 与仓库主门禁(Verilator/Icarus/yosys,走 WSL)完全无关;Quartus 只用于这颗
-  Cyclone IV。
-
-## 快速开始
-
-命令行(推荐):
+安装支持 Cyclone IV E 的 Quartus II 13.0sp1/13.1 Web Edition 及器件库。
 
 ```bat
-cd board\de2_115\quartus_ii
-build.bat                 :: 自动探测 Quartus 并完整编译
-build.bat C:\altera\13.1\quartus   :: 指定安装路径
-build.bat clean           :: 清理 db\、incremental_db\、output_files\ 等
+build.bat
+build.bat C:\altera\13.1\quartus
 ```
 
-结尾打印 `BUILD PASS`,并在 `output_files\` 下生成 `ethernet_switch.sof`(编程文件)。
-失败时打印 `BUILD FAIL` 并提示查看 `output_files\*.rpt`。
+GUI 可打开 `ethernet_switch.qpf`。产物为 `output_files/ethernet_switch.sof`。
+QSF 包含源文件、引脚和电平，SDC 包含时钟及板级约束。个别板卡使用 C8 速度等级，
+请按实际器件修改 QSF 的 DEVICE。网口对端须支持自协商 100M 全双工。
 
-GUI 等价操作:双击 `ethernet_switch.qpf` → **Processing → Start Compilation**。
+## 按键与页面
 
-## 板级设置(上电前必看)
+- KEY0：按下保持系统复位。
+- KEY1：清空 MAC 表，每次按下触发一次。
+- KEY2：上一页；KEY3：下一页。
+- 页面为汇总、端口0、端口1，首尾循环。LCD 与数码管共用页面，复位默认汇总。
+- 功能按键消抖 20 ms；KEY2/KEY3 同时按下不切页。
+- 页面控制按 `NUM_PORTS` 生成 N+1 页；板上实际连接两个网口。
 
-| 项目 | 设置 |
-|---|---|
-| **JP1 跳线** | **MII 模式**(2-3 短接)。出厂默认 RGMII(1-2),不改跳线收发不通 |
-| 网口 | ENET0、ENET1 各接一根网线(对端须支持 100M 自协商) |
-| KEY[0] | 系统复位(按下保持复位) |
-| KEY[1] | 清空 MAC 地址表(每按一次发一个 flush 脉冲) |
-| LEDG[0] | 心跳(~1.5 Hz,设计在跑) |
-| LEDG[1] | CAM 查表活动(命中/未命中/学习) |
-| LEDR[0] / LEDR[1] | RX / TX 流量活动(统计计数器位折叠) |
+## 显示
 
-## 时钟架构
+`HEX7..4` 为 RX pps，`HEX3..0` 为 TX pps。达到 10000 时除以 1000 显示整数
+kpps；LEDG4/5 分别指示 RX/TX 单位。不依赖小数点。
 
-* 核心时钟 = 板上 50 MHz 晶振(`CLOCK_50`)直接驱动,**无 PLL、无厂商原语**。
-  核心是单时钟设计(见根 README "One clock, and clock enables instead of clocks"),
-  100 Mbit/s 的八位组节拍由 `sw_byte_period(50 MHz, 100M) = 4` 的时钟使能产生。
-* MII 要求每端口一个 25 MHz `TX_CLK`,由板级顶层用**负沿翻转触发器**分频产生:
-  50% 占空,上升沿与发送数据边沿错开半个周期(10 ns),且该对齐与数据相位无关。
-  IEEE 802.3 对 MAC 的建立时间要求是 15 ns;本结构在纯 RTL 下能保证的是
-  10 ns,SDC 把它花成"引脚处 ≥5 ns 建立 + ≤5 ns 布线偏斜"交给 TimeQuest 把关,
-  取舍细节见 `hdl/sw_de2_115_top.sv` 的注释。
+LCD 两行分别为 RX/TX，末尾 k 表示 kbit/s，六位十进制值向下取整。前八字符为
+ALL 时表示汇总，否则是零起始端口号的八位十六进制。例如 `00000000R100000k`
+表示端口0 RX 为 100000 kbit/s。没有有效采样时显示横线。
 
-## 引脚分配
+绿色 LED：0 心跳，1 采样和 PHY 就绪，2/3 两端口收发允许，4/5 RX/TX 的 kpps
+单位，6/7/8 分别指示汇总/端口0/端口1。
 
-全部取自 Terasic / Altera University Program 官方 DE2-115 引脚表
-(`DE2_115.qsf`),IO 电平照抄:ENET 组 2.5 V,按键/LED 2.5 V,`CLOCK_50` 3.3-V LVTTL。
-注意:
+红色 LED：0..3 为 P0 RX/TX、P1 RX/TX 活动，保持 100 ms；4/5 端口错误，6 PHY
+管理错误，7 Console 错误，8 队列窗口峰值达到 224/256 节拍，9..17 为四个收发
+方向的平均负载条，每格 10%。错误灯保持至复位，具体原因使用串口查询。
 
-* PHY 复位脚在板上叫 **`ENETx_RESET_N`**(不是 RST_N),已按官方名对齐。
-* 器件是 `EP4CE115F29C7`。个别批次的板子焊的是 C8 速度等级——如果下载时报
-  JTAG ID 不匹配,把 `.qsf` 里 `DEVICE` 一行改成 `EP4CE115F29C8` 即可。
+## 参数与串口
 
-## 已知限制(如实声明)
+`REFRESH_INTERVAL_MS=500` 配置采样毫秒数，必须为正。活动保持、消抖、PHY 轮询
+独立计时。pps 和 bit/s 按实际窗口换算，不直接使用半秒计数。
 
-1. **只有 10/100 Mbit/s。** DE2-115 的 88E1111 只把 4 位数据线接到 FPGA
-   (JP1 在 RGMII/MII 之间选择),物理上不支持完整 8 位 GMII;RGMII 千兆需要
-   一个带 DDR IO 和时钟偏移控制的 `sw_rgmii` 适配模块,本仓库还没有。
-2. **速度固定 100 M。** 没有 MDIO 管理(MDC 恒低,PHY 保持上电默认:自协商
-   开启、MII 模式)。对端自协商结果是 10M 时,RTL 仍按 100M 的节拍收发,帧会
-   收错——对端请用千兆/百兆自适应的现代设备。
-3. **RX 侧没有异步 FIFO。** PHY 的 RX 数据来自它自己的 RX_CLK,与核心 50 MHz
-   异步;顶层直接在核心域采样,这是根 README "The PHY interface" 一节声明的
-   板级壳责任,演示/课程场景可用,正式产品需要加 CDC。
-4. **TX_CLK 建立时间 10 ns,低于 IEEE 的 15 ns**(见上,取舍写在代码注释里)。
+串口编译期默认参数：
 
-## 验证状态
+- `UART_BAUD_RATE=115200`
+- `UART_DATA_BITS=8`
+- `UART_PARITY=SW_UART_PARITY_NONE`
+- `UART_STOP_BITS=1`
+- `UART_FLOW_CONTROL=SW_UART_FLOW_NONE`
 
-* `sw_de2_115_top` 已纳入仓库门禁:`make lint / rtl / unit / sim / param / synth`
-  全部通过(Verilator -Wall、Icarus、yosys 四个顶层)。
-* 在本机的 Quartus Prime Lite 25.1std(无 Cyclone IV 器件库)上验证到
-  **Analysis & Synthesis 阶段全绿**:QSF 每个键被接受、全部 RTL 解析并通过
-  综合生成网表(`db\ethernet_switch.rtlv_sg_swap.cdb` 检查点)。器件级的
-  Fitter/装配/时序分析需要带 Cyclone IV E 器件库的安装,请在目标机器上
-  (Quartus II 13.0sp1/13.1 Web Edition)执行 `build.bat` 完成一次完整编译,
-  预期产物 `output_files\ethernet_switch.sof`。
-* 为了让 RTL 被 Quartus 接受,本仓库顺带修了三处 Quartus 专属的可移植性问题
-  (内联 genvar、隐式 generate、以 "synthesis" 开头的注释),并把 CRC 查表从
-  `initial` 块改为纯函数(Quartus 对 initial 块初始化的内存病态缓慢,实测
-  每实例 27+ CPU 分钟不收敛)。全部规则记录在 `AGENTS.md` §2.4;这些改动
-  行为不变,由既有回归证明。
-* 已知观察:25.1std 对本设计的 map 后期阶段(状态机处理之后)异常缓慢
-  (75+ CPU 分钟未完成);13.1 的解析器/综合器是另一套实现,若在目标机器上
-  遇到 map 超长,请把 `output_files\ethernet_switch.map.rpt` 里最后一条
-  Elaborating/Processing 信息记录下来再排查。
+Console 支持 7/8 位、无/奇/偶校验、1/2 停止位及 RTS/CTS；独立 UART 另支持
+5/6 位。FPGA 侧 RTS/CTS 低有效，已连接 UART_RTS/UART_CTS；None 模式无需握手线。
+使用板载 RS-232，终端默认 115200/8N1/无流控。
+
+```text
+help
+status
+port 0
+mac all
+mac 1
+```
+
+支持 CR/LF/CRLF；端口参数是十进制零起始编号。输出为带字段名及单位的十六进制
+整数，每条统计命令固定一份快照。一次处理一条命令；超长、非法、忙时输入有诊断。
+详见[监控说明](../../../docs/monitor.zh-Hans.md)和[完整 ABI](../../../docs/monitor.md)。
+
+## PHY 管理
+
+释放复位后等待 20 ms，MDIO 逐地址探测 88E1111，板卡默认地址为 ENET0=16、
+ENET1=17。仅通告 100M 全双工，关闭其他速率和暂停帧能力，再重启自协商。
+每 100 ms 轮询，BMSR 读两次处理 latch-low，再读寄存器17确认速率、双工及解析
+完成。仅确认 100M 全双工后允许收发；未知、无应答或不兼容模式不假报正常。
+管理错误会重试，恢复后错误灯仍保持到复位。
+
+MAC 表是尚未失效的学习记录，不是在线设备列表，老化默认关闭。断链期间不保证
+排队帧交付，不提供重传或动态速率切换。
+
+## 时钟与限制
+
+核心直接使用 50 MHz，无 PLL；100M 八位组周期为四个核心周期。既有 MII TX_CLK
+由负沿翻转分频，与数据边沿相隔 10 ns。SDC 沿用引脚处至少 5 ns 建立及最多 5 ns
+布线偏斜预算；这低于 IEEE 的通用 15 ns 建立要求。
+
+RX 仍直接采样 PHY 异步数据，没有异步 FIFO，不能宣称 RX CDC 已闭合。本次不
+增加千兆或半双工。低速外设使用异步边界 SDC 例外，协议时序由 RTL 计数器和模型
+验证，不等同于外设引脚级静态时序闭合。
+
+引脚依据 [Terasic 官方手册](https://www.terasic.com.tw/attachment/archive/502/DE2_115_User_manual.pdf)
+Tables 4-2/3/4/6/18：ENET、KEY、LED、HEX 为 2.5 V；LCD、UART、CLOCK_50 为
+3.3-V LVTTL。寄存器依据 [Marvell 88E1111 手册](https://www.marvell.com/content/dam/marvell/en/public-collateral/transceivers/marvell-phys-transceivers-alaska-88e1111-datasheet.pdf)。
+
+## 验证
+
+```sh
+ci/check-toolchain.sh
+make lint rtl unit param mii rmii sim synth
+```
+
+`make monitor` 纳入 unit，覆盖统计、UART、页面、LCD、PHY 和 Console。满速及慢
+端口洪泛测试逐周期比较持续管理读取与空闲接口的转发输出。
+
+2026-11-05 本机 Quartus II 13.1 完整编译在综合前因许可报错：
+`Error (292032): You cannot use the specified license with Remote Desktop`。
+本次新增逻辑尚无 Fitter/TimeQuest 及实板验证结果。需在可用许可会话执行
+`build.bat`，确认 50 MHz 和 MII 输出约束，再下载 SOF 检查实际外设。

@@ -81,6 +81,8 @@ module sw_arbiter #(
   input  var logic [NUM_PORTS-1:0]    dst_slot_i,
 
   // ---- statistics -----------------------------------------------------------
+  output logic busy_o,
+  output logic [NUM_PORTS-1:0] stalled_o,
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
@@ -630,6 +632,15 @@ module sw_arbiter #(
                            (desc_valid[i] && (|f_src[i*PW +: PW]));
     end
   end
+
+  assign busy_o = xfer_active || grant_now;
+  genvar gm;
+  generate
+    for (gm = 0; gm < NUM_PORTS; gm++) begin : g_monitor_stall
+      // Attribute a discarded head frame to its ingress, not every blocked destination.
+      assign stalled_o[gm] = stall_fire && (stall_idx == PW'(gm));
+    end
+  endgenerate
 
 endmodule : sw_arbiter
 

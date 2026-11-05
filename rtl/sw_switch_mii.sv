@@ -49,6 +49,9 @@ module sw_switch_mii #(
   /// down.  Defaults to 1000 Mbit/s on every port.
   parameter logic [NUM_PORTS*2-1:0]    PORT_SPEED = {NUM_PORTS{2'd2}},
 
+  /// Telemetry publication interval in milliseconds, rounded up to a clock.
+  parameter int unsigned REFRESH_INTERVAL_MS = 500,
+
   // ---- buffer sizing -------------------------------------------------------
   /// Payload beats buffered per ingress port.  Must be >= ceil(MAX_FRAME_LEN/8)
   /// (190 for the default 1518 octet maximum) or maximum-length frames are
@@ -99,6 +102,13 @@ module sw_switch_mii #(
   output logic [NUM_PORTS-1:0]                mii_tx_er_o,
   output logic [NUM_PORTS*4-1:0]              mii_txd_o,
 
+  // Telemetry PHY metadata is independent of the administrative link enable.
+  input logic [NUM_PORTS*8-1:0] phy_status_i,
+  input logic mon_req_i,
+  input logic [31:0] mon_addr_i,
+  output logic mon_ready_o, mon_valid_o,
+  output logic [31:0] mon_data_o,
+
   // ---- observability -------------------------------------------------------
   output logic [32*SW_STAT_COUNT-1:0]         stat_o
 );
@@ -124,6 +134,7 @@ module sw_switch_mii #(
 
   sw_switch_core #(
       .NUM_PORTS      (NUM_PORTS),
+      .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
       .CLK_FREQ_HZ    (CLK_FREQ_HZ),
       .PORT_MAC       (PORT_MAC),
       .PORT_SPEED     (PORT_SPEED),
@@ -141,6 +152,9 @@ module sw_switch_mii #(
       .CAM_AGE_CYCLES (CAM_AGE_CYCLES),
       .CAM_AGE_LIMIT  (CAM_AGE_LIMIT)
   ) u_core (
+      .phy_status_i (phy_status_i),
+      .mon_req_i (mon_req_i), .mon_addr_i (mon_addr_i),
+      .mon_ready_o (mon_ready_o), .mon_valid_o (mon_valid_o), .mon_data_o (mon_data_o),
       .clk_i         (clk_i),
       .rst_ni        (rst_ni),
       .link_up_i     (link_up_i),

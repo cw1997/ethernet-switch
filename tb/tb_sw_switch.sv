@@ -166,6 +166,7 @@ module tb_sw_switch;
       .CAM_WAYS       (CAM_WAYS),
       .CAM_AGE_EN     (1'b0)
   ) u_dut (
+      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
       .clk_i           (clk_i),
       .rst_ni          (rst_ni),
       .link_up_i       (link_up),

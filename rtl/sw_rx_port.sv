@@ -130,6 +130,7 @@ module sw_rx_port #(
   output logic                    tag_empty_o,
 
   // ---- statistics ----------------------------------------------------------
+  output logic [31:0] used_o,
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
@@ -826,6 +827,8 @@ module sw_rx_port #(
   // --------------------------------------------------------------------------
   // 11. Storage instances
   // --------------------------------------------------------------------------
+  logic [sw_tx_free_width(RX_FIFO_DEPTH):0] data_free;
+  assign used_o = 32'(RX_FIFO_DEPTH) - 32'(data_free);
   logic        data_rd_en;
   logic [63:0] data_rd_data;
 
@@ -844,7 +847,7 @@ module sw_rx_port #(
       .wr_en_i   (data_wr_en),
       .wr_data_i (data_wr_data),
       .full_o    (data_full),
-      .free_o    (),
+      .free_o    (data_free),
       .rd_en_i   (data_rd_en),
       .rd_data_o (data_rd_data),
       .empty_o   (empty_o)

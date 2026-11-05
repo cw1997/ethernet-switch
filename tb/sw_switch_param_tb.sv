@@ -94,6 +94,7 @@ module sw_switch_param_tb;
       .CAM_SETS       (32),
       .CAM_WAYS       (2)
   ) u_dut (
+      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
       .clk_i         (clk),
       .rst_ni        (rst_n),
       .link_up_i     (link_up),

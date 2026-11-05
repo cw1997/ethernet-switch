@@ -46,11 +46,10 @@ framing on each port, parses the header, resolves the destination against a
 learned forwarding database, buffers the frame, and re-serialises it onto the
 destination port(s) with a freshly computed FCS.
 
-It deliberately does **not** contain: a PCS or PMA, autonegotiation, link
-monitoring, flow control (802.3x pause frames), spanning tree, VLAN filtering or
-tag rewriting, priority/QoS scheduling, or any statistics *access* mechanism -
-the counters are exported on a read-only bus and it is up to the integrator to
-read them. What it does contain is the part that is hard to get right and that
+The forwarding core excludes PCS/PMA, 802.3x pause, spanning tree, VLAN filtering
+or rewriting, and QoS. It includes a read-only telemetry interface; the DE2-115
+shell supplies PHY negotiation/status management and a UART console.
+What it does contain is the part that is hard to get right and that
 every switch needs to be correct: frame-boundary handling, store-and-forward
 buffering with no descriptor/payload skew, source-address learning that cannot
 lose an entry under simultaneous access, and a fabric that cannot interleave two
@@ -403,6 +402,12 @@ happens to own them:
 | `CAM_HIT` `CAM_MISS` | lookups that resolved to a port, and that fell through to flooding; both ports hitting in the same clock are both counted |
 | `CAM_LEARN` | insertions written into the table |
 | `CAM_FLUSH` | reported straight from the flush request line rather than counted - it is a one-shot software action, not an event the table can observe |
+
+The additional [telemetry ABI](docs/monitor.md) provides per-port 64-bit counters,
+TX completion statistics, rates, queue/load snapshots, PHY metadata and a separate
+MAC-table reader. `REFRESH_INTERVAL_MS` defaults to 500 ms; all three wrappers
+forward it. See the [DE2-115 guide](board/de2_115/quartus_ii/README.md) for displays,
+page buttons, MDIO and the configurable 115200/8N1 console.
 
 ## Parameters
 

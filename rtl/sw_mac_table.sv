@@ -94,6 +94,10 @@ module sw_mac_table #(
   output logic [31:0]             entries_o,///< entries currently held
   output logic [31:0]             hits_o,    ///< lookups that resolved
   output logic [31:0]             misses_o,  ///< lookups that did not resolve
+  input logic mon_req_i,
+  input logic [31:0] mon_index_i,
+  output logic mon_valid_o,
+  output logic [127:0] mon_entry_o,
   output logic [31:0]             learns_o   ///< learn operations performed
 );
 
@@ -860,6 +864,33 @@ module sw_mac_table #(
   assign hits_o    = hits_q;
   assign misses_o  = misses_q;
   assign learns_o  = learns_q;
+
+  localparam int unsigned MON_IDX_W = sw_port_w(NUM_SETS*NUM_WAYS);
+  // Power-of-two padded words keep the management read a word mux. An offset
+  // index*ENT_W instead builds a bit barrel shifter across the complete CAM.
+  logic [NUM_SETS*NUM_WAYS*128-1:0] mon_flat;
+  genvar mr;
+  generate
+    for (mr = 0; mr < NUM_SETS*NUM_WAYS; mr++) begin : g_monitor_read
+      assign mon_flat[mr*128 +: 128] = {31'd0, entry_valid(mem[mr]),
+                                       32'(entry_port(mem[mr])), 16'd0, entry_mac(mem[mr])};
+    end
+  endgenerate
+  logic [127:0] mon_entry;
+  assign mon_entry = (mon_index_i < 32'(NUM_SETS*NUM_WAYS)) ?
+                     mon_flat[{mon_index_i[MON_IDX_W-1:0],7'd0} +: 128] : 128'd0;
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      mon_valid_o <= 1'b0;
+      mon_entry_o <= '0;
+    end else begin
+      mon_valid_o <= mon_req_i;
+      if (mon_req_i) begin
+        // Reset/flush wins over reads on the same edge, just as it does for lookup.
+        mon_entry_o <= flush_i ? 128'd0 : mon_entry;
+      end
+    end
+  end
 
 endmodule : sw_mac_table
 

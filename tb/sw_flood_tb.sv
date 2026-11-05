@@ -74,8 +74,25 @@ module sw_flood_tb #(
   logic [NUM_PORTS*8-1:0]      gmii_tx_data;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
+  logic mon_ready, mon_valid;
+  logic [31:0] mon_data;
+  logic [31:0] scan_q=0;
+  logic [31:0] monitor_address;
+  logic [NUM_PORTS-1:0] quiet_tx_en;
+  logic [NUM_PORTS*8-1:0] quiet_tx_data;
+  logic [32*SW_STAT_COUNT-1:0] quiet_stat;
+  int unsigned compared_cycles=0;
+  assign monitor_address = scan_q[8] ? SW_MON_MAC_BASE+{23'd0,scan_q[7:0],1'b0} :
+                           SW_MON_PORT_BASE+{22'd0,scan_q[7:0],2'b00};
+  always @(negedge clk) if(rst_n) begin
+    if(mon_ready) scan_q <= scan_q+32'd1;
+    compared_cycles++;
+    if ({gmii_tx_en,gmii_tx_data,stat} !== {quiet_tx_en,quiet_tx_data,quiet_stat})
+      $fatal(1,"monitor changed output/latency at cycle %0d",compared_cycles);
+  end
   sw_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
+      .REFRESH_INTERVAL_MS (1),
       .CLK_FREQ_HZ    (CLK_FREQ),
       .PORT_MAC       (PORT_MAC),
       .PORT_SPEED     (PORT_SPEED),
@@ -85,6 +102,8 @@ module sw_flood_tb #(
       .CAM_SETS       (CAM_SETS),
       .CAM_WAYS       (CAM_WAYS)
   ) u_dut (
+      .phy_status_i ('0), .mon_req_i (rst_n && mon_ready), .mon_addr_i (monitor_address),
+      .mon_ready_o(mon_ready), .mon_valid_o(mon_valid), .mon_data_o(mon_data),
       .clk_i           (clk),
       .rst_ni          (rst_n),
       .link_up_i       (link_up),
@@ -97,6 +116,32 @@ module sw_flood_tb #(
       .gmii_tx_en_o    (gmii_tx_en),
       .gmii_tx_data_o  (gmii_tx_data),
       .stat_o          (stat)
+  );
+  sw_switch_gmii #(
+      .NUM_PORTS      (NUM_PORTS),
+      .REFRESH_INTERVAL_MS (1),
+      .CLK_FREQ_HZ    (CLK_FREQ),
+      .PORT_MAC       (PORT_MAC),
+      .PORT_SPEED     (PORT_SPEED),
+      .RX_FIFO_DEPTH  (RX_DEPTH),
+      .TX_FIFO_DEPTH  (TX_DEPTH),
+      .TAG_FIFO_DEPTH (TAG_DEPTH),
+      .CAM_SETS       (CAM_SETS),
+      .CAM_WAYS       (CAM_WAYS)
+  ) u_quiet (
+      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
+      .clk_i           (clk),
+      .rst_ni          (rst_n),
+      .link_up_i       (link_up),
+      .flood_mode_i    (flood_mode),
+      .learning_en_i   (learning_en),
+      .cfg_ovr_i       (cfg_ovr),
+      .cam_flush_i     (cam_flush),
+      .gmii_rx_en_i    (gmii_rx_en),
+      .gmii_rx_data_i  (gmii_rx_data),
+      .gmii_tx_en_o    (quiet_tx_en),
+      .gmii_tx_data_o  (quiet_tx_data),
+      .stat_o          (quiet_stat)
   );
 
   // --------------------------------------------------------------------------
@@ -336,7 +381,7 @@ module sw_flood_tb #(
     $display("-----------------------------------------------------------------------");
 
     if (errors == 0) begin
-      $display(" sw_flood_tb: PASSED (%0d checks)", checks);
+      $display(" sw_flood_tb: PASSED (%0d checks), cycle-exact active/quiet monitor comparison passed", checks);
       $finish;
     end else begin
       $fatal(1, " sw_flood_tb: FAILED (%0d of %0d checks failed)", errors, checks);

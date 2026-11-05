@@ -13,6 +13,8 @@
     "rtl/sw_rx_port.sv",
     "rtl/sw_tx_port.sv",
     "rtl/sw_arbiter.sv",
+    "rtl/sw_ratio.sv",
+    "rtl/sw_monitor.sv",
     "rtl/sw_switch_core.sv",
     "rtl/sw_switch_gmii.sv",
     "rtl/sw_switch_mii.sv",

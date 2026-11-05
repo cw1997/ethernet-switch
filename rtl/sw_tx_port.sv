@@ -80,6 +80,8 @@ module sw_tx_port #(
   output logic                                slot_o,   ///< a whole frame still fits
 
   // ---- status / statistics -------------------------------------------------
+  output logic done_o,
+  output logic [SW_LEN_W-1:0] done_len_o,
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
@@ -109,6 +111,8 @@ module sw_tx_port #(
       .fr_start_i (fr_start),
       .fr_len_i   (len_data),
       .tx_busy_o  (tx_busy),
+      .done_o (done_o),
+      .done_len_o (done_len_o),
       .beat_valid_i(!data_empty),
       .beat_data_i (data_rd_data),
       .beat_rd_o  (beat_rd),

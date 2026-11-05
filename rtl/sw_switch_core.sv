@@ -90,6 +90,9 @@ module sw_switch_core #(
   /// down.  Defaults to 1000 Mbit/s on every port.
   parameter logic [NUM_PORTS*2-1:0]    PORT_SPEED = {NUM_PORTS{2'd2}},
 
+  /// Telemetry publication interval in milliseconds, rounded up to a clock.
+  parameter int unsigned REFRESH_INTERVAL_MS = 500,
+
   // ---- buffer sizing -------------------------------------------------------
   /// Payload beats buffered per ingress port.  Must be >= ceil(MAX_FRAME_LEN/8)
   /// (190 for the default 1518 octet maximum) or maximum-length frames are
@@ -143,6 +146,13 @@ module sw_switch_core #(
   output logic [NUM_PORTS-1:0]                tx_oct_en_o,
   output logic [NUM_PORTS*8-1:0]              tx_oct_data_o,
 
+  // Telemetry PHY metadata is independent of the administrative link enable.
+  input logic [NUM_PORTS*8-1:0] phy_status_i,
+  input logic mon_req_i,
+  input logic [31:0] mon_addr_i,
+  output logic mon_ready_o, mon_valid_o,
+  output logic [31:0] mon_data_o,
+
   // ---- observability -------------------------------------------------------
   /// Packed statistics bus, 32 bits per counter, indices per sw_stat_id_e.
   output logic [32*SW_STAT_COUNT-1:0]         stat_o
@@ -163,6 +173,7 @@ module sw_switch_core #(
   // genuinely invalid configuration fails the simulation runs just as before.
 `ifndef SYNTHESIS
   initial begin
+    if ((REFRESH_INTERVAL_MS == 0) || (CLK_FREQ_HZ == 0)) $error("monitor: clock and refresh must be positive");
     if (NUM_PORTS == 0) $error("sw_switch_core: NUM_PORTS must be >= 1");
     if (RX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
       $warning("sw_switch_core: RX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will be dropped as ingress overflow",
@@ -234,6 +245,14 @@ module sw_switch_core #(
   end
   endgenerate
 
+  logic [NUM_PORTS*32-1:0] mon_rx_used, mon_tx_used;
+  logic [NUM_PORTS*32*SW_STAT_COUNT-1:0] mon_port_stat;
+  logic [NUM_PORTS-1:0] mon_done, mon_stalled;
+  logic [NUM_PORTS*SW_LEN_W-1:0] mon_len;
+  logic mon_busy;
+  logic cam_mon_req, cam_mon_valid;
+  logic [31:0] cam_mon_index;
+  logic [127:0] cam_mon_entry;
   generate
   for (g = 0; g < NUM_PORTS; g++) begin : g_port
 
@@ -279,6 +298,7 @@ module sw_switch_core #(
         .tag_rd_en_i   (src_tag_rd_en[g]),
         .tag_rd_data_o (src_tag_rd_data[g*TAGW +: TAGW]),
         .tag_empty_o   (src_tag_empty[g]),
+        .used_o (mon_rx_used[g*32 +: 32]),
         .stat_o        (rx_stat[g])
     );
 
@@ -300,11 +320,26 @@ module sw_switch_core #(
         .oct_d_o   (tx_oct_data_o[g*8 +: 8]),
         .free_o     (tx_free),
         .slot_o     (tx_slot),
+        .done_o (mon_done[g]), .done_len_o (mon_len[g*SW_LEN_W +: SW_LEN_W]),
         .stat_o     (tx_stat[g])
     );
 
     assign dst_free[g*(FF_W+1) +: FF_W+1] = tx_free;
     assign dst_slot[g]                     = tx_slot;
+    assign mon_tx_used[g*32 +: 32] = 32'(TX_FIFO_DEPTH) - 32'(tx_free);
+    logic [31:0] stalled_q;
+    always_ff @(posedge clk_i) begin
+      if (!rst_ni) stalled_q <= '0;
+      else if (mon_stalled[g]) stalled_q <= stalled_q + 32'd1;
+    end
+    genvar mk;
+    for (mk = 0; mk < SW_STAT_COUNT; mk++) begin : g_mon_stat
+      if (mk == int'(SW_STAT_TX_STALLED)) begin : g_stall
+        assign mon_port_stat[(g*SW_STAT_COUNT+mk)*32 +: 32] = stalled_q;
+      end else begin : g_other
+        assign mon_port_stat[(g*SW_STAT_COUNT+mk)*32 +: 32] = rx_stat[g][mk*32 +: 32] | tx_stat[g][mk*32 +: 32];
+      end
+    end
 
   end
   endgenerate
@@ -336,6 +371,8 @@ module sw_switch_core #(
       .learn_i      (cam_learn),
       .learn_mac_i  (cam_learn_mac),
       .learn_port_i (learn_port_idx),
+      .mon_req_i (cam_mon_req), .mon_index_i (cam_mon_index),
+      .mon_valid_o (cam_mon_valid), .mon_entry_o (cam_mon_entry),
       .entries_o    (cam_entries),
       .hits_o       (cam_hits),
       .misses_o     (cam_misses),
@@ -367,6 +404,7 @@ module sw_switch_core #(
       .dst_fr_o          (dst_fr),
       .dst_free_i        (dst_free),
       .dst_slot_i        (dst_slot),
+      .busy_o (mon_busy), .stalled_o (mon_stalled),
       .stat_o            (arb_stat)
   );
 
@@ -413,6 +451,17 @@ module sw_switch_core #(
     // CAM can count, so it is reported straight from the request line.
     stat_o[32*int'(SW_STAT_CAM_FLUSH)  +: 32] = cam_flush_i ? 32'd1 : 32'd0;
   end
+
+  sw_monitor #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
+    .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS), .CAM_CAPACITY(CAM_SETS*CAM_WAYS),
+    .CAM_AGE_EN(CAM_AGE_EN)) u_monitor (
+    .clk_i(clk_i), .rst_ni(rst_ni), .port_stat_i(mon_port_stat),
+    .tx_done_i(mon_done & link_up_i), .tx_len_i(mon_len), .phy_status_i(phy_status_i),
+    .rx_used_i(mon_rx_used), .tx_used_i(mon_tx_used), .busy_i(mon_busy),
+    .flush_i(cam_flush_i), .cam_entries_i(cam_entries),
+    .req_i(mon_req_i), .addr_i(mon_addr_i), .ready_o(mon_ready_o),
+    .valid_o(mon_valid_o), .data_o(mon_data_o), .cam_req_o(cam_mon_req),
+    .cam_index_o(cam_mon_index), .cam_valid_i(cam_mon_valid), .cam_entry_i(cam_mon_entry));
 
 endmodule : sw_switch_core
 

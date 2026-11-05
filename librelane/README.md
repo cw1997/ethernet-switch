@@ -3,6 +3,14 @@
 Physical implementation of `sw_switch_gmii` (the GMII top of the switch) down
 to a GDSII, with LibreLane 3.0 and the open-source `sky130A` PDK.
 
+## Telemetry source additions
+
+`VERILOG_FILES` also includes `rtl/sw_ratio.sv` and `rtl/sw_monitor.sv` for the
+core telemetry ABI. No flow variable was added or renamed; the pinned LibreLane
+configuration keys are unchanged. UART/LCD/MDIO peripherals are outside the ASIC
+source set. The new CSR and PHY-metadata pins increase interface and monitoring
+state; rerun placement, routing and timing rather than reusing old physical results.
+
 ## Layout
 
     librelane/

@@ -431,6 +431,41 @@ typedef enum int unsigned {
 /// Number of statistics registers.
 localparam int unsigned SW_STAT_COUNT = 14;
 
+localparam int unsigned SW_MON_ABI_VERSION = 1;
+localparam int unsigned SW_MON_STATUS_WORD = 0;
+localparam int unsigned SW_MON_RX_USED_WORD = 1;
+localparam int unsigned SW_MON_TX_USED_WORD = 2;
+localparam int unsigned SW_MON_RX_PEAK_WORD = 3;
+localparam int unsigned SW_MON_TX_PEAK_WORD = 4;
+localparam int unsigned SW_MON_RX_LOAD_WORD = 5;
+localparam int unsigned SW_MON_TX_LOAD_WORD = 6;
+localparam int unsigned SW_MON_UPTIME_WORD = 44;
+localparam int unsigned SW_MON_WINDOW_WORD = 46;
+localparam int unsigned SW_MON_REFRESH_WORD = 48;
+localparam int unsigned SW_MON_SEQUENCE_WORD = 49;
+localparam int unsigned SW_MON_VALID_WORD = 50;
+localparam int unsigned SW_MON_CAM_ENTRIES_WORD = 51;
+localparam int unsigned SW_MON_CAM_CAPACITY_WORD = 52;
+localparam int unsigned SW_MON_FLUSH_WORD = 53;
+localparam int unsigned SW_MON_BUSY_WORD = 54;
+localparam int unsigned SW_MON_AGE_WORD = 55;
+localparam int unsigned SW_MON_TIME_WORD = 56;
+localparam int unsigned SW_MON_VERSION_WORD = 58;
+localparam logic [31:0] SW_MON_LIVE_CLOCK = 32'hf0;
+localparam logic [31:0] SW_MON_LIVE_FLUSH = 32'hf8;
+// Read-only monitoring ABI, version 1. Byte addresses; little-word-first 64-bit values.
+localparam logic [31:0] SW_MON_PORT_BASE = 32'h1000_0000;
+localparam logic [31:0] SW_MON_MAC_BASE  = 32'h2000_0000;
+localparam int unsigned SW_MON_WORDS = 64;
+localparam int unsigned SW_MON_BITS = 32*SW_MON_WORDS;
+localparam int unsigned SW_MON_COUNTER = 8; // 14 counter pairs, same IDs as stat_o
+localparam int unsigned SW_MON_RATE = 36;   // RX pps, TX pps, RX bit/s, TX bit/s pairs
+localparam int unsigned SW_UART_PARITY_NONE = 0;
+localparam int unsigned SW_UART_PARITY_ODD = 1;
+localparam int unsigned SW_UART_PARITY_EVEN = 2;
+localparam int unsigned SW_UART_FLOW_NONE = 0;
+localparam int unsigned SW_UART_FLOW_RTS_CTS = 1;
+
 `ifdef VERILATOR
 /* verilator lint_on UNUSEDSIGNAL */
 /* verilator lint_on UNUSEDPARAM */
