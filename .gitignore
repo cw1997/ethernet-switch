@@ -52,3 +52,7 @@ board/de2_115/quartus_ii/*.srf
 *.swp
 *~
 .DS_Store
+
+# Local AI assistant working directories
+.workbuddy/
+.zcode/
