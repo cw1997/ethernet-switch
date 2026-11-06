@@ -57,12 +57,12 @@ module sw_gmii_rx #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
-  input  logic        clk_i,
-  input  logic        rst_ni,
+  input  var logic        clk_i,
+  input  var logic        rst_ni,
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
-  input  logic        oct_en_i,   ///< octet-stream enable from the front-end
-  input  logic [7:0]  oct_d_i,    ///< octet from the front-end
+  input  var logic        oct_en_i,   ///< octet-stream enable from the front-end
+  input  var logic [7:0]  oct_d_i,    ///< octet from the front-end
 
   // ---- core beat interface -------------------------------------------------
   output logic        beat_valid_o,   ///< a 64-bit beat is available

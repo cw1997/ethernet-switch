@@ -81,19 +81,19 @@ module sw_switch_rmii #(
   parameter int unsigned CAM_AGE_CYCLES = 1_000_000,
   parameter int unsigned CAM_AGE_LIMIT  = 4
 ) (
-  input  logic                                clk_i,
-  input  logic                                rst_ni,   ///< active-low reset
+  input  var logic                                clk_i,
+  input  var logic                                rst_ni,   ///< active-low reset
 
   // ---- control -------------------------------------------------------------
-  input  logic [NUM_PORTS-1:0]                link_up_i,   ///< port is enabled
-  input  logic [1:0]                          flood_mode_i,
-  input  logic                                learning_en_i,
-  input  logic                                cfg_ovr_i,   ///< use run-time config
-  input  logic                                cam_flush_i, ///< flush the CAM
+  input  var logic [NUM_PORTS-1:0]                link_up_i,   ///< port is enabled
+  input  var logic [1:0]                          flood_mode_i,
+  input  var logic                                learning_en_i,
+  input  var logic                                cfg_ovr_i,   ///< use run-time config
+  input  var logic                                cam_flush_i, ///< flush the CAM
 
   // ---- RMII front-end pins -------------------------------------------------
-  input  logic [NUM_PORTS-1:0]                rmii_crs_dv_i,
-  input  logic [NUM_PORTS*2-1:0]              rmii_rxd_i,
+  input  var logic [NUM_PORTS-1:0]                rmii_crs_dv_i,
+  input  var logic [NUM_PORTS*2-1:0]              rmii_rxd_i,
   output logic [NUM_PORTS-1:0]                rmii_tx_en_o,
   output logic [NUM_PORTS*2-1:0]              rmii_txd_o,
 

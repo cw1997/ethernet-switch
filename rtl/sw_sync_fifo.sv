@@ -41,24 +41,24 @@ module sw_sync_fifo #(
   /// Occupancy / free-space counter width: one extra bit for the DEPTH+1 state.
   parameter int unsigned CNT_W  = ADDR_W + 1
 ) (
-  input  logic            clk_i,
-  input  logic            rst_ni,
+  input  var logic            clk_i,
+  input  var logic            rst_ni,
 
   // ---- abort (rewind) ------------------------------------------------------
-  input  logic            undo_i,        ///< rewind the write pointer
-  input  logic [CNT_W-1:0] undo_cnt_i,   ///< number of entries to discard
+  input  var logic            undo_i,        ///< rewind the write pointer
+  input  var logic [CNT_W-1:0] undo_cnt_i,   ///< number of entries to discard
 
   // ---- hard flush ----------------------------------------------------------
-  input  logic            flush_i,       ///< drop every buffered entry
+  input  var logic            flush_i,       ///< drop every buffered entry
 
   // ---- write port ----------------------------------------------------------
-  input  logic            wr_en_i,
-  input  logic [WIDTH-1:0] wr_data_i,
+  input  var logic            wr_en_i,
+  input  var logic [WIDTH-1:0] wr_data_i,
   output logic            full_o,
   output logic [CNT_W-1:0] free_o,       ///< entries that can still be written
 
   // ---- read port (FWFT) ----------------------------------------------------
-  input  logic            rd_en_i,
+  input  var logic            rd_en_i,
   output logic [WIDTH-1:0] rd_data_o,    ///< head entry, valid while !empty_o
   output logic            empty_o
 );

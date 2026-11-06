@@ -73,22 +73,22 @@ module sw_mac_table #(
   /// Ageing countdown reload value; 0 expires an entry on the next sweep.
   parameter int unsigned AGE_LIMIT       = 0
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
-  input  logic                    flush_i,   ///< invalidate every entry
+  input  var logic                    clk_i,
+  input  var logic                    rst_ni,
+  input  var logic                    flush_i,   ///< invalidate every entry
 
   // ---- lookup ports: one per ingress port, one clock of latency ------------
-  input  logic [NUM_PORTS-1:0]    req_i,
-  input  logic [NUM_PORTS*48-1:0] mac_i,
+  input  var logic [NUM_PORTS-1:0]    req_i,
+  input  var logic [NUM_PORTS*48-1:0] mac_i,
   output logic [NUM_PORTS-1:0]    hit_o,     ///< a valid entry matched
   /// One-hot learned egress port, one NUM_PORTS-wide vector per lookup port.
   output logic [NUM_PORTS*NUM_PORTS-1:0] port_o,
 
   // ---- learn ports: one per ingress port, serialised internally -----------
-  input  logic [NUM_PORTS-1:0]    learn_i,
-  input  logic [NUM_PORTS*48-1:0] learn_mac_i,
+  input  var logic [NUM_PORTS-1:0]    learn_i,
+  input  var logic [NUM_PORTS*48-1:0] learn_mac_i,
   /// Ingress port index of every learn port (`learn_port_i[p]` == p).
-  input  logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
+  input  var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
 
   // ---- status counters -----------------------------------------------------
   output logic [31:0]             entries_o,///< entries currently held

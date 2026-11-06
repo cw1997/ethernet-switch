@@ -86,6 +86,9 @@
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
 //  the design free of `timescale warnings in mixed RTL/testbench compiles.
 // ---------------------------------------------------------------------------
+// Module inputs explicitly use var logic: Vivado rejects the implicit net
+// kind of input logic under default_nettype none. The data type and interface
+// widths are unchanged; this keeps the no-implicit-net protection intact.
 `timescale 1ns/1ps
 
 `ifndef SW_DEFS_SV

@@ -110,12 +110,12 @@ module sw_rmii #(
   /// multiple of 4: every octet time carries exactly four 2-bit chunk windows.
   parameter int unsigned BYTE_PERIOD = 4
 ) (
-  input  logic       clk_i,
-  input  logic       rst_ni,
+  input  var logic       clk_i,
+  input  var logic       rst_ni,
 
   // ---- RMII receive pins (synchronous to clk_i) ----------------------------
-  input  logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
-  input  logic [1:0] rmii_rxd_i,
+  input  var logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
+  input  var logic [1:0] rmii_rxd_i,
 
   // ---- RMII transmit pins --------------------------------------------------
   output logic       rmii_tx_en_o,
@@ -126,8 +126,8 @@ module sw_rmii #(
   output logic       oct_en_o,
   output logic [7:0] oct_d_o,
   // transmit direction: from sw_tx_port
-  input  logic       oct_en_i,
-  input  logic [7:0] oct_d_i
+  input  var logic       oct_en_i,
+  input  var logic [7:0] oct_d_i
 );
 
   // Chunk window length.  The elaboration check below rejects anything that

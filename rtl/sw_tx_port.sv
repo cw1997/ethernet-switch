@@ -43,14 +43,14 @@ module sw_tx_port #(
   parameter int unsigned TX_FIFO_DEPTH  = 256,   ///< egress beats buffered
   parameter int unsigned LEN_FIFO_DEPTH = 8      ///< frame length descriptors
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
+  input  var logic                    clk_i,
+  input  var logic                    rst_ni,
 
   // ---- fabric write side ---------------------------------------------------
-  input  logic                    wr_en_i,     ///< a payload beat is offered
-  input  logic [63:0]             wr_data_i,
-  input  logic [SW_LEN_W-1:0]     wr_len_i,    ///< valid together with `wr_fr_i`
-  input  logic                    wr_fr_i,     ///< this beat starts a new frame
+  input  var logic                    wr_en_i,     ///< a payload beat is offered
+  input  var logic [63:0]             wr_data_i,
+  input  var logic [SW_LEN_W-1:0]     wr_len_i,    ///< valid together with `wr_fr_i`
+  input  var logic                    wr_fr_i,     ///< this beat starts a new frame
 
   // ---- canonical octet transmit interface ----------------------------------
   output logic                    oct_en_o,

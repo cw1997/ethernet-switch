@@ -9,15 +9,16 @@
 #                    in its fast and slow-port forms
 #    make mii        the full switch with the MII pin front-end (sw_switch_mii)
 #    make rmii       the full switch with the RMII pin front-end (sw_switch_rmii)
+#    make vivado     synchronous eight-port MII Vivado board-template regression
 #    make sim        the main four-port switch testbench
 #    make param      the parameterisation testbench (3 ports, 50 MHz)
 #    make synth      read + elaborate + synthesise the RTL with yosys (needs
 #                    yosys on PATH; not part of `all`, but it *is* a CI gate -
 #                    see the comment above the target)
 #
-#  `rtl`, `lint` and `synth` each run FOUR top modules - sw_switch_gmii (the
-#  default GMII front-end), sw_switch_mii, sw_switch_rmii, and the DE2-115
-#  board top sw_de2_115_top (board/de2_115/quartus_ii) - because the
+#  `rtl`, `lint` and `synth` each run FIVE top modules - sw_switch_gmii (the
+#  default GMII front-end), sw_switch_mii, sw_switch_rmii, and the two
+#  board tops sw_de2_115_top and sw_vivado_top - because the
 #  per-interface wrappers and the board shell each give the design its own pin
 #  list, and a top that is never elaborated is a top that silently rots.
 #    make clean      remove build products
@@ -84,6 +85,7 @@ TB_COMMON := \
 # would rot exactly like an rtl/ wrapper that is never elaborated.
 BOARD_DIR      := board/de2_115/quartus_ii/hdl
 BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/sw_de2_115_top.sv
+VIVADO_TOP_SRCS := $(RTL_SRCS) board/vivado/hdl/sw_vivado_top.sv
 
 IVFLAGS := -g2012 -I $(RTL_DIR) -I $(TB_DIR)
 
@@ -100,14 +102,14 @@ UNIT_TBS := sw_crc32_tb sw_sync_fifo_tb sw_mac_table_tb sw_mii_tb sw_rmii_tb
 # of minutes.
 FLOOD_TBS := sw_flood_tb sw_flood_tb_slow
 
-.PHONY: all rtl lint unit mii rmii sim param synth clean
+.PHONY: all rtl lint unit mii rmii vivado sim param synth clean
 
-all: lint mii rmii unit sim param
+all: lint mii rmii vivado unit sim param
 
 # ---------------------------------------------------------------------------
 # Elaborate the RTL on its own.  This is the synthesis-style check: it catches
 # anything that only works because a testbench happens to drive it.  Run for
-# all four top modules: each per-interface wrapper has its own pin list and
+# all five top modules: each per-interface wrapper has its own pin list and
 # generate code, and the board shell has its own clocking, so a top that is
 # only elaborated in one place can break in another without any testbench
 # noticing.
@@ -117,14 +119,15 @@ rtl: | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_mii.vvp -s sw_switch_mii $(RTL_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_rmii.vvp -s sw_switch_rmii $(RTL_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_de2_115_top.vvp -s sw_de2_115_top $(BOARD_TOP_SRCS)
-	@echo "RTL elaborates cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_vivado_top.vvp -s sw_vivado_top $(VIVADO_TOP_SRCS)
+	@echo "RTL elaborates cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
 
 $(BUILD):
 	@mkdir -p $(BUILD)
 
 # ---------------------------------------------------------------------------
 # Lint.  -Wall plus the default error policy, so any warning fails the build.
-# All four top modules, for the same reason as `rtl` above.
+# All five top modules, for the same reason as `rtl` above.
 # ---------------------------------------------------------------------------
 lint: | $(BUILD)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
@@ -135,14 +138,16 @@ lint: | $(BUILD)
 	  -I$(RTL_DIR) --top-module sw_switch_rmii $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
 	  -I$(RTL_DIR) --top-module sw_de2_115_top $(BOARD_TOP_SRCS)
-	@echo "RTL lints clean (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
+	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
+	  -I$(RTL_DIR) --top-module sw_vivado_top $(VIVADO_TOP_SRCS)
+	@echo "RTL lints clean (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
 
 # ---------------------------------------------------------------------------
 # Block level and fabric testbenches.  These are seconds rather than minutes and
 # isolate a failure to a single block or to the fabric, so they are the first
 # thing to run.
 # ---------------------------------------------------------------------------
-unit: $(BUILD)/sw_crc32_tb.vvp $(BUILD)/sw_sync_fifo_tb.vvp \
+unit: vivado $(BUILD)/sw_crc32_tb.vvp $(BUILD)/sw_sync_fifo_tb.vvp \
       $(BUILD)/sw_mac_table_tb.vvp $(BUILD)/sw_mii_tb.vvp \
       $(BUILD)/sw_rmii_tb.vvp $(BUILD)/sw_flood_tb.vvp \
       $(BUILD)/sw_flood_tb_slow.vvp
@@ -278,7 +283,7 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 # The script has to reach yosys as a single line: a backslash-newline inside the
 # `-p` argument is passed through as a literal character, and yosys then reads the
 # first file name as if it were a command.  $(1) carries the top module and $(2)
-# the file list: all three per-interface wrappers plus the DE2-115 board shell
+# the file list: all three per-interface wrappers plus both board shells
 # are read, because each has its own pin list and generate code, and yosys is
 # the only gate that sees them the way the flows will.
 YOSYS_SCRIPT = read_verilog -defer -noautowire -sv -I$(RTL_DIR) -DSYNTHESIS $(2); hierarchy -check -top $(1) -nokeep_prints -nokeep_asserts; synth -top $(1) -flatten; stat
@@ -288,7 +293,17 @@ synth:
 	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_mii,$(RTL_SRCS))'
 	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_rmii,$(RTL_SRCS))'
 	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_de2_115_top,$(BOARD_TOP_SRCS))'
-	@echo "synthesises cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii and sw_de2_115_top tops)"
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_vivado_top,$(VIVADO_TOP_SRCS))'
+	@echo "synthesises cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
 
 clean:
 	rm -rf $(BUILD)
+
+# Board template regression uses synchronous MII models, not physical PHY clocks.
+vivado: $(BUILD)/tb_sw_vivado_top.vvp
+	$(VVP) $(BUILD)/tb_sw_vivado_top.vvp
+
+$(BUILD)/tb_sw_vivado_top.vvp: $(VIVADO_TOP_SRCS) $(TB_COMMON) \
+                            $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_vivado_top.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_vivado_top $(VIVADO_TOP_SRCS) \
+	  $(TB_COMMON) $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_vivado_top.sv

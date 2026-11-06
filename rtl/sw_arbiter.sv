@@ -55,16 +55,16 @@ module sw_arbiter #(
   /// 0 disables the drop and stalls instead.
   parameter int unsigned STALL_LIMIT   = 0
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
+  input  var logic                    clk_i,
+  input  var logic                    rst_ni,
 
   // ---- ingress queues -------------------------------------------------------
-  input  logic [NUM_PORTS-1:0]    src_empty_i,        ///< ingress payload FIFO empty
-  input  logic [NUM_PORTS-1:0]    src_tag_empty_i,    ///< ingress tag FIFO empty
+  input  var logic [NUM_PORTS-1:0]    src_empty_i,        ///< ingress payload FIFO empty
+  input  var logic [NUM_PORTS-1:0]    src_tag_empty_i,    ///< ingress tag FIFO empty
   output logic [NUM_PORTS-1:0]    src_tag_rd_en_o,
-  input  logic [NUM_PORTS*sw_tag_width(NUM_PORTS)-1:0] src_tag_rd_data_i,
+  input  var logic [NUM_PORTS*sw_tag_width(NUM_PORTS)-1:0] src_tag_rd_data_i,
   output logic [NUM_PORTS-1:0]    src_data_rd_en_o,
-  input  logic [NUM_PORTS*64-1:0] src_data_rd_data_i,
+  input  var logic [NUM_PORTS*64-1:0] src_data_rd_data_i,
   output logic [NUM_PORTS-1:0]    src_flush_o,
 
   // ---- egress queues --------------------------------------------------------
@@ -72,13 +72,13 @@ module sw_arbiter #(
   output logic [NUM_PORTS*64-1:0] dst_wr_data_o,
   output logic [NUM_PORTS*SW_LEN_W-1:0] dst_wr_len_o,  ///< valid with dst_fr_o
   output logic [NUM_PORTS-1:0]    dst_fr_o,           ///< first beat of a frame
-  input  logic [NUM_PORTS*(sw_tx_free_width(TX_FIFO_DEPTH)+1)-1:0] dst_free_i,
+  input  var logic [NUM_PORTS*(sw_tx_free_width(TX_FIFO_DEPTH)+1)-1:0] dst_free_i,
   /// Per destination: an egress port can still accept one more *complete*
   /// frame.  Separate from `dst_free_i` because a destination has two buffers -
   /// the payload FIFO and the frame length-descriptor FIFO - and a frame with
   /// payload room but no descriptor can never be transmitted.  See the `slot_o`
   /// comment in sw_tx_port for what happens without it.
-  input  logic [NUM_PORTS-1:0]    dst_slot_i,
+  input  var logic [NUM_PORTS-1:0]    dst_slot_i,
 
   // ---- statistics -----------------------------------------------------------
   output logic [32*SW_STAT_COUNT-1:0] stat_o

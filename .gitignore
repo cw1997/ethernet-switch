@@ -56,3 +56,19 @@ board/de2_115/quartus_ii/*.srf
 # Local AI assistant working directories
 .workbuddy/
 .zcode/
+
+# ---- Vivado generated products (keep .xpr, HDL, Tcl and XDC sources) --------
+board/vivado/.Xil/
+board/vivado/vivado.cache/
+board/vivado/vivado.gen/
+board/vivado/vivado.hw/
+board/vivado/vivado.ip_user_files/
+board/vivado/vivado.runs/
+board/vivado/vivado.sim/
+board/vivado/*.jou
+board/vivado/*.str
+board/vivado/*.xpr.bak
+board/vivado/*.xpr.zip
+
+# Vivado batch sessions launched from the repository root
+/.Xil/

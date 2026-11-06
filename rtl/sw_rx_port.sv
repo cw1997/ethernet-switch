@@ -88,19 +88,19 @@ module sw_rx_port #(
   /// Source address learning enable (elaboration-time default).
   parameter logic        LEARNING_EN    = 1'b1
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
-  input  logic                    link_up_i,   ///< port administratively up
+  input  var logic                    clk_i,
+  input  var logic                    rst_ni,
+  input  var logic                    link_up_i,   ///< port administratively up
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
-  input  logic                    oct_en_i,
-  input  logic [7:0]              oct_d_i,
+  input  var logic                    oct_en_i,
+  input  var logic [7:0]              oct_d_i,
 
   // ---- CAM lookup interface (answer valid one clock after the request) ------
   output logic                    cam_req_o,
   output logic [47:0]             cam_mac_o,
-  input  logic                    cam_hit_i,
-  input  logic [NUM_PORTS-1:0]    cam_port_i,
+  input  var logic                    cam_hit_i,
+  input  var logic [NUM_PORTS-1:0]    cam_port_i,
 
   // ---- CAM learn interface -------------------------------------------------
   output logic                    learn_o,
@@ -109,15 +109,15 @@ module sw_rx_port #(
   // ---- configuration -------------------------------------------------------
   // `cfg_ovr_i` selects the run-time configuration ports over the
   // elaboration-time defaults `FLOOD_MODE` / `LEARNING_EN`.
-  input  logic [1:0]              flood_mode_i,
-  input  logic                    learning_en_i,
-  input  logic                    cfg_ovr_i,
+  input  var logic [1:0]              flood_mode_i,
+  input  var logic                    learning_en_i,
+  input  var logic                    cfg_ovr_i,
 
   // ---- payload FIFO read side (driven by the arbiter) ---------------------
   output logic [63:0]             rd_data_o,
   output logic                    empty_o,
-  input  logic                    rd_en_i,     ///< pop the next payload beat
-  input  logic                    flush_i,     ///< discard everything buffered
+  input  var logic                    rd_en_i,     ///< pop the next payload beat
+  input  var logic                    flush_i,     ///< discard everything buffered
 
   // ---- tag FIFO read side (driven by the arbiter) -------------------------
   // The fabric owns the read side of this FIFO: it decides which ingress
@@ -125,7 +125,7 @@ module sw_rx_port #(
   // descriptor has to leave the tag FIFO in the same clock the fabric registers
   // it, otherwise the FIFO stalls, the fabric keeps re-reading the head, and the
   // same frame is forwarded over and over.
-  input  logic                    tag_rd_en_i,  ///< pop the head descriptor
+  input  var logic                    tag_rd_en_i,  ///< pop the head descriptor
   output logic [sw_tag_width(NUM_PORTS)-1:0] tag_rd_data_o,
   output logic                    tag_empty_o,
 

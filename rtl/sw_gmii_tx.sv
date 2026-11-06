@@ -67,17 +67,17 @@ module sw_gmii_tx #(
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
   parameter int unsigned IFG_OCTETS  = SW_IFG_OCTETS
 ) (
-  input  logic        clk_i,
-  input  logic        rst_ni,
+  input  var logic        clk_i,
+  input  var logic        rst_ni,
 
   // ---- frame request -------------------------------------------------------
-  input  logic        fr_start_i,   ///< pulse: begin transmitting a new frame
-  input  logic [SW_LEN_W-1:0] fr_len_i, ///< MAC client data length, FCS excluded
+  input  var logic        fr_start_i,   ///< pulse: begin transmitting a new frame
+  input  var logic [SW_LEN_W-1:0] fr_len_i, ///< MAC client data length, FCS excluded
   output logic        tx_busy_o,    ///< high from fr_start_i until the IFG ends
 
   // ---- frame data source (first-word-fall-through) -------------------------
-  input  logic        beat_valid_i, ///< a beat is available
-  input  logic [63:0] beat_data_i,
+  input  var logic        beat_valid_i, ///< a beat is available
+  input  var logic [63:0] beat_data_i,
   output logic        beat_rd_o,    ///< the current beat was consumed
 
   // ---- canonical octet transmit interface ----------------------------------

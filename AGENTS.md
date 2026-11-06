@@ -22,6 +22,8 @@ tb/            self-checking testbenches.  Never synthesised, never linted by CI
 board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
                project (board top, pins, constraints, build.bat); its top
                sw_de2_115_top is pure RTL and part of the same gates
+               vivado/ is a eight-port MII template; sw_vivado_top is in the same
+               gates and make unit, but physical PHY adaptation is unfinished
 ci/            the CI toolchain contract (check-toolchain.sh)
 librelane/     the physical implementation flow (config.json + README.md)
 Makefile       every gate; the target list is documented in its own header
@@ -34,9 +36,9 @@ that file documents the **MAC interface selection**: the interface-agnostic
 core (`sw_switch_core`) is wrapped by one of three per-interface top modules —
 `sw_switch_gmii` (default GMII), `sw_switch_mii` and `sw_switch_rmii` — and the
 interface in use is chosen by which wrapper is elaborated. `make lint`,
-`make rtl` and `make synth` each run **all four** top modules — the three
-`sw_switch_*` wrappers plus the DE2-115 board top `sw_de2_115_top` — so changing
-a wrapper means making it green in all four; a top that is never compiled
+`make rtl` and `make synth` each run **all five** top modules — the three
+`sw_switch_*` wrappers plus board tops `sw_de2_115_top` and `sw_vivado_top` —
+so changing a wrapper means making it green in all five; a top that is never compiled
 silently rots.
 
 ## 2. The tool flow, and what each tool rejects
@@ -179,6 +181,9 @@ to Verilator, Icarus or yosys:
   restore is not optional: a file that leaves it `none` changes the meaning of
   every name compiled after it, in a file that has nothing to do with the change
   that caused the breakage.
+- Module inputs use `input var logic`: Vivado rejects the implicit net kind of
+  `input logic` under `default_nettype none`. The Vivado board MDIO ports use
+  explicit `tri logic` nets for bidirectional high impedance.
 - `logic` for nets, **never `wire` or `reg`**. Declare and then `assign`; do not
   use the `wire x = expr;` inline form, so that every derived signal in the
   design is declared and driven the same way.
