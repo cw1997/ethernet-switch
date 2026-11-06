@@ -85,6 +85,9 @@ TB_COMMON := \
 # would rot exactly like an rtl/ wrapper that is never elaborated.
 BOARD_DIR      := board/de2_115/quartus_ii/hdl
 BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/sw_de2_115_top.sv
+# The eight-port Vivado template has its own physical pin list. Keep it in
+# lint/rtl/synth even though its PHY clocks and XDC pin locations are reserved;
+# simulator coverage alone would not catch a board-shell frontend regression.
 VIVADO_TOP_SRCS := $(RTL_SRCS) board/vivado/hdl/sw_vivado_top.sv
 
 IVFLAGS := -g2012 -I $(RTL_DIR) -I $(TB_DIR)
@@ -299,7 +302,14 @@ synth:
 clean:
 	rm -rf $(BUILD)
 
-# Board template regression uses synchronous MII models, not physical PHY clocks.
+# ---------------------------------------------------------------------------
+# Eight-port board-template regression. Every ingress floods to seven egresses,
+# then learned traffic crosses every ring boundary (including port 7 -> 0).
+# The existing MII wire models check reconstructed frames/FCS independently;
+# reset and management-pin checks exercise the shell rather than the core alone.
+# This uses the synchronous MII contract, not physical PHY capture/CDC timing.
+# unit depends on this target so CI's existing unit job also covers the board.
+# ---------------------------------------------------------------------------
 vivado: $(BUILD)/tb_sw_vivado_top.vvp
 	$(VVP) $(BUILD)/tb_sw_vivado_top.vvp
 

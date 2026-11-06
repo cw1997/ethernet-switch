@@ -1,9 +1,29 @@
-# Only the 50 MHz core clock is active.
+# ============================================================================
+# File        : timing.xdc
+# Description : Clock and external-delay TEMPLATE for sw_vivado_top.
+#               Only the 50 MHz core clock is active. Commented PHY clocks and
+#               delays describe the future physical MII boundary, not timing
+#               guarantees for today's direct synchronous-model wiring.
+#
+#               Enabling clock declarations alone cannot repair CDC. Capture
+#               data in each PHY domain and implement the clock-domain adapters
+#               before claiming constrained paths between PHY pins and core.
+#               Coordinate port slices with pins.xdc and the board HDL.
+# ============================================================================
+
+# ---- system clock -----------------------------------------------------------
+# A 20 ns period matches CLK_FREQ_HZ=50_000_000 in the fixed board shell.
 create_clock -name sys_clk -period 20.000 [get_ports clk_i]
 
+# ---- per-port physical MII examples (inactive) -------------------------------
 # PHY adaptation/CDC is required before enabling these 100 Mbit/s examples.
 # Replace every <...> using PHY launch/capture edges, tCO, setup/hold and PCB skew.
 # Each RX_CLK and TX_CLK below is an independent PHY output.
+# RX min/max must include PHY launch delay and PCB data/clock skew relative to
+# the chosen RX edge; select -clock_fall as needed by the actual PHY protocol.
+# TX max budgets setup at the PHY, TX min budgets hold (often negative).
+# Preserve both bounds: omitting -min can hide a hold violation even when the
+# setup report is clean. Values may differ across ports and board traces.
 
 # Port 0: data bits [3:0].
 # create_clock -name phy0_rx_clk -period 40.000 [get_ports {mii_rx_clk_i[0]}]
@@ -69,8 +89,12 @@ create_clock -name sys_clk -period 20.000 [get_ports clk_i]
 # set_input_delay -clock phy7_rx_clk -max <RX_MAX_NS> [get_ports {mii_rxd_i[28] mii_rxd_i[29] mii_rxd_i[30] mii_rxd_i[31] mii_rx_dv_i[7] mii_rx_er_i[7]}]
 # set_output_delay -clock phy7_tx_clk -max <TX_MAX_NS> [get_ports {mii_txd_o[28] mii_txd_o[29] mii_txd_o[30] mii_txd_o[31] mii_tx_en_o[7] mii_tx_er_o[7]}]
 
+# ---- asynchronous button and unmanaged PHY controls -------------------------
 # Output -min commonly includes negative hold time.
 # rst_button_ni feeds only the ASYNC_REG chain: add a board-specific exception
 # to the first sampling flop only; never cut the inter-stage timing path.
 # No global false paths/clock groups hide unfinished CDC.
-# PHY reset/MDIO electrical and timing requirements also need board review.
+# PHY reset/MDIO electrical and timing requirements also need board review:
+# there is no management clock or PHY-reset pulse stretcher in this template.
+# Leave these unspecified until a board/PHY contract is available; fabricating
+# delays merely to silence unconstrained-path reports is not timing closure.

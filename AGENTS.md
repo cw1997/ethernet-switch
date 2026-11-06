@@ -323,6 +323,47 @@ is the house style and it is worth keeping:
   somewhere, and the next person needs to know whether the workaround is still
   load-bearing.
 
+The same comment discipline applies to **all newly authored RTL, testbenches,
+board shells, Tcl/XDC files and build-script additions**, not just `rtl/`:
+
+- Follow the existing English house style: a separator-delimited file header
+  with `File` and `Description`, then named sections for configuration, ports,
+  reset/clocking, datapath/control and checking as appropriate. Document the
+  parts that exist; do not add empty boilerplate sections or comment every line.
+- Headers state the interface contract and limits: clock frequency/domain,
+  reset polarity and startup requirements, frame boundaries, packed port/bit
+  mapping and supported configurations where relevant. Keep widths/counts in
+  comments synchronized with the HDL, constraints and regression.
+- Document public ports/parameters and non-obvious internal state at their
+  declarations. Explain units, validity windows, priorities and invariants;
+  explain intentional truncation, wraparound, tie-offs and dummy consumers
+  where they occur. Refer to the shared explanation for repeated declarations
+  rather than duplicating it on every `input var logic` line.
+- A board template must distinguish implemented logic from reserved signals
+  and unfinished PHY/CDC/timing work. A synchronization attribute, unused clock
+  input or placeholder constraint is not proof of safe clock-domain crossing.
+  Say how reset release is sampled and whether power-on initialization,
+  debounce and PHY reset hold time are provided or still required.
+- Testbench comments describe the independent reference/wire model, stimulus
+  phases, expected recipients and failure modes. Explain timeout/watchdog
+  limits and simulator-specific dispatch. Do not claim payload comparison,
+  hardware timing or CDC coverage that the checks do not actually provide.
+- Tcl/build comments explain path anchoring, repeated-run behavior, hierarchy
+  selection and effects on existing projects/run products. XDC comments state
+  which commands are active, the source of physical pin/voltage/delay values,
+  clock/edge assumptions and why an exception is needed. Keep placeholders
+  inactive and preserve DRC severity until board-specific values are known.
+- Tool workarounds name the affected frontend and actual symptom; distinguish
+  a language rule, a documented restriction and a result measured on a tool
+  version. Do not expand a local check into an unverified all-tool claim.
+- Keep comments adjacent to the behavior they explain and update them with
+  every implementation change. For comment-only edits, verify executable
+  tokens/commands and inactive constraint examples remain unchanged; comments
+  can still affect tool pragmas, so retain the restrictions in §2.4.
+- Do not insert comments into strict JSON or hand-annotate generated Vivado
+  project/run files. Put explanations in the authored Tcl/XDC source or README
+  instead; preserve existing tool directives and include-guard semantics.
+
 ---
 
 ## 4. Testbench rules (`tb/`)

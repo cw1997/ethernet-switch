@@ -1,39 +1,77 @@
 // ============================================================================
-// sw_vivado_top: eight-port 100 Mbit/s MII board TEMPLATE, 50 MHz core.
-// RX/TX clocks are PHY inputs reserved for a future clock-domain adapter.
-// The direct data wiring below requires the synchronous sw_mii contract;
-// it is NOT a physical MII MAC. Add CDC, RX preamble/SFD removal and PHY
-// management before attaching real PHYs. TX already includes preamble/FCS.
+//  File        : sw_vivado_top.sv
+//  Description : Eight-port, fixed 100 Mbit/s MII board template for Vivado.
+//                Keeps the switch's control and statistics buses inside the
+//                FPGA; the physical pin list is limited to 138 port bits.
+//
+//                Clock and frame contract:
+//                  * The core runs directly from a 50 MHz board clock. Each
+//                    octet occupies four core clocks, each nibble two clocks.
+//                  * RX_DV opens the first low-nibble window. The RX stream
+//                    starts at the destination MAC and includes the FCS;
+//                    physical PHY preamble/SFD removal is still required.
+//                  * The core already emits TX preamble, SFD and FCS. An
+//                    external adapter must preserve these and the frame gap.
+//
+//                The RX_CLK/TX_CLK inputs are reserved, not capture clocks.
+//                Direct data wiring below assumes the synchronous sw_mii
+//                contract; it provides no CDC or physical MII timing closure.
+//                A real board needs per-port PHY clock adaptation, PHY reset
+//                timing and management before this template can be used.
+//
+//                Port p occupies data bits [4*p +: 4] and status bit p. The
+//                fixed eight-port pin ranges, NUM_PORTS, XDC templates and
+//                board regression must change together when resizing it.
+//
+//  Language    : SystemVerilog; no vendor primitives or power-on initial block.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef SW_VIVADO_TOP_SV
 `define SW_VIVADO_TOP_SV
 `default_nettype none
+
+// Shared speed encodings and the statistics layout remain identical to the
+// rtl/ wrappers. Explicit input var logic avoids the implicit-net error seen
+// in Vivado 2026.1 under default_nettype none, retaining the four-state type.
 `include "sw_defs.sv"
 
 module sw_vivado_top (
-  input  var logic       clk_i,
-  input  var logic       rst_button_ni,
-  input  var logic [7:0] mii_rx_clk_i,
-  input  var logic [7:0] mii_tx_clk_i,
-  input  var logic [7:0] mii_rx_dv_i,
-  input  var logic [7:0] mii_rx_er_i,
-  input  var logic [31:0] mii_rxd_i,
-  output logic [7:0] mii_tx_en_o,
-  output logic [7:0] mii_tx_er_o,
-  output logic [31:0] mii_txd_o,
-  output logic [7:0] phy_reset_no,
-  output logic [7:0] phy_mdc_o,
+  // ---- board clock and mechanical reset ------------------------------------
+  input  var logic       clk_i,          ///< 50 MHz; always running during reset
+  input  var logic       rst_button_ni,  ///< asynchronous, active-low button
+
+  // ---- PHY-supplied clocks (reserved for future clock-domain adapters) ------
+  input  var logic [7:0] mii_rx_clk_i,    ///< PHY RX clocks; currently unused
+  input  var logic [7:0] mii_tx_clk_i,    ///< PHY TX clocks, not FPGA outputs
+
+  // ---- synchronous MII model pins ------------------------------------------
+  input  var logic [7:0] mii_rx_dv_i,     ///< valid for whole octets in this model
+  input  var logic [7:0] mii_rx_er_i,     ///< per-port receive error indication
+  input  var logic [31:0] mii_rxd_i,     ///< low nibble first, port 0 in [3:0]
+  output logic [7:0] mii_tx_en_o,        ///< per-port transmit frame enable
+  output logic [7:0] mii_tx_er_o,        ///< held low: adapter has no TX error source
+  output logic [31:0] mii_txd_o,         ///< port 7 in [31:28], low nibble first
+
+  // ---- PHY reset and unmanaged MDIO ----------------------------------------
+  output logic [7:0] phy_reset_no,       ///< follows synchronized button reset
+  output logic [7:0] phy_mdc_o,          ///< idle low; no management transactions
   // MDIO needs an explicit net kind under default_nettype none in Vivado.
-  inout  tri logic [7:0] phy_mdio_io
+  inout  tri logic [7:0] phy_mdio_io     ///< released; requires external pull-ups
 );
+  // ---- board-fixed configuration -------------------------------------------
+  // At 50 MHz / 100 Mbit/s, sw_byte_period is 4. Its even half-period is
+  // required by sw_mii; these settings do not support PHY speed negotiation.
   localparam int unsigned NUM_PORTS = 8;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
 
+  // ---- reset sampling -------------------------------------------------------
   // No power-on initialization is assumed. Hold the button low across at
   // least three rising clock edges after configuration, then release it.
   // These sampling flops deliberately have no reset: resetting them from
   // the asynchronous button would introduce an asynchronous reset domain.
+  // ASYNC_REG identifies the sampling chain to Vivado; it does not debounce
+  // the button. On release the second stage rises on sample two, and the core
+  // sees that new level on the following edge because all state uses NBA.
   (* ASYNC_REG = "TRUE" *) logic rst_meta_q;
   (* ASYNC_REG = "TRUE" *) logic rst_sync_q;
   logic rst_ni;
@@ -43,19 +81,32 @@ module sw_vivado_top (
   end
   assign rst_ni = rst_sync_q;
 
+  // ---- PHY reset and management defaults -----------------------------------
+  // All PHYs follow the same synchronous reset. No minimum reset pulse or
+  // oscillator-stabilization delay is added; a real PHY may require both.
   assign phy_reset_no = {NUM_PORTS{rst_ni}};
   assign phy_mdc_o = '0;
-  // No MDIO controller: external board pull-ups are required on both lines.
+  // No MDIO controller: external board pull-ups are required on every line.
+  // Keeping the FPGA driver released allows the PHY's straps/defaults to act,
+  // but does not guarantee that those defaults select 100 Mbit/s full duplex.
   assign phy_mdio_io = {NUM_PORTS{1'bz}};
 
+  // ---- switch datapath and fixed control policy -----------------------------
+  // The 448-bit statistics bus stays internal. Making the core itself the
+  // physical top exposes this bus as package pins and causes I/O exhaustion.
   logic [32*SW_STAT_COUNT-1:0] stat;
   sw_switch_mii #(
     .NUM_PORTS(NUM_PORTS),
     .CLK_FREQ_HZ(CLK_FREQ_HZ),
+    // Each packed speed field is exactly two bits; this cast represents the
+    // enum in the replication, rather than truncating an arithmetic result.
     .PORT_SPEED({NUM_PORTS{2'(SW_SPEED_100M)}})
   ) u_switch (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
+    // Ports are administratively enabled without reading PHY link status.
+    // cfg_ovr_i=0 selects the wrapper defaults: learning and unknown-unicast
+    // flooding enabled, with no runtime override or CAM-flush button.
     .link_up_i({NUM_PORTS{1'b1}}),
     .flood_mode_i(2'd1),
     .learning_en_i(1'b1),
@@ -70,12 +121,17 @@ module sw_vivado_top (
     .stat_o(stat)
   );
 
-  // Deliberately reserved; neither PHY clock currently clocks any logic.
+  // ---- deliberate dummy consumers ------------------------------------------
+  // The house unused_* pattern records intentionally unobserved signals
+  // without lint waivers. These reductions add neither a clock monitor nor
+  // synchronizers; neither reserved PHY clock currently clocks any logic.
   logic unused_phy;
   logic unused_stat;
   assign unused_phy = ^{mii_rx_clk_i, mii_tx_clk_i, phy_mdio_io};
   assign unused_stat = ^stat;
 endmodule
 
+// Restore the compilation-unit default so this board file cannot turn an
+// unrelated module's implicit connection into an error merely by file order.
 `default_nettype wire
 `endif // SW_VIVADO_TOP_SV
