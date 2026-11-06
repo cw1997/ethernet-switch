@@ -25,7 +25,7 @@ derive_clock_uncertainty
 # The PHYs drive their RX pins from their own RX_CLK, which is asynchronous to
 # clk_50 by construction (the link partner's clock).  The shell samples them
 # in the clk_50 domain - the documented single-clock limitation of the board
-# shell, see the header of hdl/sw_de2_115_top.sv - so declaring the crossing
+# shell, see the header of hdl/es_switch_de2_115_top.sv - so declaring the crossing
 # false is the honest constraint: there is no closure to be had here, and
 # TimeQuest should not pretend otherwise.  MDIO is sampled by the slow Clause 22 controller; INT_N is unused.
 set_false_path -from [get_ports {ENET0_RX_DV ENET0_RX_ER ENET0_RX_DATA[*] \
@@ -43,7 +43,7 @@ set_false_path -to [get_ports {ENET0_RESET_N ENET1_RESET_N \
 # The PHY latches TXD/TX_EN/TX_ER on rising TX_CLK.  Data changes on clk_50
 # posedges and TX_CLK rises on clk_50 negedges, so every nibble sits 10 ns
 # before one rising edge and 10 ns after the previous one - phase
-# independently (see hdl/sw_de2_115_top.sv).  IEEE 802.3 Clause 22 asks a MAC
+# independently (see hdl/es_switch_de2_115_top.sv).  IEEE 802.3 Clause 22 asks a MAC
 # for 15 ns of setup; this structure guarantees 10 ns of raw offset, and the
 # constraint below spends it as ">= 5 ns of setup at the PHY, <= 5 ns of
 # routing skew between the data and clock output paths", which is what

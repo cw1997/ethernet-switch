@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_arbiter.sv
+//  File        : es_switch_arbiter.sv
 //  Description : Frame scheduler and switching fabric of the Layer-2 switch.
 //
 //                One ingress queue (payload FIFO + tag FIFO) exists per port.
@@ -33,8 +33,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_ARBITER_SV
-`define SW_ARBITER_SV
+`ifndef ES_SWITCH_ARBITER_SV
+`define ES_SWITCH_ARBITER_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -42,14 +42,16 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations (`SW_LEN_W`, `sw_tag_width`, ...) arrive through the
 // include above and are visible at compilation-unit scope, so the port list and
-// the body below can use them directly and no import is needed.  See sw_defs.sv
+// the body below can use them directly and no import is needed.  See es_defs.sv
 // for why a package cannot be used here.
-module sw_arbiter #(
-  parameter int unsigned NUM_PORTS     = 4,
+module es_switch_arbiter #(
+  parameter int unsigned NUM_PORTS     = SW_DEFAULT_NUM_PORTS,
   parameter int unsigned TX_FIFO_DEPTH = 256,
   /// Cycles a blocked head-of-line frame may wait before it is discarded.
   /// 0 disables the drop and stalls instead.
@@ -77,7 +79,7 @@ module sw_arbiter #(
   /// frame.  Separate from `dst_free_i` because a destination has two buffers -
   /// the payload FIFO and the frame length-descriptor FIFO - and a frame with
   /// payload room but no descriptor can never be transmitted.  See the `slot_o`
-  /// comment in sw_tx_port for what happens without it.
+  /// comment in es_switch_tx_port for what happens without it.
   input  var logic [NUM_PORTS-1:0]    dst_slot_i,
 
   // ---- statistics -----------------------------------------------------------
@@ -556,7 +558,7 @@ module sw_arbiter #(
   /// output and never settles - the run hangs with time standing still.  A
   /// function keeps no sensitivity list at all, so the accumulator is safe there
   /// and the logic is unchanged.
-  function automatic logic [31:0] count_copies(input logic [NUM_PORTS-1:0] v);
+  function automatic logic [31:0] count_copies(input var logic [NUM_PORTS-1:0] v);
     logic [31:0] n;
     n = 32'd0;
     for (int unsigned b = 0; b < NUM_PORTS; b++) n = n + {31'd0, v[b]};
@@ -576,8 +578,8 @@ module sw_arbiter #(
   /// written and read inside the same evaluation, which is safe in a function
   /// (no sensitivity list at all) and hangs Icarus in an always_comb.
   function automatic logic [31:0] octets_x_copies(
-      input logic [SW_LEN_W-1:0] len,
-      input logic [CPY_W-1:0]     copies);
+      input var logic [SW_LEN_W-1:0] len,
+      input var logic [CPY_W-1:0]     copies);
     logic [31:0] acc;
     acc = 32'd0;
     for (int unsigned b = 0; b < CPY_W; b++) begin
@@ -642,11 +644,11 @@ module sw_arbiter #(
     end
   endgenerate
 
-endmodule : sw_arbiter
+endmodule : es_switch_arbiter
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_ARBITER_SV
+`endif // ES_SWITCH_ARBITER_SV

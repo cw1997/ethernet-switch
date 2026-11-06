@@ -32,7 +32,7 @@
 // transitive import of the record types is not visible to a subroutine argument
 // type in Icarus Verilog.  The RTL declarations (`sw_byte_period`, `sw_speed_e`)
 // need no import - they arrive at compilation-unit scope through
-// `rtl/sw_defs.sv`, which the DUT pulls in.
+// `rtl/es_defs.sv`, which the DUT pulls in.
 module sw_if_array import sw_tb_pkg::*; #(
   /// Number of switch ports under test.
   parameter int unsigned NUM_PORTS = 4,

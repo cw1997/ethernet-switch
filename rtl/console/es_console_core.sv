@@ -1,12 +1,26 @@
-// Bounded ASCII console over a parameterised UART. A command copies the cache;
-// a slow/paused terminal cannot mix statistical windows or stop the switch.
+// ============================================================================
+//  File        : es_console_core.sv
+//  Description : Bounded ASCII command console with coherent telemetry responses.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Copies the cache before printing. UART or CTS stalls cannot mix snapshots
+//                or block forwarding; malformed and busy input is diagnosed.
+//  Interface   : NUM_PORTS defaults to four. CLK_FREQ_HZ and UART_BAUD_RATE
+//                are in hertz and bits/s; UART_DATA_BITS, PARITY, STOP_BITS and
+//                FLOW_CONTROL select framing. CTS/RTS are active low. image_i
+//                contains aggregate record zero then port records. CSR ownership
+//                is released during UART waits; fault_o reports rejected input.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_CONSOLE_SV
-`define SW_CONSOLE_SV
+`ifndef ES_CONSOLE_CORE_SV
+`define ES_CONSOLE_CORE_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_console #(
-  parameter int unsigned NUM_PORTS = 2,
+`include "es_defs.sv"
+`include "console/es_console_defs.sv"
+`default_nettype none
+// ---- configuration and public interface -------------------------------------
+module es_console_core #(
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS,
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   parameter int unsigned UART_BAUD_RATE = 115200,
   parameter int unsigned UART_DATA_BITS = 8,
@@ -14,14 +28,14 @@ module sw_console #(
   parameter int unsigned UART_STOP_BITS = 1,
   parameter int unsigned UART_FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
-  input logic clk_i, rst_ni, rx_i, cts_ni,
+  input var logic clk_i, rst_ni, rx_i, cts_ni,
   output logic tx_o, rts_no,
-  input logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
-  input logic cache_idle_i,
+  input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
+  input var logic cache_idle_i,
   output logic bus_claim_o, req_o,
   output logic [31:0] addr_o,
-  input logic ready_i, valid_i,
-  input logic [31:0] data_i,
+  input var logic ready_i, valid_i,
+  input var logic [31:0] data_i,
   output logic fault_o
 );
   generate
@@ -29,6 +43,7 @@ module sw_console #(
       SW_CONSOLE_REQUIRES_7_OR_8_DATA_BITS invalid_parameters();
     end
   endgenerate
+  // ---- control state --------------------------------------------------------
   typedef enum logic [3:0] {S_RX, S_PARSE, S_PRINT, S_END, S_MAC_IDLE,
     S_MAC_SEND, S_MAC_WAIT, S_MAC_PRINT, S_MAC_NEXT, S_META_SEND, S_META_WAIT, S_META_PRINT} state_e;
   state_e state_q;
@@ -58,7 +73,7 @@ module sw_console #(
   logic text_empty, unused_rts;
   assign rts_no = (UART_FLOW_CONTROL == SW_UART_FLOW_NONE) ? 1'b0 : (state_q != S_RX);
   assign text_empty = text_left_q == 7'd0;
-  sw_uart #(.CLK_FREQ_HZ(CLK_FREQ_HZ), .BAUD_RATE(UART_BAUD_RATE),
+  es_console_uart #(.CLK_FREQ_HZ(CLK_FREQ_HZ), .BAUD_RATE(UART_BAUD_RATE),
     .DATA_BITS(UART_DATA_BITS), .PARITY(UART_PARITY), .STOP_BITS(UART_STOP_BITS),
     .FLOW_CONTROL(UART_FLOW_CONTROL)) u_uart (
     .clk_i(clk_i), .rst_ni(rst_ni), .rx_i(rx_i), .cts_ni(cts_ni), .tx_o(tx_o), .rts_no(unused_rts),
@@ -66,7 +81,7 @@ module sw_console #(
     .tx_ready_o(tx_ready), .rx_valid_o(rx_valid), .rx_data_o(rx_data), .rx_ready_i(1'b1),
     .parity_error_o(parity_error), .frame_error_o(frame_error), .overflow_o(overflow));
 
-  function automatic logic [35:0] parse(input logic [255:0] cmd, input logic [5:0] len);
+  function automatic logic [35:0] parse(input var logic [255:0] cmd, input var logic [5:0] len);
     logic [3:0] kind;
     logic [31:0] number;
     logic [7:0] ch;
@@ -91,15 +106,15 @@ module sw_console #(
     parse = {kind, number};
   endfunction
   assign parsed = parse(command_q, length_q);
-  function automatic logic [7:0] hexchar(input logic [3:0] x);
+  function automatic logic [7:0] hexchar(input var logic [3:0] x);
     hexchar = (x < 4'd10) ? 8'd48+{4'd0,x} : 8'd55+{4'd0,x};
   endfunction
-  function automatic logic [511:0] value_line(input logic [191:0] label, input logic [63:0] value);
+  function automatic logic [511:0] value_line(input var logic [191:0] label, input var logic [63:0] value);
     logic [127:0] hextext;
     for (int unsigned h = 0; h < 16; h++) hextext[127-h*8 -: 8] = hexchar(value[63-h*4 -: 4]);
     value_line = {label, "=0x", hextext, 16'h0d0a, 152'd0};
   endfunction
-  function automatic logic [191:0] label_for(input logic [5:0] line);
+  function automatic logic [191:0] label_for(input var logic [5:0] line);
     case (line)
       6'd0: label_for="snapshot_seq"; 6'd1: label_for="sample_valid";
       6'd2: label_for="phy_status"; 6'd3: label_for="rx_used_beats";
@@ -179,6 +194,7 @@ module sw_console #(
   assign req_o = (state_q == S_MAC_SEND) || (state_q == S_META_SEND);
   assign addr_o = ((state_q == S_META_SEND) || (state_q == S_META_WAIT)) ?
                   32'hf0+{28'd0,mac_word_q,2'b00} : SW_MON_MAC_BASE+mac_index_q*32'd16+{28'd0,mac_word_q,2'b00};
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_RX; command_q <= '0; length_q <= '0; long_q <= 1'b0;

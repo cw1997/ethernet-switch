@@ -19,14 +19,14 @@ vivado -mode batch -source board/vivado/configure.tcl
 ```
 
 脚本重复执行不会重复添加文件，保留工程器件和已有运行设置。可直接打开
-`vivado.xpr`，设计顶层为 `sw_vivado_top`。约束分为 `constraints/pins.xdc`
+`vivado.xpr`，设计顶层为 `es_switch_vivado_top`。约束分为 `constraints/pins.xdc`
 和 `constraints/timing.xdc`：仅 20 ns 系统时钟约束生效，所有管脚、电压及
 PHY 时序占位均为注释，不会把占位符传给 Vivado。
 
 配置后可在 Tcl Console 检查综合和时钟约束：
 
 ```tcl
-synth_design -no_timing_driven -top sw_vivado_top -part xc7k160tffg676-3
+synth_design -no_timing_driven -top es_switch_vivado_top -part xc7k160tffg676-3
 report_clocks
 report_utilization
 ```
@@ -38,8 +38,8 @@ report_utilization
 ## 排查 507 个 I/O 的放置错误
 
 如果出现 `[Place 30-415]`，且报告列出 `stat_o[447:0]`，说明实现使用了
-`sw_switch_mii` 核心顶层。其默认四端口加上统计／控制总线共 507 个端口位；
-板级顶层 `sw_vivado_top` 只有 138 个端口位，统计总线保留在 FPGA 内部。
+`es_switch_mii` 核心顶层。其默认四端口加上统计／控制总线共 507 个端口位；
+板级顶层 `es_switch_vivado_top` 只有 138 个端口位，统计总线保留在 FPGA 内部。
 
 在已经打开此工程的 Vivado Tcl Console 中执行：
 
@@ -53,8 +53,8 @@ wait_on_run synth_1
 ```
 
 `reset_run synth_1` 会清除可重新生成的综合结果并重置依赖它的实现运行。
-综合成功后再启动实现，不能继续使用旧的 `sw_switch_mii.dcp`。
-配置脚本将设计和仿真顶层固定为 `sw_vivado_top`，关闭自动顶层选择；若另一个
+综合成功后再启动实现，不能继续使用旧的 `es_switch_mii.dcp`。
+配置脚本将设计和仿真顶层固定为 `es_switch_vivado_top`，关闭自动顶层选择；若另一个
 Vivado 窗口仍打开旧工程状态，应在那个窗口也重新执行配置脚本，避免旧设置再次保存。
 修正顶层并不补全模板中的物理引脚和 PHY 时序，接板要求仍见下文。
 
@@ -79,7 +79,7 @@ FPGA 的这些信号连接 PHY 数字侧；RJ45 通过 PHY 及相应磁性器件
 
 1. 根据板卡原理图填写每个管脚的 `PACKAGE_PIN` 和 `IOSTANDARD`，检查 Bank
    VCCO、PHY I/O 电压和时钟管脚能力；模板不猜测任何真实管脚。
-2. 实现每端口 PHY RX/TX 时钟适配及 CDC。当前直接连接到 `sw_switch_mii`
+2. 实现每端口 PHY RX/TX 时钟适配及 CDC。当前直接连接到 `es_switch_mii`
    的同步模型：每个半字节保持两个核心周期，从 RX_DV 上升开始按连续窗口送入。
    简单同步各数据位或忽略 PHY 时钟不能保证多位数据一致性和持续线速接收。
 3. 在 RX 路径识别并去除真实线上的前导码和 SFD，保留目的 MAC 起始的帧及 FCS。

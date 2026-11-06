@@ -1,11 +1,24 @@
-// Parameterised UART. Active-low RTS/CTS are permissions to receive/transmit.
-// CTS is sampled only between characters; a stopped peer cannot truncate a frame.
+// ============================================================================
+//  File        : es_console_uart.sv
+//  Description : Parameterized UART transmitter and receiver.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Samples asynchronous RX/CTS through synchronizers. Ready/valid handshakes
+//                bound buffering; parity, framing and overflow are reported separately.
+//  Interface   : CLK_FREQ_HZ and BAUD_RATE are hertz and bits/s. DATA_BITS,
+//                PARITY and STOP_BITS select framing; FLOW_CONTROL selects CTS.
+//                TX accepts tx_valid_i with tx_ready_o. RX holds data/valid until
+//                rx_ready_i; error outputs diagnose framing, parity and overflow.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_UART_SV
-`define SW_UART_SV
+`ifndef ES_CONSOLE_UART_SV
+`define ES_CONSOLE_UART_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_uart #(
+`include "es_defs.sv"
+`include "console/es_console_defs.sv"
+`default_nettype none
+// ---- configuration and public interface -------------------------------------
+module es_console_uart #(
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   parameter int unsigned BAUD_RATE = 115200,
   parameter int unsigned DATA_BITS = 8,
@@ -13,14 +26,14 @@ module sw_uart #(
   parameter int unsigned STOP_BITS = 1,
   parameter int unsigned FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
-  input logic clk_i, rst_ni, rx_i, cts_ni,
+  input var logic clk_i, rst_ni, rx_i, cts_ni,
   output logic tx_o, rts_no,
-  input logic tx_valid_i,
-  input logic [7:0] tx_data_i,
+  input var logic tx_valid_i,
+  input var logic [7:0] tx_data_i,
   output logic tx_ready_o,
   output logic rx_valid_o,
   output logic [7:0] rx_data_o,
-  input logic rx_ready_i,
+  input var logic rx_ready_i,
   output logic parity_error_o, frame_error_o, overflow_o
 );
   localparam int unsigned PERIOD = (BAUD_RATE == 0) ? 1 : (CLK_FREQ_HZ + BAUD_RATE/2)/BAUD_RATE;
@@ -35,6 +48,7 @@ module sw_uart #(
     end
   endgenerate
   logic rx_meta_q, rx_sync_q, cts_meta_q, cts_sync_q;
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       rx_meta_q <= 1'b1; rx_sync_q <= 1'b1;
@@ -44,7 +58,7 @@ module sw_uart #(
       cts_meta_q <= cts_ni; cts_sync_q <= cts_meta_q;
     end
   end
-  function automatic logic [11:0] frame(input logic [7:0] data);
+  function automatic logic [11:0] frame(input var logic [7:0] data);
     logic [11:0] result;
     logic parity;
     result = '1; result[0] = 1'b0; parity = 1'b0;
@@ -71,6 +85,7 @@ module sw_uart #(
       tx_timer_q <= 32'(PERIOD-1);
     end else tx_timer_q <= tx_timer_q - 32'd1;
   end
+  // ---- control state --------------------------------------------------------
   typedef enum logic [2:0] {S_IDLE, S_START, S_DATA, S_PARITY, S_STOP} state_e;
   state_e state_q;
   logic [31:0] rx_timer_q;

@@ -50,7 +50,7 @@ module tb_sw_switch;
   import sw_tb_pkg::*;
   // The RTL declarations (`SW_STAT_COUNT`, `SW_MAC_BROADCAST`, `sw_is_group`,
   // `sw_is_unicast`, `sw_mac_t`, ...) are at compilation-unit scope: the DUT
-  // pulls in `rtl/sw_defs.sv`, which declares them there, so they are already
+  // pulls in `rtl/es_defs.sv`, which declares them there, so they are already
   // visible in this file and need no import.
 
   // ==========================================================================
@@ -151,7 +151,7 @@ module tb_sw_switch;
   logic [NUM_PORTS*8-1:0]      gmii_tx_d;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
-  sw_switch_gmii #(
+  es_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
       .CLK_FREQ_HZ    (CLK_FREQ),
       .PORT_MAC       (PORT_MAC),
@@ -240,7 +240,7 @@ module tb_sw_switch;
   endfunction
 
   /// Compute the expected egress set for a frame, mirroring the ingress filter
-  /// of sw_rx_port exactly.
+  /// of es_switch_rx_port exactly.
   function automatic logic [NUM_PORTS-1:0] ref_forward(
       input sw_mac_t     dst,
       input sw_mac_t     src,

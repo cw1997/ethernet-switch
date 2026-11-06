@@ -1,15 +1,26 @@
-// Serial unsigned (value * scale) / divisor for telemetry. No datapath handshake.
-// The 128-bit product preserves long sampling intervals; result is floor rounded.
+// ============================================================================
+//  File        : es_monitor_ratio.sv
+//  Description : Serial multiply/divide engine for telemetry rates.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                A start request captures operands; consumers wait for valid before reading
+//                the result. Serial arithmetic stays outside the forwarding path.
+//  Interface   : start_i captures value_i, scale_i and divisor_i while idle.
+//                busy_o spans serial computation; valid_o qualifies result_o.
+//                The fixed-width result is intended for telemetry, not packet flow.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_RATIO_SV
-`define SW_RATIO_SV
+`ifndef ES_MONITOR_RATIO_SV
+`define ES_MONITOR_RATIO_SV
 `default_nettype none
-module sw_ratio (
-  input logic clk_i, rst_ni, start_i,
-  input logic [63:0] value_i, scale_i, divisor_i,
+// ---- configuration and public interface -------------------------------------
+module es_monitor_ratio (
+  input var logic clk_i, rst_ni, start_i,
+  input var logic [63:0] value_i, scale_i, divisor_i,
   output logic busy_o, valid_o,
   output logic [63:0] result_o
 );
+  // ---- control state --------------------------------------------------------
   typedef enum logic [1:0] {S_IDLE, S_MUL, S_DIV} state_e;
   state_e state_q;
   logic [127:0] product_q, factor_q, quotient_q;
@@ -21,6 +32,7 @@ module sw_ratio (
   assign product_next = multiplier_q[0] ? product_q + factor_q : product_q;
   assign busy_o = state_q != S_IDLE;
   assign trial = {remainder_q[63:0], quotient_q[127]};
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_IDLE;

@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_sync_fifo_tb.sv
 //  Description : Unit testbench of the parameterised fall-through FIFO
-//                (`sw_sync_fifo`).
+//                (`es_switch_sync_fifo`).
 //
 //                The FIFO has three facilities that the switch datapath depends
 //                on, and each of them is verified here:
@@ -42,7 +42,7 @@ module sw_sync_fifo_tb;
 
   always #5 clk = ~clk;
 
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (WIDTH),
       .DEPTH (DEPTH)
   ) u_dut (

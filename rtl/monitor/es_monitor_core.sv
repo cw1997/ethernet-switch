@@ -1,34 +1,48 @@
-// Atomic, periodically published switch telemetry. All storage is independent
-// of forwarding. Consumers retry a multiword read if snapshot sequence changes.
+// ============================================================================
+//  File        : es_monitor_core.sv
+//  Description : Atomic telemetry capture and read-only CSR service.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Extends raw counters, stages one sample, computes rates serially and publishes
+//                one sequence atomically. Readers must retry if the sequence changes.
+//  Interface   : Port n occupies the n-th least-significant packed slice.
+//                REFRESH_INTERVAL_MS is a positive millisecond interval;
+//                CLK_FREQ_HZ sets its ceiling-rounded clock count. CAM_CAPACITY
+//                reports table entries, not bytes. req/ready accepts a byte
+//                address; valid qualifies data. CAM requests fetch 128-bit entries.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_MONITOR_SV
-`define SW_MONITOR_SV
+`ifndef ES_MONITOR_CORE_SV
+`define ES_MONITOR_CORE_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_monitor #(
-  parameter int unsigned NUM_PORTS = 4,
+`include "es_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`default_nettype none
+// ---- configuration and public interface -------------------------------------
+module es_monitor_core #(
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS,
   parameter int unsigned CLK_FREQ_HZ = 125_000_000,
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
   parameter int unsigned CAM_CAPACITY = 512,
   parameter logic CAM_AGE_EN = 1'b0
 ) (
-  input logic clk_i, rst_ni,
-  input logic [NUM_PORTS*32*SW_STAT_COUNT-1:0] port_stat_i,
-  input logic [NUM_PORTS-1:0] tx_done_i,
-  input logic [NUM_PORTS*SW_LEN_W-1:0] tx_len_i,
+  input var logic clk_i, rst_ni,
+  input var logic [NUM_PORTS*32*SW_STAT_COUNT-1:0] port_stat_i,
+  input var logic [NUM_PORTS-1:0] tx_done_i,
+  input var logic [NUM_PORTS*SW_LEN_W-1:0] tx_len_i,
   // bits 0 valid, 1 physical link, 2 full duplex, 4:3 speed, 5 management error
-  input logic [NUM_PORTS*8-1:0] phy_status_i,
-  input logic [NUM_PORTS*32-1:0] rx_used_i, tx_used_i,
-  input logic busy_i, flush_i,
-  input logic [31:0] cam_entries_i,
-  input logic req_i,
-  input logic [31:0] addr_i,
+  input var logic [NUM_PORTS*8-1:0] phy_status_i,
+  input var logic [NUM_PORTS*32-1:0] rx_used_i, tx_used_i,
+  input var logic busy_i, flush_i,
+  input var logic [31:0] cam_entries_i,
+  input var logic req_i,
+  input var logic [31:0] addr_i,
   output logic ready_o, valid_o,
   output logic [31:0] data_o,
   output logic cam_req_o,
   output logic [31:0] cam_index_o,
-  input logic cam_valid_i,
-  input logic [127:0] cam_entry_i
+  input var logic cam_valid_i,
+  input var logic [127:0] cam_entry_i
 );
   generate
     if ((NUM_PORTS == 0) || (CLK_FREQ_HZ == 0) || (REFRESH_INTERVAL_MS == 0)) begin : g_invalid
@@ -50,6 +64,7 @@ module sw_monitor #(
   logic [63:0] busy_cycles_q, sampled_busy_q;
   logic [31:0] sequence_q, flushes_q;
   logic capture;
+  // ---- control state --------------------------------------------------------
   typedef enum logic [2:0] {S_IDLE, S_START, S_WAIT, S_PUBLISH} state_e;
   state_e state_q;
   logic [31:0] port_q;
@@ -76,7 +91,8 @@ module sw_monitor #(
         localparam int unsigned IX = p*SW_STAT_COUNT+k;
         logic [31:0] delta;
         assign delta = port_stat_i[IX*32 +: 32] - previous_raw[IX*32 +: 32];
-        always_ff @(posedge clk_i) begin
+        // ---- synchronous state and datapath ---------------------------------------
+  always_ff @(posedge clk_i) begin
           if (!rst_ni) begin
             counters[IX*64 +: 64] <= '0;
             previous_raw[IX*32 +: 32] <= '0;
@@ -104,7 +120,7 @@ module sw_monitor #(
   endgenerate
 
   // Functions contain reductions so Icarus never self-triggers an always_comb.
-  function automatic logic [SW_MON_BITS-1:0] aggregate(input logic [TOTAL_BITS-1:0] image);
+  function automatic logic [SW_MON_BITS-1:0] aggregate(input var logic [TOTAL_BITS-1:0] image);
     logic [SW_MON_BITS-1:0] result;
     result = image[0 +: SW_MON_BITS];
     for (int unsigned c = 0; c < SW_STAT_COUNT; c++) begin
@@ -145,7 +161,7 @@ module sw_monitor #(
     end
   end
   assign ratio_start = state_q == S_START;
-  sw_ratio u_ratio (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(ratio_start),
+  es_monitor_ratio u_ratio (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(ratio_start),
     .value_i(ratio_value), .scale_i(ratio_scale), .divisor_i(ratio_divisor),
     .busy_o(ratio_busy), .valid_o(ratio_valid), .result_o(ratio_result));
   logic unused_ratio_busy;

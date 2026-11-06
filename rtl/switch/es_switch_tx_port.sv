@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_tx_port.sv
+//  File        : es_switch_tx_port.sv
 //  Description : Egress datapath of one Layer-2 switch port.
 //
 //                The fabric queues a frame as a run of 64-bit beats plus a
@@ -23,8 +23,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_TX_PORT_SV
-`define SW_TX_PORT_SV
+`ifndef ES_SWITCH_TX_PORT_SV
+`define ES_SWITCH_TX_PORT_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -32,13 +32,15 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations (`SW_LEN_W`, `sw_tx_free_width`) arrive through the
 // include above and are visible at compilation-unit scope, which is what lets
-// them appear in a port range.  See sw_defs.sv for why a package cannot be used
+// them appear in a port range.  See es_defs.sv for why a package cannot be used
 // here.
-module sw_tx_port #(
+module es_switch_tx_port #(
   parameter int unsigned BYTE_PERIOD    = 1,     ///< clk_i cycles per octet
   parameter int unsigned TX_FIFO_DEPTH  = 256,   ///< egress beats buffered
   parameter int unsigned LEN_FIFO_DEPTH = 8      ///< frame length descriptors
@@ -103,7 +105,7 @@ module sw_tx_port #(
   logic fr_start;
   assign fr_start = !len_empty && !tx_busy;
 
-  sw_gmii_tx #(
+  es_switch_gmii_tx #(
       .BYTE_PERIOD (BYTE_PERIOD)
   ) u_gmii_tx (
       .clk_i      (clk_i),
@@ -122,7 +124,7 @@ module sw_tx_port #(
 
   // ---- egress beat FIFO -----------------------------------------------------
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (64),
       .DEPTH (TX_FIFO_DEPTH)
   ) u_data_fifo (
@@ -145,7 +147,7 @@ module sw_tx_port #(
   // Written once per frame: `wr_en_i` pulses for every beat, `wr_fr_i` marks
   // the first one.
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (SW_LEN_W),
       .DEPTH (LEN_FIFO_DEPTH)
   ) u_len_fifo (
@@ -173,7 +175,7 @@ module sw_tx_port #(
   // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
-  // all forms (see sw_arbiter.sv for the full note).
+  // all forms (see es_switch_arbiter.sv for the full note).
   genvar gk;
   generate
   for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
@@ -193,11 +195,11 @@ module sw_tx_port #(
     end
   end
 
-endmodule : sw_tx_port
+endmodule : es_switch_tx_port
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_TX_PORT_SV
+`endif // ES_SWITCH_TX_PORT_SV

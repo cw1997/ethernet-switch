@@ -75,124 +75,214 @@
   <FileSets Version="1" Minor="32">
     <FileSet Name="sources_1" Type="DesignSrcs" RelSrcDir="$PSRCDIR/sources_1" RelGenDir="$PGENDIR/sources_1">
       <Filter Type="Srcs"/>
-      <File Path="$PPRDIR/../../rtl/sw_defs.sv">
+      <File Path="$PPRDIR/../../rtl/console/es_console_core.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/console/es_console_defs.sv">
         <FileInfo SFType="VHeader">
           <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
-          <Attr Name="IsVisible" Val="1"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_arbiter.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/console/es_console_uart.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_crc32.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/es_defs.sv">
+        <FileInfo SFType="VHeader">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_gmii_rx.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_cache.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_gmii_tx.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_core.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_mac_table.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_decimal.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_mii.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_defs.sv">
+        <FileInfo SFType="VHeader">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_rx_port.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_display.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_switch_core.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_lcd.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_switch_mii.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_mdio.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_sync_fifo.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_page.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_tx_port.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_phy.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/hdl/sw_vivado_top.sv">
-        <FileInfo>
+      <File Path="$PPRDIR/../../rtl/monitor/es_monitor_ratio.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_rmii.sv">
-        <FileInfo>
-          <Attr Name="AutoDisabled" Val="1"/>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_arbiter.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_switch_gmii.sv">
-        <FileInfo>
-          <Attr Name="AutoDisabled" Val="1"/>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_core.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../rtl/sw_switch_rmii.sv">
-        <FileInfo>
-          <Attr Name="AutoDisabled" Val="1"/>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_crc32.sv">
+        <FileInfo SFType="SVerilog">
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_defs.sv">
+        <FileInfo SFType="VHeader">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_gmii.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_gmii_rx.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_gmii_tx.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_mac_table.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_mii.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_mii_adapter.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_rmii.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_rmii_adapter.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_rx_port.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_sync_fifo.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/../../rtl/switch/es_switch_tx_port.sv">
+        <FileInfo SFType="SVerilog">
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/hdl/es_switch_vivado_top.sv"><FileInfo SFType="SVerilog"><Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/><Attr Name="UsedIn" Val="simulation"/></FileInfo></File>
       <Config>
         <Option Name="DesignMode" Val="RTL"/>
-        <Option Name="TopModule" Val="sw_vivado_top"/>
+        <Option Name="TopModule" Val="es_switch_vivado_top"/>
         <Option Name="VerilogDir" Val="$PPRDIR/../../rtl"/>
       </Config>
     </FileSet>
@@ -202,11 +292,13 @@
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="implementation"/>
         </FileInfo>
       </File>
       <File Path="$PPRDIR/constraints/timing.xdc">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="implementation"/>
         </FileInfo>
       </File>
@@ -218,7 +310,7 @@
       <Filter Type="Srcs"/>
       <Config>
         <Option Name="DesignMode" Val="RTL"/>
-        <Option Name="TopModule" Val="sw_vivado_top"/>
+        <Option Name="TopModule" Val="es_switch_vivado_top"/>
         <Option Name="TransportPathDelay" Val="0"/>
         <Option Name="TransportIntDelay" Val="0"/>
         <Option Name="SelectedSimModel" Val="rtl"/>

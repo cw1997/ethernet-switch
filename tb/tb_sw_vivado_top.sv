@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb_sw_vivado_top.sv
+//  File        : tb_es_switch_vivado_top.sv
 //  Description : Eight-port Vivado board-shell regression using the existing
 //                synchronous MII wire models at 50 MHz / 100 Mbit/s.
 //
@@ -14,7 +14,7 @@
 //                reset proves that the highest-numbered port can recover and
 //                that learned state is cleared before forwarding resumes.
 //
-//                Scope: this exercises the sw_mii synchronous frame contract.
+//                Scope: this exercises the es_switch_mii synchronous frame contract.
 //                Reserved PHY clocks are deliberately not phase locked to the
 //                core, but no data is sampled using them; this is not a CDC,
 //                PHY initialization or physical MII timing test.
@@ -47,7 +47,7 @@ module tb_sw_vivado_top;
   logic [NUM_PORTS-1:0] rx_dv, rx_er, tx_en, tx_er, phy_reset_n, mdc;
   logic [NUM_PORTS*4-1:0] rxd, txd;
   tri [NUM_PORTS-1:0] mdio;
-  sw_vivado_top u_dut (
+  es_switch_vivado_top u_dut (
     .clk_i(clk), .rst_button_ni(rst_button_n),
     .mii_rx_clk_i({NUM_PORTS{rx_clk}}), .mii_tx_clk_i({NUM_PORTS{tx_clk}}),
     .mii_rx_dv_i(rx_dv), .mii_rx_er_i(rx_er), .mii_rxd_i(rxd),

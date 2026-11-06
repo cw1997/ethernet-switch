@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_rmii.sv
+//  File        : es_switch_rmii_adapter.sv
 //  Description : RMII symbol adapter: converts the 2-bit chunk-serial RMII
 //                pins into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the RMII pins.
@@ -94,8 +94,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_RMII_SV
-`define SW_RMII_SV
+`ifndef ES_SWITCH_RMII_ADAPTER_SV
+`define ES_SWITCH_RMII_ADAPTER_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -103,9 +103,11 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
-module sw_rmii #(
+module es_switch_rmii_adapter #(
   /// `clk_i` cycles per octet time of the canonical octet stream.  Must be a
   /// multiple of 4: every octet time carries exactly four 2-bit chunk windows.
   parameter int unsigned BYTE_PERIOD = 4
@@ -142,7 +144,7 @@ module sw_rmii #(
 `ifndef SYNTHESIS
   initial begin
     if ((BYTE_PERIOD < 4) || (BYTE_PERIOD % 4 != 0)) begin
-      $error("sw_rmii: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
+      $error("es_switch_rmii_adapter: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
              BYTE_PERIOD);
     end
   end
@@ -266,11 +268,11 @@ module sw_rmii #(
                         (tx_cidx == 2'd2) ? oct_d_i[5:4] :
                                             oct_d_i[7:6];   // tx_cidx == 2'd3
 
-endmodule : sw_rmii
+endmodule : es_switch_rmii_adapter
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_RMII_SV
+`endif // ES_SWITCH_RMII_ADAPTER_SV

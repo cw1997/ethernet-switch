@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_gmii_rx.sv
+//  File        : es_switch_gmii_rx.sv
 //  Description : Canonical octet-stream receive adapter.
 //
 //                Converts the octet-serial, clock-enable qualified receive
@@ -40,8 +40,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_GMII_RX_SV
-`define SW_GMII_RX_SV
+`ifndef ES_SWITCH_GMII_RX_SV
+`define ES_SWITCH_GMII_RX_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -49,11 +49,13 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations arrive through the include above and are visible at
-// compilation-unit scope.  See sw_defs.sv for why a package cannot be used here.
-module sw_gmii_rx #(
+// compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
+module es_switch_gmii_rx #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
@@ -146,7 +148,7 @@ module sw_gmii_rx #(
   assign crc_clr = !oct_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_crc32 u_crc (
+  es_switch_crc32 u_crc (
       .clk_i     (clk_i),
       .rst_ni    (rst_ni),
       .en_i      (crc_en),
@@ -296,11 +298,11 @@ module sw_gmii_rx #(
     end
   end
 
-endmodule : sw_gmii_rx
+endmodule : es_switch_gmii_rx
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_GMII_RX_SV
+`endif // ES_SWITCH_GMII_RX_SV

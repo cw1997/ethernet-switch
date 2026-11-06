@@ -1,11 +1,20 @@
+// ============================================================================
+//  File        : sw_tx_completion_tb.sv
+//  Description : Simulation support and self-checking regression for sw_tx_completion_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 `timescale 1ns/1ps
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
 module sw_tx_completion_case #(parameter int BP=1)(output logic finished=0);
   logic clk=0,rst=0,start=0;always #5 clk=~clk;
   logic busy,done,en,rd;logic[7:0] data;
   logic [SW_LEN_W-1:0] length=SW_LEN_W'(64),done_len;
   int octet_clocks=0,completions=0,expected_octets=76,expected_length=64;
-  sw_gmii_tx #(.BYTE_PERIOD(BP)) dut(.clk_i(clk),.rst_ni(rst),.fr_start_i(start),.fr_len_i(length),
+  es_switch_gmii_tx #(.BYTE_PERIOD(BP)) dut(.clk_i(clk),.rst_ni(rst),.fr_start_i(start),.fr_len_i(length),
     .done_o(done),.done_len_o(done_len),.tx_busy_o(busy),.beat_valid_i(1'b1),
     .beat_data_i(64'd0),.beat_rd_o(rd),.oct_en_o(en),.oct_d_o(data));
   always @(posedge clk)if(rst)begin

@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/tb_sw_switch_mii.sv
 //  Description : System-level smoke regression of the full switch with the
-//                MII pin front-end, by instantiating the `sw_switch_mii` top
+//                MII pin front-end, by instantiating the `es_switch_mii` top
 //                wrapper (the MII variant of the interface-agnostic switch
 //                core).
 //
@@ -46,7 +46,7 @@ module tb_sw_switch_mii;
   logic [NUM_PORTS*4-1:0]      mii_txd_o;
   logic [32*SW_STAT_COUNT-1:0] stat_o;
 
-  sw_switch_mii #(
+  es_switch_mii #(
       .NUM_PORTS  (NUM_PORTS),
       .CLK_FREQ_HZ(CLK_HZ),
       .PORT_SPEED (SPEEDS)

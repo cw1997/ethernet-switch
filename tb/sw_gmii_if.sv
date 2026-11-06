@@ -34,7 +34,7 @@
 // one that reaches them only through some other path - is not visible to a
 // subroutine argument type in Icarus Verilog.  The RTL declarations
 // (`SW_IFG_OCTETS`, `sw_mac_t`, ...) need no import: they arrive at
-// compilation-unit scope through `rtl/sw_defs.sv`, which the DUT pulls in.
+// compilation-unit scope through `rtl/es_defs.sv`, which the DUT pulls in.
 module sw_gmii_if import sw_tb_pkg::*; #(
   /// Port index, used only in diagnostic messages.
   parameter int unsigned PORT_ID    = 0,
@@ -64,7 +64,7 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   // ==========================================================================
   // Octet-period pacing: one octet is launched on the first clock of an octet
   // time and held for BYTE_PERIOD clocks, which is exactly the contract stated
-  // in sw_gmii_rx (the adapter samples on the last cycle of the window).
+  // in es_switch_gmii_rx (the adapter samples on the last cycle of the window).
   //
   // The receive pins are held idle whenever the link is administratively down,
   // so a disabled port stays silent no matter what a test drives.

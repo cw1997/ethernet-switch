@@ -1,22 +1,36 @@
-// Low-priority CSR scanner. Publish only if sequence is unchanged at both ends.
-// Console entry reads briefly pause scanning; UART/CTS waits never hold the bus.
+// ============================================================================
+//  File        : es_monitor_cache.sv
+//  Description : Low-priority coherent telemetry scanner.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Reads the sequence before and after the image. Only equal sequences publish;
+//                console arbitration pauses requests without holding the CSR bus.
+//  Interface   : req/ready accepts one byte-addressed CSR read; valid qualifies
+//                its response. image contains aggregate record zero followed by
+//                NUM_PORTS port records. pause blocks new requests; idle reports
+//                safe arbitration boundaries, not completion of a full scan.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_MONITOR_CACHE_SV
-`define SW_MONITOR_CACHE_SV
+`ifndef ES_MONITOR_CACHE_SV
+`define ES_MONITOR_CACHE_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_monitor_cache #(
-  parameter int unsigned NUM_PORTS = 2
+`include "es_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`default_nettype none
+// ---- configuration and public interface -------------------------------------
+module es_monitor_cache #(
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
-  input logic clk_i, rst_ni, pause_i,
+  input var logic clk_i, rst_ni, pause_i,
   output logic req_o,
   output logic [31:0] addr_o,
-  input logic ready_i, valid_i,
-  input logic [31:0] data_i,
+  input var logic ready_i, valid_i,
+  input var logic [31:0] data_i,
   output logic idle_o,
   output logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_o
 );
   localparam int unsigned TOTAL = (NUM_PORTS+1)*SW_MON_WORDS;
+  // ---- control state --------------------------------------------------------
   typedef enum logic [2:0] {S_BEGIN, S_BEGIN_WAIT, S_SEND, S_WAIT, S_CHECK, S_CHECK_WAIT} state_e;
   state_e state_q;
   logic [31:0] index_q, start_sequence_q;
@@ -27,6 +41,7 @@ module sw_monitor_cache #(
   assign addr_o = ((state_q == S_CHECK) || (state_q == S_BEGIN)) ? 32'd196 :
                   (index_q < 32'(SW_MON_WORDS)) ? index_q*32'd4 :
                   SW_MON_PORT_BASE+(index_q-32'(SW_MON_WORDS))*32'd4;
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_BEGIN; index_q <= '0; start_sequence_q <= '0;

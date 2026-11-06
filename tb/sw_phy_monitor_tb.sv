@@ -1,3 +1,9 @@
+// ============================================================================
+//  File        : sw_phy_monitor_tb.sv
+//  Description : Simulation support and self-checking regression for sw_phy_monitor_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 // A wire-level Clause 22 PHY model, rather than calls into manager internals.
 `timescale 1ns/1ps
 module sw_phy_monitor_tb;
@@ -9,7 +15,7 @@ module sw_phy_monitor_tb;
   logic[15:0] reply=0,advertisement=16'h0de1,gigabit=16'h0300,control=0;
   int bit_index=0,errors=0,checks=0;
   logic read_cmd=0,selected=0;logic[4:0] reg_addr=0;
-  sw_phy_monitor #(.CLK_FREQ_HZ(10_000_000),.POLL_INTERVAL_MS(1),.RESET_WAIT_MS(0)) dut(
+  es_monitor_phy #(.CLK_FREQ_HZ(10_000_000),.POLL_INTERVAL_MS(1),.RESET_WAIT_MS(0)) dut(
     .clk_i(clk),.rst_ni(rst),.mdio_i(oe?out_pin:mdio),.mdc_o(mdc),.mdio_o(out_pin),
     .mdio_oe_o(oe),.status_o(status),.enabled_o(enabled));
   always @(posedge mdc)begin

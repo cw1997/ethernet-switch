@@ -1,7 +1,7 @@
 # DE2-115 Quartus II 工程
 
 双端口 100M 全双工 MII 交换机，带 PHY 状态、参数化监控、UART Console、LED、
-LCD 和数码管。顶层为 `hdl/sw_de2_115_top.sv`，器件为 `EP4CE115F29C7`。
+LCD 和数码管。顶层为 `hdl/es_switch_de2_115_top.sv`，器件为 `EP4CE115F29C7`。
 JP1 必须置于 **MII**，JP7 保持默认 2.5 V。
 
 ## 编译与连接

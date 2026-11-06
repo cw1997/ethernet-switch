@@ -90,7 +90,7 @@ module sw_flood_tb #(
     if ({gmii_tx_en,gmii_tx_data,stat} !== {quiet_tx_en,quiet_tx_data,quiet_stat})
       $fatal(1,"monitor changed output/latency at cycle %0d",compared_cycles);
   end
-  sw_switch_gmii #(
+  es_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
       .REFRESH_INTERVAL_MS (1),
       .CLK_FREQ_HZ    (CLK_FREQ),
@@ -117,7 +117,7 @@ module sw_flood_tb #(
       .gmii_tx_data_o  (gmii_tx_data),
       .stat_o          (stat)
   );
-  sw_switch_gmii #(
+  es_switch_gmii #(
       .NUM_PORTS      (NUM_PORTS),
       .REFRESH_INTERVAL_MS (1),
       .CLK_FREQ_HZ    (CLK_FREQ),

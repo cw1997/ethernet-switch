@@ -1,8 +1,17 @@
+// ============================================================================
+//  File        : sw_console_tb.sv
+//  Description : Simulation support and self-checking regression for sw_console_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 // End-to-end UART -> command parser -> cache/CSR arbitration -> text response.
 `timescale 1ns/1ps
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
 module sw_console_tb;
-  localparam int N=2, PERIOD=40;
+  localparam int N=4, PERIOD=40;
   logic clk=0,rst=0;always #5 clk=~clk;
   logic rx=1,tx,cts=0,rts,fault;
   logic [N*32*SW_STAT_COUNT-1:0] stat='0;
@@ -13,8 +22,8 @@ module sw_console_tb;
   string transcript="";
   int errors=0,checks=0;
   logic [31:0] before_sequence;
-  sw_monitor #(.NUM_PORTS(N),.CLK_FREQ_HZ(4_000_000),.REFRESH_INTERVAL_MS(2),.CAM_CAPACITY(2)) monitor_dut (
-    .clk_i(clk),.rst_ni(rst),.port_stat_i(stat),.tx_done_i(2'd0),.tx_len_i('0),
+  es_monitor_core #(.CLK_FREQ_HZ(4_000_000),.REFRESH_INTERVAL_MS(2),.CAM_CAPACITY(2)) monitor_dut (
+    .clk_i(clk),.rst_ni(rst),.port_stat_i(stat),.tx_done_i(N'(0)),.tx_len_i('0),
     .phy_status_i({N{8'h0f}}),.rx_used_i('0),.tx_used_i('0),.busy_i(1'b0),
     .flush_i(1'b0),.cam_entries_i(32'd1),.req_i(req),.addr_i(addr),.ready_o(ready),
     .valid_o(valid),.data_o(data),.cam_req_o(cam_req),.cam_index_o(cam_index),
@@ -23,10 +32,10 @@ module sw_console_tb;
     cam_valid<=cam_req;
     if(cam_req)cam_entry<=(cam_index==0)?{32'd1,32'd1,16'd0,48'h021122334455}:128'd0;
   end
-  sw_monitor_cache #(.NUM_PORTS(N)) cache_dut (.clk_i(clk),.rst_ni(rst),.pause_i(claim),
+  es_monitor_cache cache_dut (.clk_i(clk),.rst_ni(rst),.pause_i(claim),
     .req_o(cache_req),.addr_o(cache_addr),.ready_i(ready&&!claim),.valid_i(valid&&!claim),
     .data_i(data),.idle_o(cache_idle),.image_o(image));
-  sw_console #(.NUM_PORTS(N),.CLK_FREQ_HZ(4_000_000),.UART_BAUD_RATE(100000),
+  es_console_core #(.CLK_FREQ_HZ(4_000_000),.UART_BAUD_RATE(100000),
     .UART_FLOW_CONTROL(SW_UART_FLOW_RTS_CTS)) console_dut (
     .clk_i(clk),.rst_ni(rst),.rx_i(rx),.cts_ni(cts),.tx_o(tx),.rts_no(rts),
     .image_i(image),.cache_idle_i(cache_idle),.bus_claim_o(claim),.req_o(console_req),
@@ -89,7 +98,9 @@ module sw_console_tb;
     check(contains(transcript,"rx_frames=0x0000000000000007"),"complete cumulative statistic");
     check(contains(transcript,"refresh_ms=0x0000000000000002"),"configured refresh reported");
     check(contains(transcript,"speed_mbit=0x0000000000000064")&&contains(transcript,"full_duplex=0x0000000000000001"),"actual PHY speed and duplex decoded");
-    transcript="";send("port 2\015");settle();check(contains(transcript,"ERR command_or_port_or_length"),"invalid port rejected");
+    transcript="";send("port 4\015");settle();check(contains(transcript,"ERR command_or_port_or_length"),"invalid port rejected");
+    transcript="";send("port 3\015");settle();
+    check(contains(transcript,"page_0_all_else_port+1=0x0000000000000004"),"default fourth port accepted");
     transcript="";cts=1;repeat(4)@(negedge clk);before_sequence=image[49*32+:32];
     send("mac 1\015");repeat(20_000)@(negedge clk);
     check(image[49*32+:32]>before_sequence,"MAC console paused by CTS does not freeze display refresh");

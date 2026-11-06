@@ -1,6 +1,6 @@
 # ============================================================================
 # File        : timing.xdc
-# Description : Clock and external-delay TEMPLATE for sw_vivado_top.
+# Description : Clock and external-delay TEMPLATE for es_switch_vivado_top.
 #               Only the 50 MHz core clock is active. Commented PHY clocks and
 #               delays describe the future physical MII boundary, not timing
 #               guarantees for today's direct synchronous-model wiring.

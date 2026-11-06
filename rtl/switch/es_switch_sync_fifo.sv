@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_sync_fifo.sv
+//  File        : es_switch_sync_fifo.sv
 //  Description : Parameterised synchronous FIFO with a first-word-fall-through
 //                (FWFT) read port and a *frame-granular abort* capability.
 //
@@ -23,8 +23,8 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef SW_SYNC_FIFO_SV
-`define SW_SYNC_FIFO_SV
+`ifndef ES_SWITCH_SYNC_FIFO_SV
+`define ES_SWITCH_SYNC_FIFO_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -32,7 +32,7 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-module sw_sync_fifo #(
+module es_switch_sync_fifo #(
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
   /// Number of entries; any value >= 2, not necessarily a power of two.
@@ -80,7 +80,7 @@ module sw_sync_fifo #(
 
   // Pointer increment that wraps at DEPTH, which is not necessarily a power of
   // two, so a plain +1 on an $clog2 wide pointer would run off the end.
-  function automatic logic [ADDR_W-1:0] next_slot(input logic [ADDR_W-1:0] cur);
+  function automatic logic [ADDR_W-1:0] next_slot(input var logic [ADDR_W-1:0] cur);
     next_slot = (cur == ADDR_W'(DEPTH) - ADDR_W'(1)) ? '0 : (cur + ADDR_W'(1));
   endfunction
 
@@ -146,11 +146,11 @@ module sw_sync_fifo #(
   assign empty_o   = (count == '0);
   assign rd_data_o = mem[rd_ptr];   // FWFT: valid while `empty_o` is low
 
-endmodule : sw_sync_fifo
+endmodule : es_switch_sync_fifo
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_SYNC_FIFO_SV
+`endif // ES_SWITCH_SYNC_FIFO_SV

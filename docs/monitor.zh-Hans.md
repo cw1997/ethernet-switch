@@ -2,7 +2,7 @@
 
 交换核心及 GMII/MII/RMII wrapper 新增统一只读 CSR 和真实 PHY 状态输入，保留
 原 `stat_o` 的 32 位调度统计语义。地址、字段及握手详见 [完整 ABI](monitor.md)，
-常量位于 `rtl/sw_defs.sv`。集成者必须连接新增输入；没有 PHY 管理时状态接零表示
+常量位于 `rtl/es_defs.sv`。集成者必须连接新增输入；没有 PHY 管理时状态接零表示
 未知，不使用 CSR 时请求和地址接零。
 
 `REFRESH_INTERVAL_MS` 默认 500，必须大于零。采样周期由 `CLK_FREQ_HZ` 换算并向上

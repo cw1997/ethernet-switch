@@ -30,9 +30,9 @@ status=0
 echo "======================================================================"
 echo " Linting the RTL with Verilator -Wall (expect: no output at all)"
 echo "======================================================================"
-for top in sw_crc32 sw_sync_fifo sw_gmii_rx sw_gmii_tx sw_mac_table \
-           sw_rx_port sw_tx_port sw_arbiter sw_mii sw_rmii \
-           sw_switch_core sw_switch_gmii sw_switch_mii sw_switch_rmii; do
+for top in es_switch_crc32 es_switch_sync_fifo es_switch_gmii_rx es_switch_gmii_tx es_switch_mac_table \
+           es_switch_rx_port es_switch_tx_port es_switch_arbiter es_switch_mii es_switch_rmii \
+           es_switch_core es_switch_gmii es_switch_mii es_switch_rmii; do
   printf '%-14s : ' "$top"
   out="$(verilator --lint-only --timing -Wall -Wno-DECLFILENAME \
            -Irtl -f sim/sw_rtl.f --top-module "$top" 2>&1)"

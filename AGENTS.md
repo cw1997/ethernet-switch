@@ -17,27 +17,30 @@ this design in a way a testbench could not see.
 ## 1. Repository map
 
 ```
-rtl/           the design.  One file per block, sw_<block>.sv / module sw_<block>
+rtl/           the design.  switch/, monitor/, console/; es_<domain>_<block>.sv / matching module
 tb/            self-checking testbenches.  Never synthesised, never linted by CI
 board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
                project (board top, pins, constraints, build.bat); its top
-               sw_de2_115_top is pure RTL and part of the same gates
-               vivado/ is a eight-port MII template; sw_vivado_top is in the same
+               es_switch_de2_115_top is pure RTL and part of the same gates
+               vivado/ is a eight-port MII template; es_switch_vivado_top is in the same
                gates and make unit, but physical PHY adaptation is unfinished
 ci/            the CI toolchain contract (check-toolchain.sh)
 librelane/     the physical implementation flow (config.json + README.md)
 Makefile       every gate; the target list is documented in its own header
 ```
 
-`rtl/sw_defs.sv` holds **every** shared constant, type and helper function, at
-compilation-unit scope. It is included by every other RTL file and by the
-testbenches. If you are about to add a constant, put it there. Section 0 of
-that file documents the **MAC interface selection**: the interface-agnostic
-core (`sw_switch_core`) is wrapped by one of three per-interface top modules —
-`sw_switch_gmii` (default GMII), `sw_switch_mii` and `sw_switch_rmii` — and the
+`rtl/es_defs.sv` holds common interface declarations and includes the guarded
+`switch/es_switch_defs.sv`, `monitor/es_monitor_defs.sv` and
+`console/es_console_defs.sv` libraries in dependency order. Put new constants
+in the owning library, keeping cross-domain widths/statistics common. All
+libraries remain at compilation-unit scope; the umbrella include preserves
+standalone-module compilation and the existing declaration-only lint policy.
+The switch definitions document **MAC interface selection**: the interface-agnostic
+core (`es_switch_core`) is wrapped by one of three per-interface top modules —
+`es_switch_gmii` (default GMII), `es_switch_mii` and `es_switch_rmii` — and the
 interface in use is chosen by which wrapper is elaborated. `make lint`,
 `make rtl` and `make synth` each run **all five** top modules — the three
-`sw_switch_*` wrappers plus board tops `sw_de2_115_top` and `sw_vivado_top` —
+`es_switch_*` wrappers plus board tops `es_switch_de2_115_top` and `es_switch_vivado_top` —
 so changing a wrapper means making it green in all five; a top that is never compiled
 silently rots.
 
@@ -68,7 +71,7 @@ distribution that is not the CI one.
 
 These are not opinions. They are parse errors, and all three are invisible to
 Icarus and Verilator, so a change that violates one passes every test you can
-run locally and then fails in the flow. `rtl/sw_defs.sv` documents them in
+run locally and then fails in the flow. `rtl/es_defs.sv` documents them in
 full; the short form:
 
 1. **No `package`, and no `import` in any form.** A package item is not a
@@ -76,7 +79,7 @@ full; the short form:
    in a port declaration before the body is even parsed. Neither
    `module X import pkg::*; (...)` nor `import pkg::*;` in a body is accepted.
    **Shared declarations therefore live at compilation-unit scope in
-   `rtl/sw_defs.sv`, where they are visible everywhere, including in parameter
+   `rtl/es_defs.sv`, where they are visible everywhere, including in parameter
    defaults and port ranges.**
 2. **No `return` in any function**, in compilation-unit or module scope, with or
    without an enclosing `case`/`begin`. Assign to the function name instead;
@@ -101,7 +104,7 @@ frontend rather than an approximation of it.
 - `-Wall` with the default error policy. **Do not add a waiver to silence a
   finding; fix the code.** Every `/* verilator lint_off */` in the tree is
   either a narrow, commented exception (a genuinely unconnected output pin,
-  `PINCONNECTEMPTY`) or the two blanket waivers in `sw_defs.sv` that cover a
+  `PINCONNECTEMPTY`) or the two blanket waivers in `es_defs.sv` that cover a
   declaration-only file.
 - `-Wno-DECLFILENAME` is passed on the command line because the module name is
   the file name; that is deliberate, not a suppressed defect.
@@ -182,7 +185,7 @@ to Verilator, Icarus or yosys:
   every name compiled after it, in a file that has nothing to do with the change
   that caused the breakage.
 - Module inputs use `input var logic`: Vivado rejects the implicit net kind of
-  `input logic` under `default_nettype none`. The Vivado board MDIO ports use
+  `input logic` under `default_nettype none`. The board MDIO ports use
   explicit `tri logic` nets for bidirectional high impedance.
 - `logic` for nets, **never `wire` or `reg`**. Declare and then `assign`; do not
   use the `wire x = expr;` inline form, so that every derived signal in the
@@ -193,7 +196,8 @@ to Verilator, Icarus or yosys:
 - `localparam` (not `parameter`) for anything derived inside a module. Module
   parameters are the module's configuration surface and must stay a short,
   documented list.
-- Shared constants are `SW_`-prefixed and live in `sw_defs.sv`; module-local
+- Shared constants are `SW_`-prefixed and live in the owning `es_*_defs.sv`
+  library (cross-domain interfaces in `es_defs.sv`); module-local
   derived widths are UPPER_SNAKE (`TAGW`, `PW`, `BPW`, `FF_W`, `TAG_SRC`);
   per-port or per-instance quantities are lower case (`rx_stat`, `tx_free`).
 - Parameterise with `int unsigned` for numbers and `logic [N-1:0]` for vectors.
@@ -203,7 +207,7 @@ to Verilator, Icarus or yosys:
   for a memory or a register file indexed by a constant, elaboration-time
   index. Icarus does not resolve an unpacked array that is indexed with a
   run-time value — the read comes back stale, and the failure surfaces far away
-  from the cause (see the `f_dst` comment in `sw_arbiter.sv`). Unpacked arrays
+  from the cause (see the `f_dst` comment in `es_switch_arbiter.sv`). Unpacked arrays
   also cannot be passed to a subroutine; pack them first.
 
 ### 3.2 Width discipline — the rule this repository exists to enforce
@@ -231,7 +235,7 @@ and that width must be the one you mean.**
 - Do not use `*` between two 32-bit vectors to express "count × count". A
   synthesis tool cannot see that the multiplier only ever reaches `NUM_PORTS`
   and will build the full array. Write the shift-add, or narrow the operand, as
-  `octets_x_copies` in `sw_arbiter.sv` does.
+  `octets_x_copies` in `es_switch_arbiter.sv` does.
 - An array/loop index in a comparison against a parameter is a sized cast of the
   parameter (`PW'(NUM_PORTS - 1)`), not a bare literal.
 
@@ -248,7 +252,7 @@ and that width must be the one you mean.**
   forever and the simulation hangs with time standing still, which looks like a
   dead clock and nothing else. Put accumulators in a **function** — a function
   has no sensitivity list at all. `count_copies` and `octets_x_copies` in
-  `sw_arbiter.sv` are the reference examples.
+  `es_switch_arbiter.sv` are the reference examples.
 - **Never index a memory with a run-time value inside `always_comb`.** Stage the
   read into a flat vector with continuous assignments (in a generate loop, so
   the offset is a constant) and let the process read the vector. The generated
@@ -260,7 +264,7 @@ and that width must be the one you mean.**
   store silently never land. Both are documented at the site in the code.
 - **Writes into an unpacked array go through per-entry `always_ff` blocks in a
   generate loop**, not a loop inside one process (see `g_mem_wr` in
-  `sw_mac_table.sv`). A loop-indexed store is dropped silently by Icarus and
+  `es_switch_mac_table.sv`). A loop-indexed store is dropped silently by Icarus and
   the per-entry form is also what a vendor tool wants to see to infer the
   storage.
 - Reset is **synchronous, active low, named `rst_ni`, and is the first branch of
@@ -278,15 +282,15 @@ includes `initial`: there is none left in `rtl/`.
 
 Two narrow, documented exceptions exist:
 
-- `sw_crc32.sv` computes its byte-wise CRC lookup in a function rather than an
+- `es_switch_crc32.sv` computes its byte-wise CRC lookup in a function rather than an
   `initial`-initialised table. The table form was the one sanctioned `initial`
   block until it met Quartus, whose constant evaluator needs tens of
   CPU-minutes *per instance* on an initial-block-initialised memory (§2.4);
   the function computes the identical value everywhere. Never reintroduce an
   `initial` block, and never let one produce a value that a write path depends
-  on — see the `WAY_LAST` comment in `sw_mac_table.sv` for a design that got
+  on — see the `WAY_LAST` comment in `es_switch_mac_table.sv` for a design that got
   that wrong.
-- `sw_switch_core.sv` and the `sw_switch_mii` / `sw_switch_rmii` wrappers
+- `es_switch_core.sv` and the `es_switch_mii` / `es_switch_rmii` wrappers
   report elaboration-time parameter checks with `$error` / `$warning` inside
   `` `ifndef SYNTHESIS ``, because yosys has no implementation for them and
   aborts on a design that contains one. Keep any new parameter check in that
@@ -301,7 +305,7 @@ Two narrow, documented exceptions exist:
 | `<name>_q` | registered value | `len_q`, `cam_hit_q` |
 | `<name>_d`, `<name>_n` | combinational *next value* | `count_d`, `crc_en_n` |
 | `S_XXX` | FSM state, in a `typedef enum logic [n:0]` | `S_PRE`, `S_TAIL` |
-| `sw_*` | module or shared declaration | `sw_sync_fifo`, `sw_is_unicast` |
+| `es_<domain>_*` / `sw_*` | design module / shared declaration | `es_switch_sync_fifo`, `sw_is_unicast` |
 | `cnt_*`, `stat_o` | statistics | `cnt_tx_octets` |
 | `unused_*` | a deliberate dummy consumer for a signal nothing reads | `unused_crc_ok` |
 
@@ -427,10 +431,10 @@ Definition of done:
 - [ ] `ci/check-toolchain.sh`, `make lint`, `make rtl`, `make unit`, `make sim`,
       `make param` all pass.
 - [ ] `make synth` elaborates and synthesises the three wrapper top modules
-      (`sw_switch_gmii`, `sw_switch_mii`, `sw_switch_rmii`).
+      (`es_switch_gmii`, `es_switch_mii`, `es_switch_rmii`).
 - [ ] A behavioural change has a test that fails without it.
 - [ ] No new `verilator lint_off`, and no new `initial` block.
-- [ ] New shared constants are in `sw_defs.sv`; new module parameters are
+- [ ] New shared constants are in the appropriate `es_*_defs.sv` library; new module parameters are
       `localparam`-derived and documented in the port list.
 - [ ] A change to `librelane/config.json` is recorded in
       `librelane/README.md`, and every key in it is a variable the pinned

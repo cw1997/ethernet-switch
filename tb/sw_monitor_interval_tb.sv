@@ -1,12 +1,21 @@
+// ============================================================================
+//  File        : sw_monitor_interval_tb.sv
+//  Description : Simulation support and self-checking regression for sw_monitor_interval_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 `timescale 1ns/1ps
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
 module sw_interval_case #(parameter int HZ=100000, MS=500)(output logic finished=0);
   logic clk=0,rst=0;always #5 clk=~clk;
   logic [31:0] address=32'd196,data,index;
   logic ready,valid,cam_req;
   localparam logic[63:0] WINDOW=(64'(HZ)*64'(MS)+64'd999)/64'd1000;
   logic [31:0] low_word;
-  sw_monitor #(.NUM_PORTS(1),.CLK_FREQ_HZ(HZ),.REFRESH_INTERVAL_MS(MS)) dut (
+  es_monitor_core #(.NUM_PORTS(1),.CLK_FREQ_HZ(HZ),.REFRESH_INTERVAL_MS(MS)) dut (
     .clk_i(clk),.rst_ni(rst),.port_stat_i('0),.tx_done_i(1'b0),.tx_len_i('0),
     .phy_status_i(8'd0),.rx_used_i(32'd0),.tx_used_i(32'd0),.busy_i(1'b0),
     .flush_i(1'b0),.cam_entries_i(32'd0),.req_i(rst&&ready),.addr_i(address),

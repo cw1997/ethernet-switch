@@ -1,17 +1,28 @@
-// Clause 22 management engine, complete preamble on every transaction.
-// Board shell owns the only tri-state buffer; the engine itself is pure RTL.
+// ============================================================================
+//  File        : es_monitor_mdio.sv
+//  Description : Clause-22 MDIO transaction controller.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Generates MDC from the core clock and releases MDIO during read turnaround.
+//                The board supplies the bidirectional buffer and external pull-up.
+//  Interface   : CLK_FREQ_HZ and MDC_FREQ_HZ are frequencies in hertz. start_i
+//                captures read/write, PHY/register addresses and write data.
+//                busy_o prevents overlap; valid_o qualifies data_o/error_o.
+//                mdio_oe_o is deasserted for turnaround and read-data sampling.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_MDIO_SV
-`define SW_MDIO_SV
+`ifndef ES_MONITOR_MDIO_SV
+`define ES_MONITOR_MDIO_SV
 `default_nettype none
-module sw_mdio #(
+// ---- configuration and public interface -------------------------------------
+module es_monitor_mdio #(
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   parameter int unsigned MDC_FREQ_HZ = 1_000_000
 ) (
-  input logic clk_i, rst_ni, start_i, read_i,
-  input logic [4:0] phy_i, reg_i,
-  input logic [15:0] data_i,
-  input logic mdio_i,
+  input var logic clk_i, rst_ni, start_i, read_i,
+  input var logic [4:0] phy_i, reg_i,
+  input var logic [15:0] data_i,
+  input var logic mdio_i,
   output logic mdc_o, mdio_o, mdio_oe_o,
   output logic busy_o, valid_o, error_o,
   output logic [15:0] data_o
@@ -28,6 +39,7 @@ module sw_mdio #(
   logic read_q;
   assign mdio_o = frame_q[bit_q];
   assign mdio_oe_o = busy_o && (!read_q || (bit_q >= 6'd18));
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       mdc_o <= 1'b0; busy_o <= 1'b0; valid_o <= 1'b0; error_o <= 1'b0;

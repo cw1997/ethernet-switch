@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_mii.sv
+//  File        : es_switch_mii_adapter.sv
 //  Description : MII symbol adapter: converts the 4-bit nibble-serial MII pins
 //                into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the MII pins.
@@ -88,8 +88,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_MII_SV
-`define SW_MII_SV
+`ifndef ES_SWITCH_MII_ADAPTER_SV
+`define ES_SWITCH_MII_ADAPTER_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -97,9 +97,11 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
-module sw_mii #(
+module es_switch_mii_adapter #(
   /// `clk_i` cycles per octet time of the canonical octet stream.  Must be an
   /// even number >= 2: every octet time carries exactly two nibble windows.
   parameter int unsigned BYTE_PERIOD = 2
@@ -138,7 +140,7 @@ module sw_mii #(
 `ifndef SYNTHESIS
   initial begin
     if ((BYTE_PERIOD < 2) || (BYTE_PERIOD % 2 != 0)) begin
-      $error("sw_mii: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
+      $error("es_switch_mii_adapter: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
              BYTE_PERIOD);
     end
   end
@@ -264,11 +266,11 @@ module sw_mii #(
   assign mii_txd_o   = !tx_half ? oct_d_i[3:0] : oct_d_i[7:4];
   assign mii_tx_er_o = 1'b0;
 
-endmodule : sw_mii
+endmodule : es_switch_mii_adapter
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_MII_SV
+`endif // ES_SWITCH_MII_ADAPTER_SV

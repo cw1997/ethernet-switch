@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb/sw_crc32_tb.sv
-//  Description : Unit testbench of the Ethernet CRC-32 engine (`sw_crc32`).
+//  Description : Unit testbench of the Ethernet CRC-32 engine (`es_switch_crc32`).
 //
 //                The block is verified in both of its roles:
 //
@@ -22,7 +22,7 @@
 module sw_crc32_tb;
 
   // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
-  // compilation-unit scope (`rtl/sw_defs.sv`) and so need no import.
+  // compilation-unit scope (`rtl/es_defs.sv`) and so need no import.
   import sw_tb_pkg::*;
 
   logic        clk   = 1'b0;
@@ -38,7 +38,7 @@ module sw_crc32_tb;
 
   always #5 clk = ~clk;   // 100 MHz - the block is clock enabled, not clock bound
 
-  sw_crc32 u_dut (
+  es_switch_crc32 u_dut (
       .clk_i     (clk),
       .rst_ni    (rst_n),
       .en_i      (en),

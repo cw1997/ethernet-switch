@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_rmii_if.sv
 //  Description : Bus functional model of an RMII PHY, instantiated once per
-//                switch port by the `sw_switch_rmii` top wrapper.
+//                switch port by the `es_switch_rmii` top wrapper.
 //
 //                The model drives the switch's RMII receive pins and monitors
 //                its RMII transmit pins, exactly as a real PHY would:
@@ -73,7 +73,7 @@ module sw_rmii_if import sw_tb_pkg::*; #(
   // ==========================================================================
   // One chunk is launched on the first clock of a chunk window and held for
   // CPK clocks; an octet is four consecutive chunk windows in ascending bit
-  // order, exactly the contract stated in sw_rmii (the adapter samples at the
+  // order, exactly the contract stated in es_switch_rmii (the adapter samples at the
   // end of each window and counts every frame's windows from the CRS_DV rise).
   //
   // The cadence idiom is the one sw_mii_if and sw_gmii_if use, and getting it
@@ -136,7 +136,7 @@ module sw_rmii_if import sw_tb_pkg::*; #(
   // ==========================================================================
   // The monitor has to sample the transmit pins exactly once per chunk.  An
   // octet counter reproduces the cadence, started by the *enable itself*
-  // rather than by a free-running phase - the transmit windows of sw_gmii_tx
+  // rather than by a free-running phase - the transmit windows of es_switch_gmii_tx
   // are on the reset grid and its enable rises on one of their boundaries, so
   // counting from the enable puts the samples in the middle of each chunk
   // window at any line rate.  The pins are read in the *active* region of the

@@ -1,17 +1,18 @@
 // ============================================================================
-//  File        : sw_switch_gmii.sv
-//  Description : Top-level GMII front-end wrapper around the interface-agnostic
-//                switch core (`sw_switch_core`).  GMII is octet-aligned - one
-//                8-bit octet per octet time - so the physical pins already
-//                carry the canonical octet stream and this wrapper simply
-//                passes them through to the core; no symbol adapter is needed.
+//  File        : es_switch_rmii.sv
+//  Description : Top-level RMII front-end wrapper around the interface-agnostic
+//                switch core (`es_switch_core`).  RMII carries four 2-bit
+//                chunks per octet time, so each port's pins are assembled /
+//                serialised onto the canonical octet stream by a `es_switch_rmii`
+//                symbol adapter before reaching the core.
 //
 //                Selecting this module as the elaborated top connects the
-//                switch to a GMII PHY.  For the MII / RMII pin front-ends use
-//                `sw_switch_mii` / `sw_switch_rmii` instead; the switching
-//                datapath behind all three is identical.
+//                switch to an RMII PHY.  RMII is a 10/100 Mbit/s front-end
+//                only: a port configured for 1000 Mbit/s is rejected at
+//                elaboration time.  Use `es_switch_gmii` for 1000 Mbit/s
+//                ports, or `es_switch_mii` for the nibble-wide front-end.
 //
-//                See sw_switch_core.sv for the parameter encoding and the
+//                See es_switch_core.sv for the parameter encoding and the
 //                octet-stream contract.
 // ============================================================================
 // ---------------------------------------------------------------------------
@@ -20,8 +21,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_SWITCH_GMII_SV
-`define SW_SWITCH_GMII_SV
+`ifndef ES_SWITCH_RMII_SV
+`define ES_SWITCH_RMII_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -29,12 +30,14 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
-module sw_switch_gmii #(
+module es_switch_rmii #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
-  parameter int unsigned NUM_PORTS      = 4,
+  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
   /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
   /// (125 MHz for full line rate); a slower core simply stretches the octet
   /// clock enables and loses line rate, nothing else.
@@ -93,16 +96,16 @@ module sw_switch_gmii #(
   input  var logic                                cfg_ovr_i,   ///< use run-time config
   input  var logic                                cam_flush_i, ///< flush the CAM
 
-  // ---- GMII front-end pins -------------------------------------------------
-  input  var logic [NUM_PORTS-1:0]                gmii_rx_en_i,
-  input  var logic [NUM_PORTS*8-1:0]              gmii_rx_data_i,
-  output logic [NUM_PORTS-1:0]                gmii_tx_en_o,
-  output logic [NUM_PORTS*8-1:0]              gmii_tx_data_o,
+  // ---- RMII front-end pins -------------------------------------------------
+  input  var logic [NUM_PORTS-1:0]                rmii_crs_dv_i,
+  input  var logic [NUM_PORTS*2-1:0]              rmii_rxd_i,
+  output logic [NUM_PORTS-1:0]                rmii_tx_en_o,
+  output logic [NUM_PORTS*2-1:0]              rmii_txd_o,
 
   // Telemetry PHY metadata is independent of the administrative link enable.
-  input logic [NUM_PORTS*8-1:0] phy_status_i,
-  input logic mon_req_i,
-  input logic [31:0] mon_addr_i,
+  input var logic [NUM_PORTS*8-1:0] phy_status_i,
+  input var logic mon_req_i,
+  input var logic [31:0] mon_addr_i,
   output logic mon_ready_o, mon_valid_o,
   output logic [31:0] mon_data_o,
 
@@ -110,9 +113,26 @@ module sw_switch_gmii #(
   output logic [32*SW_STAT_COUNT-1:0]         stat_o
 );
 
-  // GMII is octet-aligned: the pins already carry the canonical octet stream,
-  // so they are passed straight through to the interface-agnostic core.
-  sw_switch_core #(
+  // The canonical octet stream between the per-port symbol adapters and the
+  // interface-agnostic core.
+  logic [NUM_PORTS-1:0]   rx_oct_en;
+  logic [NUM_PORTS*8-1:0] rx_oct_data;
+  logic [NUM_PORTS-1:0]   tx_oct_en;
+  logic [NUM_PORTS*8-1:0] tx_oct_data;
+
+  // Elaboration-time sanity checks (excluded from synthesis).  RMII is a
+  // 10/100 Mbit/s front-end: it cannot carry a 1000 Mbit/s octet stream.
+`ifndef SYNTHESIS
+  initial begin
+    for (int unsigned p = 0; p < NUM_PORTS; p++) begin
+      if (sw_speed_e'(PORT_SPEED[p*2 +: 2]) == SW_SPEED_1000M) begin
+        $error("es_switch_rmii: port %0d is configured for 1000 Mbit/s, which the RMII front-end cannot carry", p);
+      end
+    end
+  end
+`endif
+
+  es_switch_core #(
       .NUM_PORTS      (NUM_PORTS),
       .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
       .CLK_FREQ_HZ    (CLK_FREQ_HZ),
@@ -142,18 +162,46 @@ module sw_switch_gmii #(
       .learning_en_i (learning_en_i),
       .cfg_ovr_i     (cfg_ovr_i),
       .cam_flush_i   (cam_flush_i),
-      .rx_oct_en_i   (gmii_rx_en_i),
-      .rx_oct_data_i (gmii_rx_data_i),
-      .tx_oct_en_o   (gmii_tx_en_o),
-      .tx_oct_data_o (gmii_tx_data_o),
+      .rx_oct_en_i   (rx_oct_en),
+      .rx_oct_data_i (rx_oct_data),
+      .tx_oct_en_o   (tx_oct_en),
+      .tx_oct_data_o (tx_oct_data),
       .stat_o        (stat_o)
   );
 
-endmodule : sw_switch_gmii
+  // Per-port symbol adapters: 2-bit chunks <-> canonical octets.
+  // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see es_switch_arbiter.sv for the full note).
+  genvar g;
+  generate
+  for (g = 0; g < NUM_PORTS; g++) begin : g_port
+    localparam int unsigned BP_G =
+        sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+
+    es_switch_rmii_adapter #(
+        .BYTE_PERIOD (BP_G)
+    ) u_fe (
+        .clk_i         (clk_i),
+        .rst_ni        (rst_ni),
+        .rmii_crs_dv_i (rmii_crs_dv_i[g]),
+        .rmii_rxd_i    (rmii_rxd_i[g*2 +: 2]),
+        .rmii_tx_en_o  (rmii_tx_en_o[g]),
+        .rmii_txd_o    (rmii_txd_o[g*2 +: 2]),
+        .oct_en_o      (rx_oct_en[g]),
+        .oct_d_o       (rx_oct_data[g*8 +: 8]),
+        .oct_en_i      (tx_oct_en[g]),
+        .oct_d_i       (tx_oct_data[g*8 +: 8])
+    );
+  end
+  endgenerate
+
+endmodule : es_switch_rmii
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_SWITCH_GMII_SV
+`endif // ES_SWITCH_RMII_SV

@@ -1,30 +1,30 @@
 {
-  "DESIGN_NAME": "sw_switch_gmii",
-
+  "DESIGN_NAME": "es_switch_gmii",
   "VERILOG_FILES": [
-    "rtl/sw_defs.sv",
-    "rtl/sw_crc32.sv",
-    "rtl/sw_sync_fifo.sv",
-    "rtl/sw_gmii_rx.sv",
-    "rtl/sw_mii.sv",
-    "rtl/sw_rmii.sv",
-    "rtl/sw_gmii_tx.sv",
-    "rtl/sw_mac_table.sv",
-    "rtl/sw_rx_port.sv",
-    "rtl/sw_tx_port.sv",
-    "rtl/sw_arbiter.sv",
-    "rtl/sw_ratio.sv",
-    "rtl/sw_monitor.sv",
-    "rtl/sw_switch_core.sv",
-    "rtl/sw_switch_gmii.sv",
-    "rtl/sw_switch_mii.sv",
-    "rtl/sw_switch_rmii.sv"
+    "rtl/es_defs.sv",
+    "rtl/switch/es_switch_crc32.sv",
+    "rtl/switch/es_switch_sync_fifo.sv",
+    "rtl/switch/es_switch_gmii_rx.sv",
+    "rtl/switch/es_switch_rmii_adapter.sv",
+    "rtl/switch/es_switch_mii_adapter.sv",
+    "rtl/switch/es_switch_mii.sv",
+    "rtl/switch/es_switch_rmii.sv",
+    "rtl/switch/es_switch_gmii_tx.sv",
+    "rtl/switch/es_switch_mac_table.sv",
+    "rtl/switch/es_switch_rx_port.sv",
+    "rtl/switch/es_switch_tx_port.sv",
+    "rtl/switch/es_switch_arbiter.sv",
+    "rtl/monitor/es_monitor_ratio.sv",
+    "rtl/monitor/es_monitor_core.sv",
+    "rtl/switch/es_switch_core.sv",
+    "rtl/switch/es_switch_gmii.sv"
   ],
-
-  "VERILOG_INCLUDE_DIRS": ["rtl"],
-
-  "VERILOG_DEFINES": ["SYNTHESIS"],
-
+  "VERILOG_INCLUDE_DIRS": [
+    "rtl"
+  ],
+  "VERILOG_DEFINES": [
+    "SYNTHESIS"
+  ],
   "SYNTH_PARAMETERS": [
     "MAX_FRAME_LEN=256",
     "RX_FIFO_DEPTH=64",
@@ -34,27 +34,22 @@
     "CAM_SETS=16",
     "CAM_WAYS=2"
   ],
-
   "CLOCK_PORT": "clk_i",
   "CLOCK_PERIOD": 10,
-
   "FALLBACK_SDC": "librelane/constraints/io.sdc",
-
   "FP_SIZING": "relative",
   "FP_CORE_UTIL": 40,
-
   "PL_MAX_DISPLACEMENT_X": 500,
   "PL_MAX_DISPLACEMENT_Y": 100,
-
-  "CTS_CLK_BUFFERS": ["sky130_fd_sc_hd__buf_*"],
+  "CTS_CLK_BUFFERS": [
+    "sky130_fd_sc_hd__buf_*"
+  ],
   "CTS_DISTANCE_BETWEEN_BUFFERS": 60,
-
   "RT_MAX_LAYER": "met5",
   "RT_MIN_LAYER": "met1",
   "DRT_THREADS": 8,
   "DRT_ANTENNA_REPAIR_ITERS": 3,
   "DRT_ANTENNA_REPAIR_MARGIN": 10,
-
   "RUN_ANTENNA_REPAIR": true,
   "RUN_LVS": true
 }

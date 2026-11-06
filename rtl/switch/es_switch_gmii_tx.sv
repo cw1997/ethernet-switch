@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_gmii_tx.sv
+//  File        : es_switch_gmii_tx.sv
 //  Description : Canonical octet-stream transmit adapter.
 //
 //                Consumes the 64-bit beat stream produced by the switching
@@ -8,7 +8,7 @@
 //                  preamble (7 x 0x55) | SFD (0xD5) | MAC client data | FCS
 //
 //                ------------------------------------------------------------------------
-//                Clock-enable contract (identical to sw_gmii_rx)
+//                Clock-enable contract (identical to es_switch_gmii_rx)
 //                ------------------------------------------------------------------------
 //                `oct_en_o` is asserted for a whole octet time and
 //                `oct_d_o` is only updated on the last clock of that window,
@@ -46,8 +46,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_GMII_TX_SV
-`define SW_GMII_TX_SV
+`ifndef ES_SWITCH_GMII_TX_SV
+`define ES_SWITCH_GMII_TX_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -55,13 +55,15 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations (`SW_LEN_W`, `SW_MIN_PAYLOAD`, `SW_IFG_OCTETS`) arrive
 // through the include above and are visible at compilation-unit scope, which is
 // what lets them appear in a parameter default and in a port range.  See
-// sw_defs.sv for why a package cannot be used here.
-module sw_gmii_tx #(
+// es_defs.sv for why a package cannot be used here.
+module es_switch_gmii_tx #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1,
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
@@ -73,6 +75,9 @@ module sw_gmii_tx #(
   // ---- frame request -------------------------------------------------------
   input  var logic        fr_start_i,   ///< pulse: begin transmitting a new frame
   input  var logic [SW_LEN_W-1:0] fr_len_i, ///< MAC client data length, FCS excluded
+  // Completion is sampled on the final FCS window, before entering IFG.
+  output logic done_o,
+  output logic [SW_LEN_W-1:0] done_len_o,
   output logic        tx_busy_o,    ///< high from fr_start_i until the IFG ends
 
   // ---- frame data source (first-word-fall-through) -------------------------
@@ -129,6 +134,9 @@ module sw_gmii_tx #(
   /// start the inter-frame gap.  It is deliberately one bit wider than the four
   /// octets so that "all delivered" is a distinct, representable value.
   logic [2:0]            fcs_idx;
+  assign done_o = (state == S_FCS) && tick && (fcs_idx == 3'd4);
+  assign done_len_o = len_q;
+
 
   /// A frame request arrived while the current octet window was still open.
   /// The MAC does not start the preamble until the next octet boundary, so that
@@ -247,7 +255,7 @@ module sw_gmii_tx #(
   // octet is absorbed.
   assign crc_clr  = fr_start_i;
 
-  sw_crc32 u_crc (
+  es_switch_crc32 u_crc (
       .clk_i     (clk_i),
       .rst_ni    (rst_ni),
       .en_i      (crc_en),
@@ -482,11 +490,11 @@ module sw_gmii_tx #(
     end
   end
 
-endmodule : sw_gmii_tx
+endmodule : es_switch_gmii_tx
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_GMII_TX_SV
+`endif // ES_SWITCH_GMII_TX_SV

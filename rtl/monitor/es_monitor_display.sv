@@ -1,19 +1,33 @@
-// Format a common telemetry page for HEX and LCD without combinational division.
+// ============================================================================
+//  File        : es_monitor_display.sv
+//  Description : Telemetry formatting for seven-segment and LCD outputs.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Latches a page before serial ratio and decimal conversion so displayed fields
+//                cannot mix snapshots. Invalid records display placeholders.
+//  Interface   : image_i contains aggregate record zero followed by port records.
+//                page_i selects one record. HEX outputs are active-low segment
+//                patterns; text_o holds two packed 16-character LCD rows.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_MONITOR_DISPLAY_SV
-`define SW_MONITOR_DISPLAY_SV
+`ifndef ES_MONITOR_DISPLAY_SV
+`define ES_MONITOR_DISPLAY_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_monitor_display #(
-  parameter int unsigned NUM_PORTS = 2
+`include "es_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`default_nettype none
+// ---- configuration and public interface -------------------------------------
+module es_monitor_display #(
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
-  input logic clk_i, rst_ni,
-  input logic [31:0] page_i,
-  input logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
+  input var logic clk_i, rst_ni,
+  input var logic [31:0] page_i,
+  input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
   output logic [55:0] hex_o,
   output logic rx_kpps_o, tx_kpps_o,
   output logic [255:0] text_o
 );
+  // ---- control state --------------------------------------------------------
   typedef enum logic [2:0] {S_IDLE, S_SCALE, S_SCALE_WAIT, S_DEC, S_DEC_WAIT, S_PUBLISH} state_e;
   state_e state_q;
   logic [SW_MON_BITS-1:0] record_q;
@@ -24,7 +38,7 @@ module sw_monitor_display #(
   logic [79:0] decimal_result;
   logic [319:0] digits_q;
   logic rx_k_q, tx_k_q, valid_q;
-  function automatic logic [6:0] segment(input logic [3:0] d);
+  function automatic logic [6:0] segment(input var logic [3:0] d);
     case (d)
       4'd0: segment=7'b1000000; 4'd1: segment=7'b1111001;
       4'd2: segment=7'b0100100; 4'd3: segment=7'b0110000;
@@ -34,11 +48,11 @@ module sw_monitor_display #(
       default: segment=7'b0111111;
     endcase
   endfunction
-  function automatic logic [7:0] hexchar(input logic [3:0] d);
+  function automatic logic [7:0] hexchar(input var logic [3:0] d);
     hexchar = (d < 4'd10) ? 8'd48+{4'd0,d} : 8'd55+{4'd0,d};
   endfunction
-  function automatic logic [255:0] screen(input logic [31:0] page, input logic valid,
-                                          input logic [319:0] digits);
+  function automatic logic [255:0] screen(input var logic [31:0] page, input var logic valid,
+                                          input var logic [319:0] digits);
     logic [255:0] t;
     logic [31:0] port_index;
     t = "     ALLR000000k     ALLT000000k";
@@ -54,13 +68,14 @@ module sw_monitor_display #(
     end
     screen = t;
   endfunction
-  sw_ratio u_scale (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(state_q == S_SCALE),
+  es_monitor_ratio u_scale (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(state_q == S_SCALE),
     .value_i(value_q), .scale_i(64'd1), .divisor_i(64'd1000),
     .busy_o(ratio_busy), .valid_o(ratio_valid), .result_o(ratio_result));
-  sw_decimal u_decimal (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(state_q == S_DEC),
+  es_monitor_decimal u_decimal (.clk_i(clk_i), .rst_ni(rst_ni), .start_i(state_q == S_DEC),
     .value_i(value_q), .valid_o(decimal_valid), .bcd_o(decimal_result));
   logic unused_busy;
   assign unused_busy = ratio_busy;
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_IDLE; record_q <= '0; sequence_q <= '1; page_q <= '1;

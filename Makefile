@@ -7,8 +7,8 @@
 #    make lint       Verilator lint of the RTL, -Wall, warnings are errors
 #    make unit       the block level testbenches plus the fabric regression
 #                    in its fast and slow-port forms
-#    make mii        the full switch with the MII pin front-end (sw_switch_mii)
-#    make rmii       the full switch with the RMII pin front-end (sw_switch_rmii)
+#    make mii        the full switch with the MII pin front-end (es_switch_mii)
+#    make rmii       the full switch with the RMII pin front-end (es_switch_rmii)
 #    make vivado     synchronous eight-port MII Vivado board-template regression
 #    make sim        the main four-port switch testbench
 #    make param      the parameterisation testbench (3 ports, 50 MHz)
@@ -16,9 +16,9 @@
 #                    yosys on PATH; not part of `all`, but it *is* a CI gate -
 #                    see the comment above the target)
 #
-#  `rtl`, `lint` and `synth` each run FIVE top modules - sw_switch_gmii (the
-#  default GMII front-end), sw_switch_mii, sw_switch_rmii, and the two
-#  board tops sw_de2_115_top and sw_vivado_top - because the
+#  `rtl`, `lint` and `synth` each run FIVE top modules - es_switch_gmii (the
+#  default GMII front-end), es_switch_mii, es_switch_rmii, and the two
+#  board tops es_switch_de2_115_top and es_switch_vivado_top - because the
 #  per-interface wrappers and the board shell each give the design its own pin
 #  list, and a top that is never elaborated is a top that silently rots.
 #    make clean      remove build products
@@ -26,7 +26,7 @@
 #  Tools
 #    Icarus Verilog  the simulator; the RTL and the testbenches are written so
 #                    that it elaborates and runs them without warnings beyond the
-#                    two documented "constant selects" notes in sw_mac_table.
+#                    two documented "constant selects" notes in es_switch_mac_table.
 #    Verilator       the linter.  It is also the more trustworthy of the two for
 #                    behaviour: Icarus is known to mis-resolve unpacked arrays
 #                    that are indexed with a runtime value, and the RTL avoids
@@ -45,43 +45,44 @@ RTL_DIR  := rtl
 TB_DIR   := tb
 BUILD    := build
 
-# The whole design in dependency order.  `sw_defs.sv` holds the shared
+# The whole design in dependency order.  `es_defs.sv` holds the shared
 # declarations at compilation-unit scope and is compiled first; every other file
 # includes it.
-# `sw_switch_core.sv` is the interface-agnostic core; the three
-# `sw_switch_*` wrappers (`sw_switch_gmii` / `sw_switch_mii` / `sw_switch_rmii`)
+# `es_switch_core.sv` is the interface-agnostic core; the three
+# `es_switch_*` wrappers (`es_switch_gmii` / `es_switch_mii` / `es_switch_rmii`)
 # are the selectable top modules that adapt a physical MAC interface onto it.
-# All three wrappers and both symbol adapters (`sw_mii` / `sw_rmii`) are
+# All three wrappers and both symbol adapters (`es_switch_mii_adapter` / `es_switch_rmii_adapter`) are
 # compiled for every top: they are include-guarded modules, and compiling them
 # always is what keeps their lint and synthesis coverage independent of which
 # front-end is selected.
+RTL_HEADERS := $(wildcard $(RTL_DIR)/*defs.sv $(RTL_DIR)/*/*defs.sv)
+
 RTL_SRCS := \
-  $(RTL_DIR)/sw_defs.sv \
-  $(RTL_DIR)/sw_crc32.sv \
-  $(RTL_DIR)/sw_sync_fifo.sv \
-  $(RTL_DIR)/sw_gmii_rx.sv \
-  $(RTL_DIR)/sw_mii.sv \
-  $(RTL_DIR)/sw_rmii.sv \
-  $(RTL_DIR)/sw_rx_port.sv \
-  $(RTL_DIR)/sw_arbiter.sv \
-  $(RTL_DIR)/sw_mac_table.sv \
-  $(RTL_DIR)/sw_gmii_tx.sv \
-  $(RTL_DIR)/sw_tx_port.sv \
-  $(RTL_DIR)/sw_uart.sv \
-  $(RTL_DIR)/sw_mdio.sv \
-  $(RTL_DIR)/sw_phy_monitor.sv \
-  $(RTL_DIR)/sw_monitor_cache.sv \
-  $(RTL_DIR)/sw_monitor_page.sv \
-  $(RTL_DIR)/sw_decimal.sv \
-  $(RTL_DIR)/sw_lcd.sv \
-  $(RTL_DIR)/sw_monitor_display.sv \
-  $(RTL_DIR)/sw_console.sv \
-  $(RTL_DIR)/sw_ratio.sv \
-  $(RTL_DIR)/sw_monitor.sv \
-  $(RTL_DIR)/sw_switch_core.sv \
-  $(RTL_DIR)/sw_switch_gmii.sv \
-  $(RTL_DIR)/sw_switch_mii.sv \
-  $(RTL_DIR)/sw_switch_rmii.sv
+  $(RTL_DIR)/switch/es_switch_crc32.sv \
+  $(RTL_DIR)/switch/es_switch_sync_fifo.sv \
+  $(RTL_DIR)/switch/es_switch_gmii_rx.sv \
+  $(RTL_DIR)/switch/es_switch_mii_adapter.sv \
+  $(RTL_DIR)/switch/es_switch_rmii_adapter.sv \
+  $(RTL_DIR)/switch/es_switch_rx_port.sv \
+  $(RTL_DIR)/switch/es_switch_arbiter.sv \
+  $(RTL_DIR)/switch/es_switch_mac_table.sv \
+  $(RTL_DIR)/switch/es_switch_gmii_tx.sv \
+  $(RTL_DIR)/switch/es_switch_tx_port.sv \
+  $(RTL_DIR)/console/es_console_uart.sv \
+  $(RTL_DIR)/monitor/es_monitor_mdio.sv \
+  $(RTL_DIR)/monitor/es_monitor_phy.sv \
+  $(RTL_DIR)/monitor/es_monitor_cache.sv \
+  $(RTL_DIR)/monitor/es_monitor_page.sv \
+  $(RTL_DIR)/monitor/es_monitor_decimal.sv \
+  $(RTL_DIR)/monitor/es_monitor_lcd.sv \
+  $(RTL_DIR)/monitor/es_monitor_display.sv \
+  $(RTL_DIR)/console/es_console_core.sv \
+  $(RTL_DIR)/monitor/es_monitor_ratio.sv \
+  $(RTL_DIR)/monitor/es_monitor_core.sv \
+  $(RTL_DIR)/switch/es_switch_core.sv \
+  $(RTL_DIR)/switch/es_switch_gmii.sv \
+  $(RTL_DIR)/switch/es_switch_mii.sv \
+  $(RTL_DIR)/switch/es_switch_rmii.sv
 
 TB_COMMON := \
   $(TB_DIR)/sw_tb_pkg.sv \
@@ -95,17 +96,17 @@ TB_COMMON := \
 # three gates as the rtl/ tops; a board top that only Quartus ever compiles
 # would rot exactly like an rtl/ wrapper that is never elaborated.
 BOARD_DIR      := board/de2_115/quartus_ii/hdl
-BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/sw_de2_115_top.sv
+BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/es_switch_de2_115_top.sv
 # The eight-port Vivado template has its own physical pin list. Keep it in
 # lint/rtl/synth even though its PHY clocks and XDC pin locations are reserved;
 # simulator coverage alone would not catch a board-shell frontend regression.
-VIVADO_TOP_SRCS := $(RTL_SRCS) board/vivado/hdl/sw_vivado_top.sv
+VIVADO_TOP_SRCS := $(RTL_SRCS) board/vivado/hdl/es_switch_vivado_top.sv
 
 IVFLAGS := -g2012 -I $(RTL_DIR) -I $(TB_DIR)
 
 # Block level testbenches: one top per block, no cross-port models needed.
 # The two symbol-adapter benches are self-contained - they instantiate
-# sw_mii / sw_rmii directly and do not need the SW_IF_* front-end defines.
+# es_switch_mii_adapter / es_switch_rmii_adapter directly and do not need the SW_IF_* front-end defines.
 UNIT_TBS := sw_crc32_tb sw_sync_fifo_tb sw_mac_table_tb sw_mii_tb sw_rmii_tb
 
 # The fabric regression runs in two elaborations of the same testbench: every
@@ -129,12 +130,12 @@ all: lint mii rmii vivado unit sim param
 # noticing.
 # ---------------------------------------------------------------------------
 rtl: | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_gmii.vvp -s sw_switch_gmii $(RTL_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_mii.vvp -s sw_switch_mii $(RTL_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_switch_rmii.vvp -s sw_switch_rmii $(RTL_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_de2_115_top.vvp -s sw_de2_115_top $(BOARD_TOP_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/sw_vivado_top.vvp -s sw_vivado_top $(VIVADO_TOP_SRCS)
-	@echo "RTL elaborates cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_gmii.vvp -s es_switch_gmii $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_mii.vvp -s es_switch_mii $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_rmii.vvp -s es_switch_rmii $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_de2_115_top.vvp -s es_switch_de2_115_top $(BOARD_TOP_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_vivado_top.vvp -s es_switch_vivado_top $(VIVADO_TOP_SRCS)
+	@echo "RTL elaborates cleanly (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -145,16 +146,16 @@ $(BUILD):
 # ---------------------------------------------------------------------------
 lint: | $(BUILD)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module sw_switch_gmii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_switch_gmii $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module sw_switch_mii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_switch_mii $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module sw_switch_rmii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_switch_rmii $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module sw_de2_115_top $(BOARD_TOP_SRCS)
+	  -I$(RTL_DIR) --top-module es_switch_de2_115_top $(BOARD_TOP_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module sw_vivado_top $(VIVADO_TOP_SRCS)
-	@echo "RTL lints clean (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
+	  -I$(RTL_DIR) --top-module es_switch_vivado_top $(VIVADO_TOP_SRCS)
+	@echo "RTL lints clean (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 # ---------------------------------------------------------------------------
 # Block level and fabric testbenches.  These are seconds rather than minutes and
@@ -180,20 +181,20 @@ unit: vivado $(BUILD)/sw_crc32_tb.vvp $(BUILD)/sw_sync_fifo_tb.vvp \
 	@echo "--- sw_flood_tb (one port at 10 Mbit/s) ---"
 	@$(VVP) $(BUILD)/sw_flood_tb_slow.vvp
 
-$(BUILD)/sw_flood_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/sw_flood_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                         $(TB_DIR)/sw_flood_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_flood_tb $(RTL_SRCS) $(TB_COMMON) \
 	  $(TB_DIR)/sw_flood_tb.sv
 
 # The same testbench with port 0 at 10 Mbit/s, so one egress has to queue.
-$(BUILD)/sw_flood_tb_slow.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/sw_flood_tb_slow.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                              $(TB_DIR)/sw_flood_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -P sw_flood_tb.SPEED0=0 -o $@ -s sw_flood_tb \
 	  $(RTL_SRCS) $(TB_COMMON) $(TB_DIR)/sw_flood_tb.sv
 
 # ---------------------------------------------------------------------------
-# Front-end smoke regressions: the full switch built with the sw_switch_mii
-# resp. sw_switch_rmii top wrapper, exercised end to end through the matching
+# Front-end smoke regressions: the full switch built with the es_switch_mii
+# resp. es_switch_rmii top wrapper, exercised end to end through the matching
 # PHY bus functional model.  These are the system-level counterpart of
 # sw_mii_tb / sw_rmii_tb: the block benches prove the symbol adapters against
 # their contract, these prove the adapted pins drive the real datapath
@@ -205,7 +206,7 @@ $(BUILD)/sw_flood_tb_slow.vvp: $(RTL_SRCS) $(TB_COMMON) \
 mii: $(BUILD)/tb_sw_switch_mii.vvp
 	$(VVP) $(BUILD)/tb_sw_switch_mii.vvp
 
-$(BUILD)/tb_sw_switch_mii.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/tb_sw_switch_mii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                           $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_switch_mii.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_switch_mii $(RTL_SRCS) \
 	  $(TB_COMMON) $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_switch_mii.sv
@@ -213,35 +214,35 @@ $(BUILD)/tb_sw_switch_mii.vvp: $(RTL_SRCS) $(TB_COMMON) \
 rmii: $(BUILD)/tb_sw_switch_rmii.vvp
 	$(VVP) $(BUILD)/tb_sw_switch_rmii.vvp
 
-$(BUILD)/tb_sw_switch_rmii.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/tb_sw_switch_rmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                           $(TB_DIR)/sw_rmii_if.sv $(TB_DIR)/tb_sw_switch_rmii.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_switch_rmii $(RTL_SRCS) \
 	  $(TB_COMMON) $(TB_DIR)/sw_rmii_if.sv $(TB_DIR)/tb_sw_switch_rmii.sv
 
-$(BUILD)/sw_crc32_tb.vvp: | $(BUILD)
+$(BUILD)/sw_crc32_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_crc32_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_crc32.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_crc32.sv \
 	  $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_crc32_tb.sv
 
-$(BUILD)/sw_sync_fifo_tb.vvp: | $(BUILD)
+$(BUILD)/sw_sync_fifo_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_sync_fifo_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_sync_fifo.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_sync_fifo.sv \
 	  $(TB_DIR)/sw_sync_fifo_tb.sv
 
-$(BUILD)/sw_mac_table_tb.vvp: $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_mac_table.sv \
+$(BUILD)/sw_mac_table_tb.vvp: $(RTL_HEADERS) $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
                             $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mac_table_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_mac_table.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
 	  $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv
 
-$(BUILD)/sw_mii_tb.vvp: | $(BUILD)
+$(BUILD)/sw_mii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mii_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_mii.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mii_adapter.sv \
 	  $(TB_DIR)/sw_mii_tb.sv
 
-$(BUILD)/sw_rmii_tb.vvp: | $(BUILD)
+$(BUILD)/sw_rmii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_rmii_tb \
-	  $(RTL_DIR)/sw_defs.sv $(RTL_DIR)/sw_rmii.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_rmii_adapter.sv \
 	  $(TB_DIR)/sw_rmii_tb.sv
 
 # ---------------------------------------------------------------------------
@@ -254,7 +255,7 @@ $(BUILD)/sw_rmii_tb.vvp: | $(BUILD)
 sim: $(BUILD)/tb_sw_switch.vvp
 	$(VVP) $(BUILD)/tb_sw_switch.vvp
 
-$(BUILD)/tb_sw_switch.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/tb_sw_switch.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                           $(TB_DIR)/sw_if_array.sv $(TB_DIR)/tb_sw_switch.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_switch $(RTL_SRCS) $(TB_COMMON) \
 	  $(TB_DIR)/sw_if_array.sv $(TB_DIR)/tb_sw_switch.sv
@@ -267,7 +268,7 @@ $(BUILD)/tb_sw_switch.vvp: $(RTL_SRCS) $(TB_COMMON) \
 param: $(BUILD)/sw_switch_param_tb.vvp
 	$(VVP) $(BUILD)/sw_switch_param_tb.vvp
 
-$(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
+$(BUILD)/sw_switch_param_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
                                 $(TB_DIR)/sw_switch_param_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_switch_param_tb $(RTL_SRCS) $(TB_COMMON) \
 	  $(TB_DIR)/sw_switch_param_tb.sv
@@ -288,7 +289,7 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 #   * `return` in any function is a syntax error.
 #
 # All four are invisible to Icarus and Verilator.  The RTL avoids all of them -
-# see rtl/sw_defs.sv and AGENTS.md - and this target is what keeps it that way.
+# see rtl/es_defs.sv and AGENTS.md - and this target is what keeps it that way.
 #
 # The `-sv` is not optional: read_verilog does not infer SystemVerilog from a
 # `.sv` extension, and without it the parse dies on the first declaration with
@@ -304,12 +305,12 @@ $(BUILD)/sw_switch_param_tb.vvp: $(RTL_SRCS) $(TB_COMMON) \
 YOSYS_SCRIPT = read_verilog -defer -noautowire -sv -I$(RTL_DIR) -DSYNTHESIS $(2); hierarchy -check -top $(1) -nokeep_prints -nokeep_asserts; synth -top $(1) -flatten; stat
 
 synth:
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_gmii,$(RTL_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_mii,$(RTL_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_switch_rmii,$(RTL_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_de2_115_top,$(BOARD_TOP_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,sw_vivado_top,$(VIVADO_TOP_SRCS))'
-	@echo "synthesises cleanly (sw_switch_gmii, sw_switch_mii, sw_switch_rmii, sw_de2_115_top and sw_vivado_top tops)"
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_gmii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_mii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_rmii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_de2_115_top,$(BOARD_TOP_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_vivado_top,$(VIVADO_TOP_SRCS))'
+	@echo "synthesises cleanly (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 clean:
 	rm -rf $(BUILD)
@@ -325,7 +326,38 @@ clean:
 vivado: $(BUILD)/tb_sw_vivado_top.vvp
 	$(VVP) $(BUILD)/tb_sw_vivado_top.vvp
 
-$(BUILD)/tb_sw_vivado_top.vvp: $(VIVADO_TOP_SRCS) $(TB_COMMON) \
+$(BUILD)/tb_sw_vivado_top.vvp: $(RTL_HEADERS) $(VIVADO_TOP_SRCS) $(TB_COMMON) \
                             $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_vivado_top.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_vivado_top $(VIVADO_TOP_SRCS) \
 	  $(TB_COMMON) $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_vivado_top.sv
+
+# Included declaration edits must invalidate previously compiled simulations.
+$(wildcard $(BUILD)/*.vvp): $(RTL_HEADERS) $(RTL_SRCS)
+
+# Telemetry and console regressions are separate tops with explicit timeouts.
+EXTRA_UNIT_TBS := sw_uart_tb sw_phy_monitor_tb sw_monitor_tb sw_monitor_interval_tb sw_monitor_ui_tb sw_console_tb sw_tx_completion_tb
+.PHONY: telemetry-unit
+unit: telemetry-unit
+telemetry-unit: $(addprefix $(BUILD)/,$(addsuffix .vvp,$(EXTRA_UNIT_TBS)))
+	@set -e; for bench in $(EXTRA_UNIT_TBS); do $(VVP) $(BUILD)/$$bench.vvp; done
+
+$(BUILD)/sw_uart_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_uart_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_uart_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_uart_tb.sv
+
+$(BUILD)/sw_phy_monitor_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_phy_monitor_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_phy_monitor_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_phy_monitor_tb.sv
+
+$(BUILD)/sw_monitor_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_monitor_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_tb.sv
+
+$(BUILD)/sw_monitor_interval_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_interval_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_monitor_interval_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_interval_tb.sv
+
+$(BUILD)/sw_monitor_ui_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_ui_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_monitor_ui_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_ui_tb.sv
+
+$(BUILD)/sw_console_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_console_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_console_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_console_tb.sv
+
+$(BUILD)/sw_tx_completion_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_tx_completion_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv

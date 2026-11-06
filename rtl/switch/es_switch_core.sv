@@ -1,10 +1,10 @@
 // ============================================================================
-//  File        : sw_switch_core.sv
+//  File        : es_switch_core.sv
 //  Description : Interface-agnostic core of the parameterised Ethernet Layer-2
 //                switch.  The physical MAC interface (GMII / MII / RMII) is not
 //                part of this module: every port speaks a canonical octet
 //                stream, adapted onto it by a top-level wrapper
-//                (`sw_switch_gmii`, `sw_switch_mii` or `sw_switch_rmii`).
+//                (`es_switch_gmii`, `es_switch_mii` or `es_switch_rmii`).
 //
 //                Features
 //                --------
@@ -35,7 +35,7 @@
 //                  * the enable is de-asserted during the inter-frame gap.
 //                The GMII pins carry exactly this stream; the MII and RMII
 //                wrappers assemble / serialise their narrow pins onto the same
-//                grid with the `sw_mii` / `sw_rmii` symbol adapters, so this
+//                grid with the `es_switch_mii` / `es_switch_rmii` symbol adapters, so this
 //                core never sees a difference.  Preamble and start-of-frame
 //                delimiter are removed by the PHY on receive and re-inserted on
 //                transmit, exactly as a real MAC does.  If the PHY runs on its
@@ -58,8 +58,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_SWITCH_CORE_SV
-`define SW_SWITCH_CORE_SV
+`ifndef ES_SWITCH_CORE_SV
+`define ES_SWITCH_CORE_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -67,16 +67,19 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`default_nettype none
 
 // The shared declarations arrive through the include above and are visible at
 // compilation-unit scope, so the parameter list and the ANSI port list below can
 // use them (`sw_port_w`, `sw_tag_width`, `SW_STAT_COUNT`, ...) without an
-// import clause.  See sw_defs.sv for why a package cannot be used here.
-module sw_switch_core #(
+// import clause.  See es_defs.sv for why a package cannot be used here.
+module es_switch_core #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
-  parameter int unsigned NUM_PORTS      = 4,
+  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
   /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
   /// (125 MHz for full line rate); a slower core simply stretches the octet
   /// clock enables and loses line rate, nothing else.
@@ -138,7 +141,7 @@ module sw_switch_core #(
   // ---- canonical octet stream (interface-agnostic) -------------------------
   //
   // The physical MAC pins are adapted onto this stream by the top-level
-  // wrapper (sw_switch_gmii / sw_switch_mii / sw_switch_rmii); this core
+  // wrapper (es_switch_gmii / es_switch_mii / es_switch_rmii); this core
   // neither knows nor cares which PHY interface the ports expose.  See the
   // octet-stream contract in the header.
   input  var logic [NUM_PORTS-1:0]                rx_oct_en_i,
@@ -147,9 +150,9 @@ module sw_switch_core #(
   output logic [NUM_PORTS*8-1:0]              tx_oct_data_o,
 
   // Telemetry PHY metadata is independent of the administrative link enable.
-  input logic [NUM_PORTS*8-1:0] phy_status_i,
-  input logic mon_req_i,
-  input logic [31:0] mon_addr_i,
+  input var logic [NUM_PORTS*8-1:0] phy_status_i,
+  input var logic mon_req_i,
+  input var logic [31:0] mon_addr_i,
   output logic mon_ready_o, mon_valid_o,
   output logic [31:0] mon_data_o,
 
@@ -174,13 +177,13 @@ module sw_switch_core #(
 `ifndef SYNTHESIS
   initial begin
     if ((REFRESH_INTERVAL_MS == 0) || (CLK_FREQ_HZ == 0)) $error("monitor: clock and refresh must be positive");
-    if (NUM_PORTS == 0) $error("sw_switch_core: NUM_PORTS must be >= 1");
+    if (NUM_PORTS == 0) $error("es_switch_core: NUM_PORTS must be >= 1");
     if (RX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
-      $warning("sw_switch_core: RX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will be dropped as ingress overflow",
+      $warning("es_switch_core: RX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will be dropped as ingress overflow",
                RX_FIFO_DEPTH, sw_beats_of(MAX_FRAME_LEN));
     end
     if (TX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
-      $warning("sw_switch_core: TX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will stall the fabric",
+      $warning("es_switch_core: TX_FIFO_DEPTH (%0d) is smaller than the %0d beats a maximum-length frame needs; long frames will stall the fabric",
                TX_FIFO_DEPTH, sw_beats_of(MAX_FRAME_LEN));
     end
   end
@@ -209,7 +212,7 @@ module sw_switch_core #(
 
   // The canonical octet stream arrives through the rx_oct_* / tx_oct_* ports;
   // the wrapper above adapts the physical MAC pins onto it.  The contract is
-  // the one documented at sw_gmii_rx / sw_gmii_tx: one octet every
+  // the one documented at es_switch_gmii_rx / es_switch_gmii_tx: one octet every
   // BYTE_PERIOD clocks, enable asserted for the whole octet time, data stable
   // for the same window.
 
@@ -236,7 +239,7 @@ module sw_switch_core #(
   // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
-  // all forms (see sw_arbiter.sv for the full note).
+  // all forms (see es_switch_arbiter.sv for the full note).
   genvar gi;
   genvar g;
   generate
@@ -265,7 +268,7 @@ module sw_switch_core #(
         sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
 
     // ---- ingress --------------------------------------------------------
-    sw_rx_port #(
+    es_switch_rx_port #(
         .NUM_PORTS      (NUM_PORTS),
         .PORT_ID        (g),
         .PORT_MAC       (MAC_G),
@@ -306,7 +309,7 @@ module sw_switch_core #(
     logic [FF_W:0] tx_free;
     logic         tx_slot;
 
-    sw_tx_port #(
+    es_switch_tx_port #(
         .BYTE_PERIOD (BP_G),
         .TX_FIFO_DEPTH (TX_FIFO_DEPTH)
     ) u_tx (
@@ -353,7 +356,7 @@ module sw_switch_core #(
   // serialised internally by a request queue of depth NUM_PORTS, so two ports
   // that finish a frame in the same clock both get their address recorded.
   // --------------------------------------------------------------------------
-  sw_mac_table #(
+  es_switch_mac_table #(
       .NUM_PORTS       (NUM_PORTS),
       .NUM_SETS        (CAM_SETS),
       .NUM_WAYS        (CAM_WAYS),
@@ -384,7 +387,7 @@ module sw_switch_core #(
   // --------------------------------------------------------------------------
   logic [32*SW_STAT_COUNT-1:0] arb_stat;
 
-  sw_arbiter #(
+  es_switch_arbiter #(
       .NUM_PORTS     (NUM_PORTS),
       .TX_FIFO_DEPTH (TX_FIFO_DEPTH),
       .STALL_LIMIT   (STALL_LIMIT)
@@ -416,7 +419,7 @@ module sw_switch_core #(
   // the "which counter belongs to whom" decision in one readable place.
   // --------------------------------------------------------------------------
   function automatic logic [31:0] stat_get(
-      input logic [32*SW_STAT_COUNT-1:0] bus, input int unsigned idx);
+      input var logic [32*SW_STAT_COUNT-1:0] bus, input int unsigned idx);
     stat_get = bus[32*idx +: 32];
   endfunction
 
@@ -452,7 +455,7 @@ module sw_switch_core #(
     stat_o[32*int'(SW_STAT_CAM_FLUSH)  +: 32] = cam_flush_i ? 32'd1 : 32'd0;
   end
 
-  sw_monitor #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
+  es_monitor_core #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
     .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS), .CAM_CAPACITY(CAM_SETS*CAM_WAYS),
     .CAM_AGE_EN(CAM_AGE_EN)) u_monitor (
     .clk_i(clk_i), .rst_ni(rst_ni), .port_stat_i(mon_port_stat),
@@ -463,11 +466,11 @@ module sw_switch_core #(
     .valid_o(mon_valid_o), .data_o(mon_data_o), .cam_req_o(cam_mon_req),
     .cam_index_o(cam_mon_index), .cam_valid_i(cam_mon_valid), .cam_entry_i(cam_mon_entry));
 
-endmodule : sw_switch_core
+endmodule : es_switch_core
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_SWITCH_CORE_SV
+`endif // ES_SWITCH_CORE_SV

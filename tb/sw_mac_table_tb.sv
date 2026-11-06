@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_mac_table_tb.sv
 //  Description : Unit testbench of the shared forwarding database
-//                (`sw_mac_table`).
+//                (`es_switch_mac_table`).
 //
 //                The CAM is the component that turns a flood-everything hub into
 //                a switching bridge, so it is verified on its own:
@@ -29,7 +29,7 @@ module sw_mac_table_tb #(
 );
 
   // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
-  // compilation-unit scope (`rtl/sw_defs.sv`) and so need no import.
+  // compilation-unit scope (`rtl/es_defs.sv`) and so need no import.
   import sw_tb_pkg::*;
 
   localparam int unsigned NUM_PORTS = 2;
@@ -69,7 +69,7 @@ module sw_mac_table_tb #(
 
   always #5 clk = ~clk;
 
-  sw_mac_table #(
+  es_switch_mac_table #(
       .NUM_PORTS       (NUM_PORTS),
       .NUM_SETS        (NUM_SETS),
       .NUM_WAYS        (NUM_WAYS),

@@ -1,13 +1,22 @@
-// DE2-115 two-port 100FD MII switch with passive telemetry, MDIO and console.
-// JP1 must select MII. The pre-existing RX sampling has no asynchronous FIFO;
-// this shell retains that board-level CDC limitation. TX clock is a negedge
-// divide-by-two, retaining the existing 10 ns setup/hold budget in the SDC.
+// ============================================================================
+//  File        : es_switch_de2_115_top.sv
+//  Description : DE2-115 dual-port 100FD MII switch, telemetry and UART console.
+//                CLOCK_50 is the 50 MHz core clock; KEY0 releases sampled reset.
+//                JP1 must select MII. RX capture has no asynchronous FIFO and
+//                retains the existing board CDC limitation. TX uses a negedge
+//                divider; its existing SDC budget is not a general CDC proof.
+//                Hold reset through startup; no new PHY timing guarantee is added.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_DE2_115_TOP_SV
-`define SW_DE2_115_TOP_SV
+`ifndef ES_SWITCH_DE2_115_TOP_SV
+`define ES_SWITCH_DE2_115_TOP_SV
 `default_nettype none
-`include "sw_defs.sv"
-module sw_de2_115_top #(
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
+`default_nettype none
+module es_switch_de2_115_top #(
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
   parameter int unsigned UART_BAUD_RATE = 115200,
   parameter int unsigned UART_DATA_BITS = 8,
@@ -15,29 +24,29 @@ module sw_de2_115_top #(
   parameter int unsigned UART_STOP_BITS = 1,
   parameter int unsigned UART_FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
-  input logic CLOCK_50,
-  input logic [3:0] KEY,
+  input var logic CLOCK_50,
+  input var logic [3:0] KEY,
   output logic [8:0] LEDG,
   output logic [17:0] LEDR,
   output logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, HEX6, HEX7,
   output logic [7:0] LCD_DATA,
   output logic LCD_EN, LCD_RS, LCD_RW, LCD_ON, LCD_BLON,
-  input logic UART_RXD, UART_CTS,
+  input var logic UART_RXD, UART_CTS,
   output logic UART_TXD, UART_RTS,
-  input logic [3:0] ENET0_RX_DATA,
-  input logic ENET0_RX_DV, ENET0_RX_ER,
+  input var logic [3:0] ENET0_RX_DATA,
+  input var logic ENET0_RX_DV, ENET0_RX_ER,
   output logic [3:0] ENET0_TX_DATA,
   output logic ENET0_TX_EN, ENET0_TX_ER, ENET0_TX_CLK,
   output logic ENET0_RESET_N, ENET0_MDC,
-  inout logic ENET0_MDIO,
-  input logic ENET0_INT_N,
-  input logic [3:0] ENET1_RX_DATA,
-  input logic ENET1_RX_DV, ENET1_RX_ER,
+  inout tri logic ENET0_MDIO,
+  input var logic ENET0_INT_N,
+  input var logic [3:0] ENET1_RX_DATA,
+  input var logic ENET1_RX_DV, ENET1_RX_ER,
   output logic [3:0] ENET1_TX_DATA,
   output logic ENET1_TX_EN, ENET1_TX_ER, ENET1_TX_CLK,
   output logic ENET1_RESET_N, ENET1_MDC,
-  inout logic ENET1_MDIO,
-  input logic ENET1_INT_N
+  inout tri logic ENET1_MDIO,
+  input var logic ENET1_INT_N
  );
   localparam int unsigned NUM_PORTS = 2;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
@@ -49,7 +58,7 @@ module sw_de2_115_top #(
   assign rst_ni = key_rst_sync_q;
   logic cam_flush;
   logic [31:0] page;
-  sw_monitor_page #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ)) u_page (
+  es_monitor_page #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ)) u_page (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .key_ni(KEY[3:1]), .flush_o(cam_flush), .page_o(page));
   logic [1:0] tx_clk_q;
   genvar g;
@@ -71,13 +80,16 @@ module sw_de2_115_top #(
   assign {ENET1_TX_CLK, ENET0_TX_CLK} = tx_clk_q;
   logic [15:0] phy_status;
   logic [1:0] enabled, mdio_out, mdio_oe;
-  sw_phy_monitor #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_phy0 (
-    .clk_i(CLOCK_50), .rst_ni(rst_ni && phy_rst_n_q), .mdio_i(ENET0_MDIO),
+  // Isolate bidirectional pads from variable input-port collapsing in Icarus.
+  logic [1:0] mdio_sample;
+  assign mdio_sample = {ENET1_MDIO, ENET0_MDIO};
+  es_monitor_phy #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_phy0 (
+    .clk_i(CLOCK_50), .rst_ni(rst_ni && phy_rst_n_q), .mdio_i(mdio_sample[0]),
     .mdc_o(ENET0_MDC), .mdio_o(mdio_out[0]), .mdio_oe_o(mdio_oe[0]),
     .status_o(phy_status[0 +: 8]), .enabled_o(enabled[0]));
   assign ENET0_MDIO = mdio_oe[0] ? mdio_out[0] : 1'bz;
-  sw_phy_monitor #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_phy1 (
-    .clk_i(CLOCK_50), .rst_ni(rst_ni && phy_rst_n_q), .mdio_i(ENET1_MDIO),
+  es_monitor_phy #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_phy1 (
+    .clk_i(CLOCK_50), .rst_ni(rst_ni && phy_rst_n_q), .mdio_i(mdio_sample[1]),
     .mdc_o(ENET1_MDC), .mdio_o(mdio_out[1]), .mdio_oe_o(mdio_oe[1]),
     .status_o(phy_status[8 +: 8]), .enabled_o(enabled[1]));
   assign ENET1_MDIO = mdio_oe[1] ? mdio_out[1] : 1'bz;
@@ -86,7 +98,7 @@ module sw_de2_115_top #(
   logic [32*SW_STAT_COUNT-1:0] stat;
   logic mon_req, mon_ready, mon_valid;
   logic [31:0] mon_addr, mon_data;
-  sw_switch_mii #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
+  es_switch_mii #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
     .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS), .PORT_SPEED({NUM_PORTS{2'(SW_SPEED_100M)}})) u_switch (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .link_up_i(enabled),
     .phy_status_i(phy_status), .mon_req_i(mon_req), .mon_addr_i(mon_addr),
@@ -101,11 +113,11 @@ module sw_de2_115_top #(
   logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image;
   logic cache_req, cache_idle, console_claim, console_req, console_fault;
   logic [31:0] cache_addr, console_addr;
-  sw_monitor_cache #(.NUM_PORTS(NUM_PORTS)) u_cache (
+  es_monitor_cache #(.NUM_PORTS(NUM_PORTS)) u_cache (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .pause_i(console_claim),
     .req_o(cache_req), .addr_o(cache_addr), .ready_i(mon_ready && !console_claim),
     .valid_i(mon_valid && !console_claim), .data_i(mon_data), .idle_o(cache_idle), .image_o(image));
-  sw_console #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
+  es_console_core #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ_HZ(CLK_FREQ_HZ),
     .UART_BAUD_RATE(UART_BAUD_RATE), .UART_DATA_BITS(UART_DATA_BITS), .UART_PARITY(UART_PARITY),
     .UART_STOP_BITS(UART_STOP_BITS), .UART_FLOW_CONTROL(UART_FLOW_CONTROL)) u_console (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .rx_i(UART_RXD), .cts_ni(UART_CTS),
@@ -118,11 +130,11 @@ module sw_de2_115_top #(
   logic [55:0] hex;
   logic [255:0] lcd_text;
   logic rx_kpps, tx_kpps;
-  sw_monitor_display #(.NUM_PORTS(NUM_PORTS)) u_display (
+  es_monitor_display #(.NUM_PORTS(NUM_PORTS)) u_display (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .page_i(page), .image_i(image),
     .hex_o(hex), .rx_kpps_o(rx_kpps), .tx_kpps_o(tx_kpps), .text_o(lcd_text));
   assign {HEX7,HEX6,HEX5,HEX4,HEX3,HEX2,HEX1,HEX0} = hex;
-  sw_lcd #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_lcd (
+  es_monitor_lcd #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_lcd (
     .clk_i(CLOCK_50), .rst_ni(rst_ni), .text_i(lcd_text), .data_o(LCD_DATA),
     .rs_o(LCD_RS), .rw_o(LCD_RW), .en_o(LCD_EN), .on_o(LCD_ON), .blon_o(LCD_BLON));
   logic [24:0] heartbeat_q;

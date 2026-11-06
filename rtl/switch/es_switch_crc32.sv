@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_crc32.sv
+//  File        : es_switch_crc32.sv
 //  Description : Byte-serial Ethernet CRC-32 (IEEE 802.3 clause 4.1).
 //
 //                The module is deliberately *octet* serial: it consumes at most
@@ -30,8 +30,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_CRC32_SV
-`define SW_CRC32_SV
+`ifndef ES_SWITCH_CRC32_SV
+`define ES_SWITCH_CRC32_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -39,11 +39,13 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared CRC constants arrive through the include above and are visible at
-// compilation-unit scope.  See sw_defs.sv for why a package cannot be used here.
-module sw_crc32 (
+// compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
+module es_switch_crc32 (
   input  var logic        clk_i,      ///< core clock
   input  var logic        rst_ni,     ///< active-low synchronous reset
   input  var logic        en_i,       ///< absorb `din_i` this clock
@@ -67,7 +69,7 @@ module sw_crc32 (
   // is bit-exact with what the table produced, at the cost of a few hundred
   // LUTs per instance instead of one RAM block.  See AGENTS.md 2.4.
   // --------------------------------------------------------------------------
-  function automatic logic [31:0] crc_table_word(input logic [7:0] idx);
+  function automatic logic [31:0] crc_table_word(input var logic [7:0] idx);
     logic [31:0] c;
     c = 32'(idx);
     // Eight reflected shift steps build the table entry for octet value idx.
@@ -112,11 +114,11 @@ module sw_crc32 (
   assign crc_fin_o  = crc ^ SW_CRC32_XOROUT;
   assign resid_ok_o = (crc == SW_CRC32_RESIDUE);
 
-endmodule : sw_crc32
+endmodule : es_switch_crc32
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_CRC32_SV
+`endif // ES_SWITCH_CRC32_SV

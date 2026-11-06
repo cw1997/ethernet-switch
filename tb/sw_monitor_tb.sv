@@ -1,6 +1,15 @@
+// ============================================================================
+//  File        : sw_monitor_tb.sv
+//  Description : Simulation support and self-checking regression for sw_monitor_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 // Telemetry arithmetic and atomicity tests use independently calculated rates.
 `timescale 1ns/1ps
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
 module sw_monitor_tb;
   localparam int N=3;
   logic clk=0, rst=0;
@@ -14,7 +23,7 @@ module sw_monitor_tb;
   logic [31:0] addr=0,data,cam_index;
   logic [127:0] cam_entry=0;
   int errors=0,checks=0;
-  sw_monitor #(.NUM_PORTS(N),.CLK_FREQ_HZ(1_000_001),.REFRESH_INTERVAL_MS(10),.CAM_CAPACITY(7)) dut (
+  es_monitor_core #(.NUM_PORTS(N),.CLK_FREQ_HZ(1_000_001),.REFRESH_INTERVAL_MS(10),.CAM_CAPACITY(7)) dut (
     .clk_i(clk),.rst_ni(rst),.port_stat_i(stat),.tx_done_i(done),.tx_len_i(len),
     .phy_status_i(phy),.rx_used_i(rx_used),.tx_used_i(tx_used),.busy_i(1'b1),
     .flush_i(1'b0),.cam_entries_i(32'd2),.req_i(req),.addr_i(addr),.ready_o(ready),

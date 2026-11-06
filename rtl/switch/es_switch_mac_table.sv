@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_mac_table.sv
+//  File        : es_switch_mac_table.sv
 //  Description : Shared learning / lookup content-addressable memory (CAM) of
 //                the Layer-2 switch - the forwarding database.
 //
@@ -44,8 +44,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_MAC_TABLE_SV
-`define SW_MAC_TABLE_SV
+`ifndef ES_SWITCH_MAC_TABLE_SV
+`define ES_SWITCH_MAC_TABLE_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -53,15 +53,17 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations (`sw_port_w`, `sw_mac_t`) arrive through the include
 // above and are visible at compilation-unit scope, which is what lets them appear
-// in a port range and in a subroutine argument type.  See sw_defs.sv for why a
+// in a port range and in a subroutine argument type.  See es_defs.sv for why a
 // package cannot be used here.
-module sw_mac_table #(
+module es_switch_mac_table #(
   /// Number of switch ports (read and learn ports).
-  parameter int unsigned NUM_PORTS       = 4,
+  parameter int unsigned NUM_PORTS       = SW_DEFAULT_NUM_PORTS,
   /// Number of CAM buckets; the address space is hashed into this range.
   parameter int unsigned NUM_SETS        = 128,
   /// Associativity: entries per bucket.
@@ -94,8 +96,8 @@ module sw_mac_table #(
   output logic [31:0]             entries_o,///< entries currently held
   output logic [31:0]             hits_o,    ///< lookups that resolved
   output logic [31:0]             misses_o,  ///< lookups that did not resolve
-  input logic mon_req_i,
-  input logic [31:0] mon_index_i,
+  input var logic mon_req_i,
+  input var logic [31:0] mon_index_i,
   output logic mon_valid_o,
   output logic [127:0] mon_entry_o,
   output logic [31:0]             learns_o   ///< learn operations performed
@@ -155,7 +157,7 @@ module sw_mac_table #(
   // The modulo keeps the index inside the table for a NUM_SETS that is not a
   // power of two; without it IDX_W bits could address past the last bucket.
   // --------------------------------------------------------------------------
-  function automatic logic [IDX_W-1:0] mac_hash(input logic [47:0] m);
+  function automatic logic [IDX_W-1:0] mac_hash(input var logic [47:0] m);
     logic [31:0] h;
     h = 32'h811C_9DC5;
     for (int unsigned i = 0; i < 6; i++) begin
@@ -201,7 +203,7 @@ module sw_mac_table #(
     entry_match = entry_valid(e) && (entry_mac(e) == m);
   endfunction
 
-  function automatic entry_t make_entry(input sw_mac_t m, input logic [PW-1:0] p);
+  function automatic entry_t make_entry(input sw_mac_t m, input var logic [PW-1:0] p);
     make_entry = entry_t'({1'b1, p, m});
   endfunction
 
@@ -315,8 +317,8 @@ module sw_mac_table #(
   // The per-way ports arrive as one packed vector rather than an unpacked array
   // because Icarus cannot pass an unpacked array to a subroutine.
   function automatic logic [PW-1:0] prio_port(
-      input logic [NUM_WAYS-1:0]         hit_v,
-      input logic [PW*NUM_WAYS-1:0]      port_v);
+      input var logic [NUM_WAYS-1:0]         hit_v,
+      input var logic [PW*NUM_WAYS-1:0]      port_v);
     logic [PW-1:0] p;
     p = '0;
     for (int unsigned k = NUM_WAYS; k > 0; k--) begin
@@ -387,7 +389,7 @@ module sw_mac_table #(
   // qualifier bits is the same thing without depending on it.  The width is an
   // explicit parameter: Icarus cannot infer it from the argument, and the two
   // call sites use vectors of different sizes.
-  function automatic logic [31:0] count_port_bits(input logic [NUM_PORTS-1:0] v);
+  function automatic logic [31:0] count_port_bits(input var logic [NUM_PORTS-1:0] v);
     logic [31:0] n;
     n = 32'd0;
     for (int unsigned b = 0; b < NUM_PORTS; b++) n = n + {31'd0, v[b]};
@@ -395,7 +397,7 @@ module sw_mac_table #(
   endfunction
 
   function automatic logic [31:0] count_entry_bits(
-      input logic [NUM_SETS*NUM_WAYS-1:0] v);
+      input var logic [NUM_SETS*NUM_WAYS-1:0] v);
     logic [31:0] n;
     n = 32'd0;
     for (int unsigned b = 0; b < NUM_SETS*NUM_WAYS; b++) n = n + {31'd0, v[b]};
@@ -892,11 +894,11 @@ module sw_mac_table #(
     end
   end
 
-endmodule : sw_mac_table
+endmodule : es_switch_mac_table
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_MAC_TABLE_SV
+`endif // ES_SWITCH_MAC_TABLE_SV

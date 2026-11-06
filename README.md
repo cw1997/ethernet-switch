@@ -1,5 +1,9 @@
 # ethernet-switch
 
+Generic RTL defaults to four ports with parameter overrides. DE2-115 remains
+two-port and the Vivado template remains eight-port. RTL is grouped under
+`switch/`, `monitor/` and `console/`; `rtl/es_defs.sv` imports common and domain declarations.
+
 A parameterised, store-and-forward Ethernet Layer-2 switch core in
 synthesizable SystemVerilog, with a self-checking regression and a LibreLane
 implementation flow down to GDSII.
@@ -10,7 +14,7 @@ implementation flow down to GDSII.
 
 | Path | What is in it |
 |---|---|
-| `rtl/` | the design. One file per block, `sw_<block>.sv` / module `sw_<block>` |
+| `rtl/` | the design. One file per block, `es_<domain>_<block>.sv` / matching module |
 | `tb/` | the self-checking testbenches; never synthesised, never linted by CI |
 | `board/` | FPGA board shells — Quartus II projects with their own top, pins and build scripts (currently `de2_115/`, Terasic DE2-115, dual-port MII 100 Mbit/s) |
 | `ci/` | the CI toolchain contract (`check-toolchain.sh`) and the toolchain image definition (`toolchain/Dockerfile`) |
@@ -68,8 +72,8 @@ separate places and neither simulator notices.
 ### The shape of the datapath
 
 The pipeline one frame travels through, drawn for one port. Everything in the
-diagram except the CAM and the fabric exists once per port; `sw_mac_table` and
-`sw_arbiter` are single shared instances that serve every port in the same
+diagram except the CAM and the fabric exists once per port; `es_switch_mac_table` and
+`es_switch_arbiter` are single shared instances that serve every port in the same
 clock:
 
 ```
@@ -77,30 +81,30 @@ clock:
                  |
                  v
           +-------------+   octets -> 64-bit beats; the FCS is checked at
-          | sw_gmii_rx  |   the octet rate, with one clock of hold margin
+          | es_switch_gmii_rx  |   the octet rate, with one clock of hold margin
           +-------------+
                  |
                  v  beats
           +-------------+     lookup (answer one clock later)
           |             | <----------------------------> +-------------+
-          | sw_rx_port  |     learn, queued and drained    | sw_mac_table|
+          | es_switch_rx_port  |     learn, queued and drained    | es_switch_mac_table|
           |  (ingress)  |     one per clock                | (shared CAM)|
           +-------------+                                  +-------------+
                  |
                  v  payload beats + one tag descriptor per frame
           +-------------+   pops the descriptor, checks that every egress in
-          | sw_arbiter  |   the mask can take the whole frame, then copies
+          | es_switch_arbiter  |   the mask can take the whole frame, then copies
           |  (fabric)   |   each beat to every port in the mask in the same
           +-------------+   clock
                  |
                  v  payload beats + one length descriptor per frame
           +-------------+   egress beat buffer; the per-frame length is
-          | sw_tx_port  |   popped in step with the first beat
+          | es_switch_tx_port  |   popped in step with the first beat
           +-------------+
                  |
                  v  beats
           +-------------+   beats -> wire-legal frame: preamble, SFD,
-          | sw_gmii_tx  |   zero-padded client data, a fresh FCS and a
+          | es_switch_gmii_tx  |   zero-padded client data, a fresh FCS and a
           +-------------+   12-octet inter-frame gap
                  |
                  v
@@ -108,13 +112,13 @@ clock:
 ```
 
 The ingress side of every port produces two streams that must never drift
-apart: **payload beats** in a `sw_sync_fifo` of `RX_FIFO_DEPTH` entries, and
+apart: **payload beats** in a `es_switch_sync_fifo` of `RX_FIFO_DEPTH` entries, and
 **frame descriptors** (the tag word below) in a second FIFO. The fabric
-(`sw_arbiter`) reads the descriptor first, checks that every destination egress
+(`es_switch_arbiter`) reads the descriptor first, checks that every destination egress
 can take the whole frame, then copies the payload beats into the egress
 buffers - one beat to every port in the destination mask in the same clock.
 Egress buffers the beats the same way, described by a per-frame length
-descriptor, and `sw_gmii_tx` re-serialises the result.
+descriptor, and `es_switch_gmii_tx` re-serialises the result.
 
 ### One clock, and clock enables instead of clocks
 
@@ -160,10 +164,10 @@ worth stating plainly:
 ### Receive: octets to a buffered, described frame
 
 ```
-GMII octets -> sw_gmii_rx -> elastic FIFO -> sw_rx_port -> payload FIFO + tag FIFO
+GMII octets -> es_switch_gmii_rx -> elastic FIFO -> es_switch_rx_port -> payload FIFO + tag FIFO
 ```
 
-**`sw_gmii_rx`** converts the octet stream into beats and checks the FCS in the
+**`es_switch_gmii_rx`** converts the octet stream into beats and checks the FCS in the
 same module, so the CRC always advances at the octet rate. It re-synchronises
 onto a free-running phase counter and samples on the *last* cycle of each octet
 time, which gives a full clock of hold margin without a FIFO or a CDC. A full
@@ -172,7 +176,7 @@ link goes idle (the frame ends), because a PHY may hold `gmii_en_i` high for the
 rest of the final octet time and an eager emit would lose the end-of-frame
 marker.
 
-**`sw_rx_port`** parses the header, asks the CAM, applies the ingress policy, and
+**`es_switch_rx_port`** parses the header, asks the CAM, applies the ingress policy, and
 then buffers. The parser is a small state machine over the elastic FIFO. The
 14-octet MAC header does not line up with the 8-octet beat boundary, so it is
 stitched from two beats - destination address from beat 0, source address and
@@ -195,7 +199,7 @@ payload FIFO as it goes, so a frame that turns out to be bad is rewound out of
 the buffer with a write-pointer rollback rather than being read back. The tag
 descriptor is written only for a frame that passed, so payload and descriptor
 cannot lose frame synchronisation whatever the receive conditions are. This is
-what the `undo_*` port of `sw_sync_fifo` exists for.
+what the `undo_*` port of `es_switch_sync_fifo` exists for.
 
 **The ingress policy** decides a destination bitmask, and it is where a bridge's
 behaviour actually lives:
@@ -214,7 +218,7 @@ a hub and a learning switch.
 
 ### The forwarding database
 
-`sw_mac_table` is one **shared** CAM serving every port: `NUM_SETS` buckets of
+`es_switch_mac_table` is one **shared** CAM serving every port: `NUM_SETS` buckets of
 `NUM_WAYS` entries, indexed by an FNV-1a hash of the 48-bit address truncated to
 the bucket index. Neither needs to be a power of two - the hash takes a real
 modulo and the replacement pointer is bounded explicitly.
@@ -242,7 +246,7 @@ on the first sweep after the last refresh" with no special case.
 
 ### The fabric
 
-`sw_arbiter` is where the failures live, so it is worth being explicit about what
+`es_switch_arbiter` is where the failures live, so it is worth being explicit about what
 it guarantees.
 
 * **One frame in flight.** A grant is only issued while no transfer is in
@@ -274,10 +278,10 @@ it guarantees.
 ### Transmit: beats back to a wire-legal frame
 
 ```
-payload FIFO + descriptor FIFO -> sw_gmii_tx -> GMII octets
+payload FIFO + descriptor FIFO -> es_switch_gmii_tx -> GMII octets
 ```
 
-`sw_tx_port` buffers the beats in one FIFO and the per-frame lengths in a
+`es_switch_tx_port` buffers the beats in one FIFO and the per-frame lengths in a
 smaller one. A frame starts when a descriptor is available *and* the serialiser
 has finished the previous inter-frame gap, and the descriptor is popped at the
 same moment, so the two streams cannot drift apart. It reports two separate
@@ -285,7 +289,7 @@ capacity numbers to the fabric - free beats, and whether one more whole frame
 fits - because they are two separate buffers and reporting only the first is what
 lets the fabric wedge.
 
-`sw_gmii_tx` generates the preamble, the SFD, the MAC client data (zero-padded to
+`es_switch_gmii_tx` generates the preamble, the SFD, the MAC client data (zero-padded to
 the 802.3 minimum, with the padding covered by the FCS) and the FCS, and
 enforces a 12-octet inter-frame gap. The FCS generator runs **one octet ahead of
 the wire** - it absorbs exactly the octet being registered onto `gmii_d_o` at the
@@ -300,11 +304,11 @@ the request arrives mid-window.
 The sections above describe each block; this walks one unicast frame from
 port 0 to port 3 and names the guarantee that is exercised at each step.
 
-1. **Octets arrive.** `sw_gmii_rx` samples the GMII octet stream on a
+1. **Octets arrive.** `es_switch_gmii_rx` samples the GMII octet stream on a
    free-running phase counter, checks the FCS as the octets stream by, and
    assembles 64-bit beats. The last beat is deliberately held until the next
    octet or the link idle, so the end-of-frame marker cannot be lost.
-2. **The header is parsed.** `sw_rx_port`'s state machine stitches the
+2. **The header is parsed.** `es_switch_rx_port`'s state machine stitches the
    destination and source addresses out of the first one or two beats (a third
    if the frame is 802.1Q tagged) and resolves the frame size - from the
    legacy length field when the header carries one, otherwise measured on the
@@ -322,7 +326,7 @@ port 0 to port 3 and names the guarantee that is exercised at each step.
    this request waits one cycle in the queue and neither is lost. An address
    already present is *relocated*, not duplicated, so a station that moves
    ports leaves no stale entry behind.
-6. **The fabric grants the whole frame.** `sw_arbiter` pops the descriptor,
+6. **The fabric grants the whole frame.** `es_switch_arbiter` pops the descriptor,
    verifies that every egress port in the mask has payload room for all of the
    frame's beats *and* a free length descriptor, and only then starts the
    transfer. One frame is in flight at a time; a new grant cannot race the
@@ -332,9 +336,9 @@ port 0 to port 3 and names the guarantee that is exercised at each step.
    in the same clock - flooding is not a special case, it is what the fabric
    does. The first beat is flagged so the egress knows which descriptor the
    beats belong to.
-8. **The frame is re-serialised.** `sw_tx_port` waits until a descriptor is
+8. **The frame is re-serialised.** `es_switch_tx_port` waits until a descriptor is
    available *and* the inter-frame gap has elapsed, pops the descriptor at the
-   same moment the beats start, and `sw_gmii_tx` emits preamble, SFD, the
+   same moment the beats start, and `es_switch_gmii_tx` emits preamble, SFD, the
    client data (zero-padded to the 802.3 minimum, padding covered by the FCS)
    and a freshly computed FCS. The FCS LFSR runs one octet ahead of the wire,
    so the last client octet is followed by the first FCS octet with no bubble.
@@ -347,27 +351,27 @@ each copy.
 
 | Block | File | What it does |
 |---|---|---|
-| CRC-32 | `sw_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one shared table |
-| Elastic buffer | `sw_sync_fifo.sv` | first-word-fall-through FIFO with a frame-granular rewind and a hard flush |
-| GMII receive | `sw_gmii_rx.sv` | octet stream to 64-bit beats, plus the FCS check |
-| MII adapter | `sw_mii.sv` | MII nibbles to and from the canonical octet stream (`sw_switch_mii` builds) |
-| RMII adapter | `sw_rmii.sv` | RMII 2-bit chunks to and from the canonical octet stream (`sw_switch_rmii` builds) |
-| Ingress | `sw_rx_port.sv` | header parse, CAM lookup, ingress policy, buffering, descriptor generation |
-| CAM | `sw_mac_table.sv` | the shared forwarding database: `NUM_SETS` x `NUM_WAYS`, one parallel read per port, a serialising learn queue |
-| Fabric | `sw_arbiter.sv` | round-robin scheduling, whole-frame admission, one-to-many beat copy |
-| GMII transmit | `sw_gmii_tx.sv` | beats to a wire-legal frame, FCS generated one octet ahead of the wire |
-| Egress | `sw_tx_port.sv` | egress beat buffer, per-frame length descriptors, transmit statistics |
-| Core | `sw_switch_core.sv` | the interface-agnostic datapath: port instances, CAM, fabric, statistics aggregation, elaboration-time checks |
-| Top level (GMII) | `sw_switch_gmii.sv` | GMII pins passed straight through to the core (the default top) |
-| Top level (MII) | `sw_switch_mii.sv` | MII pins adapted onto the octet stream by `sw_mii` per port |
-| Top level (RMII) | `sw_switch_rmii.sv` | RMII pins adapted onto the octet stream by `sw_rmii` per port |
-| Declarations | `sw_defs.sv` | every shared constant, type and helper, at compilation-unit scope |
+| CRC-32 | `es_switch_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one shared table |
+| Elastic buffer | `es_switch_sync_fifo.sv` | first-word-fall-through FIFO with a frame-granular rewind and a hard flush |
+| GMII receive | `es_switch_gmii_rx.sv` | octet stream to 64-bit beats, plus the FCS check |
+| MII adapter | `es_switch_mii.sv` | MII nibbles to and from the canonical octet stream (`es_switch_mii` builds) |
+| RMII adapter | `es_switch_rmii.sv` | RMII 2-bit chunks to and from the canonical octet stream (`es_switch_rmii` builds) |
+| Ingress | `es_switch_rx_port.sv` | header parse, CAM lookup, ingress policy, buffering, descriptor generation |
+| CAM | `es_switch_mac_table.sv` | the shared forwarding database: `NUM_SETS` x `NUM_WAYS`, one parallel read per port, a serialising learn queue |
+| Fabric | `es_switch_arbiter.sv` | round-robin scheduling, whole-frame admission, one-to-many beat copy |
+| GMII transmit | `es_switch_gmii_tx.sv` | beats to a wire-legal frame, FCS generated one octet ahead of the wire |
+| Egress | `es_switch_tx_port.sv` | egress beat buffer, per-frame length descriptors, transmit statistics |
+| Core | `es_switch_core.sv` | the interface-agnostic datapath: port instances, CAM, fabric, statistics aggregation, elaboration-time checks |
+| Top level (GMII) | `es_switch_gmii.sv` | GMII pins passed straight through to the core (the default top) |
+| Top level (MII) | `es_switch_mii.sv` | MII pins adapted onto the octet stream by `es_switch_mii` per port |
+| Top level (RMII) | `es_switch_rmii.sv` | RMII pins adapted onto the octet stream by `es_switch_rmii` per port |
+| Declarations | `es_defs.sv` | every shared constant, type and helper, at compilation-unit scope |
 
 ## The frame descriptor
 
 Every buffered frame is described by one **tag** word in a per-port descriptor
 FIFO, travelling alongside the payload. The field offsets are defined once in
-`sw_defs.sv` as `sw_tag_*_lsb()` helpers and read by both ends, so the two
+`es_defs.sv` as `sw_tag_*_lsb()` helpers and read by both ends, so the two
 cannot drift apart; the total width is `sw_tag_width(NUM_PORTS)`.
 
 | field | width | offset helper | meaning |
@@ -379,7 +383,7 @@ cannot drift apart; the total width is `sw_tag_width(NUM_PORTS)`.
 | `drop` | 1 | `sw_tag_drop_lsb` | defensive: the descriptor describes a frame the fabric should discard |
 
 `drop` is always zero in the current design. The ingress filter rejects a frame
-*before* buffering it - that is what the rewind in `sw_sync_fifo` is for - so a
+*before* buffering it - that is what the rewind in `es_switch_sync_fifo` is for - so a
 descriptor is only ever written for a frame that passed. The fabric retains the
 ability to discard such a descriptor, and the field is kept because a design
 that buffered first and filtered later would need it; the field extraction is
@@ -436,16 +440,16 @@ built) rather than as a mysterious frame loss later.
 ## The PHY interface
 
 Each port's front-end pins are one of three MAC interfaces. The core
-(`sw_switch_core`) is interface-agnostic - it only talks a canonical octet
+(`es_switch_core`) is interface-agnostic - it only talks a canonical octet
 stream - and the interface in use is chosen by which top-level wrapper is
-elaborated (`sw_mii` and `sw_rmii` sit between the pins and the canonical
+elaborated (`es_switch_mii` and `es_switch_rmii` sit between the pins and the canonical
 octet stream, so everything behind them is identical in all three builds):
 
 | top module | pins | symbol width | line rates |
 |---|---|---|---|
-| `sw_switch_gmii` | `gmii_rx_*` / `gmii_tx_*` | 8-bit octets | 10 / 100 / 1000 Mbit/s |
-| `sw_switch_mii` | `mii_*` | two 4-bit nibbles per octet | 10 / 100 Mbit/s |
-| `sw_switch_rmii` | `rmii_*` | four 2-bit chunks per octet | 10 / 100 Mbit/s |
+| `es_switch_gmii` | `gmii_rx_*` / `gmii_tx_*` | 8-bit octets | 10 / 100 / 1000 Mbit/s |
+| `es_switch_mii` | `mii_*` | two 4-bit nibbles per octet | 10 / 100 Mbit/s |
+| `es_switch_rmii` | `rmii_*` | four 2-bit chunks per octet | 10 / 100 Mbit/s |
 
 The interface is selected by which wrapper is elaborated - `make mii` and
 `make rmii` build the MII / RMII tops, and the CI `lint` / `rtl` / `synth`
@@ -483,8 +487,8 @@ yosys.
     make synth     # yosys read + elaborate + synthesise (~3 min)
 
 `make all` runs lint, mii, rmii, unit, sim and param. `make lint`, `make rtl`
-and `make synth` each run **three** top modules - `sw_switch_gmii`,
-`sw_switch_mii` and `sw_switch_rmii` - because each wrapper has its own port
+and `make synth` each run **three** top modules - `es_switch_gmii`,
+`es_switch_mii` and `es_switch_rmii` - because each wrapper has its own port
 list and generate code, and a wrapper that is never compiled is a wrapper that
 silently rots. The gates are ordered
 by how fast they fail, and each one catches something the others do not - see

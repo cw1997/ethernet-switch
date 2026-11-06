@@ -4,7 +4,7 @@ The core and GMII/MII/RMII wrappers expose `phy_status_i`, `mon_req_i`,
 `mon_addr_i`, `mon_ready_o`, `mon_valid_o`, and `mon_data_o`. These ports use
 `clk_i` and synchronous active-low `rst_ni`. Existing `stat_o` retains its
 original 32-bit scheduler-admission semantics. Named constants are in
-`rtl/sw_defs.sv`. Integrations must connect all new inputs, using zero PHY
+`rtl/es_defs.sv`. Integrations must connect all new inputs, using zero PHY
 metadata when a PHY manager is absent and zero requests when unused.
 
 ## Sampling and meaning
@@ -98,11 +98,11 @@ Ageing remains disabled by default; enabling it uses the existing CAM parameters
 
 ## Console
 
-The board shell and `sw_console` accept compile-time parameters:
+The board shell and `es_console_core` accept compile-time parameters:
 `UART_BAUD_RATE=115200`, `UART_DATA_BITS=8`, `UART_PARITY=SW_UART_PARITY_NONE`,
 `UART_STOP_BITS=1`, `UART_FLOW_CONTROL=SW_UART_FLOW_NONE`.
 
-`sw_uart` supports 5..8 bits, None/Odd/Even parity, 1/2 stop bits, and None or
+`es_console_uart` supports 5..8 bits, None/Odd/Even parity, 1/2 stop bits, and None or
 RTS/CTS. The ASCII console requires 7/8 bits. Unsupported values fail elaboration;
 the rounded integer baud period must be at least four clocks and within 2 percent
 of the requested rate. RTS/CTS are active-low permissions. CTS is checked between

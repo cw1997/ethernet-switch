@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_rx_port.sv
+//  File        : es_switch_rx_port.sv
 //  Description : Ingress datapath of one Layer-2 switch port.
 //
 //                Responsibilities
@@ -49,8 +49,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_RX_PORT_SV
-`define SW_RX_PORT_SV
+`ifndef ES_SWITCH_RX_PORT_SV
+`define ES_SWITCH_RX_PORT_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -58,15 +58,17 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
 // The shared declarations (`SW_LEN_W`, `SW_STAT_COUNT`, `sw_tag_width`) arrive
 // through the include above and are visible at compilation-unit scope, which is
-// what lets them appear in a port range.  See sw_defs.sv for why a package cannot
+// what lets them appear in a port range.  See es_defs.sv for why a package cannot
 // be used here.
-module sw_rx_port #(
+module es_switch_rx_port #(
   /// Total number of switch ports (the port index must be < NUM_PORTS).
-  parameter int unsigned NUM_PORTS      = 4,
+  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
   /// Index of this port; drives the ingress source index and the CAM learn.
   parameter int unsigned PORT_ID        = 0,
   /// MAC address owned by this port; frames sourced from it are not reflected.
@@ -150,7 +152,7 @@ module sw_rx_port #(
   /// Copy only the first `n` octets of a beat and zero the rest.  The final
   /// beat of a frame is almost never a full 8 octets, and the unused lanes must
   /// not leak stale data into the egress FIFO.
-  function automatic logic [63:0] mask_octets(input logic [63:0] d, input logic [3:0] n);
+  function automatic logic [63:0] mask_octets(input var logic [63:0] d, input var logic [3:0] n);
     logic [63:0] r;
     r = 64'd0;
     for (int unsigned k = 0; k < 8; k++) begin
@@ -166,7 +168,7 @@ module sw_rx_port #(
   logic [63:0] beat_data;
   logic [3:0]  beat_octets;
 
-  sw_gmii_rx #(
+  es_switch_gmii_rx #(
       .BYTE_PERIOD (BYTE_PERIOD)
   ) u_gmii_rx (
       .clk_i         (clk_i),
@@ -549,7 +551,7 @@ module sw_rx_port #(
   // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
-  // all forms (see sw_arbiter.sv for the full note).
+  // all forms (see es_switch_arbiter.sv for the full note).
   genvar gk;
   generate
   for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
@@ -835,7 +837,7 @@ module sw_rx_port #(
   assign data_rd_en = rd_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (64),
       .DEPTH (RX_FIFO_DEPTH)
   ) u_data_fifo (
@@ -857,7 +859,7 @@ module sw_rx_port #(
   assign rd_data_o = data_rd_data;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (WF_W),
       .DEPTH (WF_DEPTH)
   ) u_wf (
@@ -877,7 +879,7 @@ module sw_rx_port #(
   /* verilator lint_on PINCONNECTEMPTY */
 
   /* verilator lint_off PINCONNECTEMPTY */
-  sw_sync_fifo #(
+  es_switch_sync_fifo #(
       .WIDTH (TAGW),
       .DEPTH (TAG_FIFO_DEPTH)
   ) u_tag_fifo (
@@ -896,11 +898,11 @@ module sw_rx_port #(
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
-endmodule : sw_rx_port
+endmodule : es_switch_rx_port
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_RX_PORT_SV
+`endif // ES_SWITCH_RX_PORT_SV

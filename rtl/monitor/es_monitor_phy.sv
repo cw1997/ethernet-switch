@@ -1,21 +1,33 @@
-// Marvell 88E1111 copper manager: discover, advertise only 100FD, then poll.
-// Status is unknown until a complete successful poll, never inferred from straps.
+// ============================================================================
+//  File        : es_monitor_phy.sv
+//  Description : Marvell 88E1111 Clause-22 discovery and status polling.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Advertises 100 Mbit/s full duplex only. Status remains unknown until a complete
+//                successful poll; latch-low link status requires two BMSR reads.
+//  Interface   : CLK_FREQ_HZ is the core frequency; POLL_INTERVAL_MS and
+//                RESET_WAIT_MS are clock-counted milliseconds. mdio_oe_o controls
+//                the external tri-state buffer. status_o packs validity, link,
+//                duplex, speed and management-error bits; enabled_o gates traffic.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_PHY_MONITOR_SV
-`define SW_PHY_MONITOR_SV
+`ifndef ES_MONITOR_PHY_SV
+`define ES_MONITOR_PHY_SV
 `default_nettype none
-module sw_phy_monitor #(
+// ---- configuration and public interface -------------------------------------
+module es_monitor_phy #(
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   parameter int unsigned POLL_INTERVAL_MS = 100,
   parameter int unsigned RESET_WAIT_MS = 20
 ) (
-  input logic clk_i, rst_ni, mdio_i,
+  input var logic clk_i, rst_ni, mdio_i,
   output logic mdc_o, mdio_o, mdio_oe_o,
   output logic [7:0] status_o,
   output logic enabled_o
 );
   localparam logic [63:0] POLL = (64'(CLK_FREQ_HZ)*64'(POLL_INTERVAL_MS)+64'd999)/64'd1000;
   localparam logic [63:0] RESET_WAIT = (64'(CLK_FREQ_HZ)*64'(RESET_WAIT_MS)+64'd999)/64'd1000;
+  // ---- control state --------------------------------------------------------
   typedef enum logic [1:0] {S_DELAY, S_START, S_WAIT} state_e;
   state_e state_q;
   logic [63:0] delay_q;
@@ -40,13 +52,14 @@ module sw_phy_monitor #(
       default: reg_addr = 5'd17;
     endcase
   end
-  sw_mdio #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_mdio (
+  es_monitor_mdio #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_mdio (
     .clk_i(clk_i), .rst_ni(rst_ni), .start_i(state_q == S_START), .read_i(read_cmd),
     .phy_i(address_q), .reg_i(reg_addr), .data_i(write_data), .mdio_i(mdio_i),
     .mdc_o(mdc_o), .mdio_o(mdio_o), .mdio_oe_o(mdio_oe_o),
     .busy_o(busy), .valid_o(valid), .error_o(error), .data_o(read_data));
   logic unused_busy;
   assign unused_busy = busy;
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_DELAY; delay_q <= RESET_WAIT; address_q <= '0;

@@ -346,7 +346,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: lint-${{ runner.os }}-${{ hashFiles('rtl/*.sv') }}
+          key: lint-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv') }}
           restore-keys: lint-${{ runner.os }}-
 
       # Verilator with -Wall and the default error policy: any warning fails.
@@ -429,7 +429,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: test-${{ runner.os }}-${{ hashFiles('rtl/*.sv', 'tb/*.sv') }}
+          key: test-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv', 'tb/*.sv') }}
           restore-keys: test-${{ runner.os }}-
 
       # Block level testbenches first: they are milliseconds each and isolate a
@@ -627,7 +627,7 @@ jobs:
         run: |
           set -o pipefail
           gds=$(find librelane/runs -mindepth 3 -maxdepth 3 -type f \
-                  -name 'sw_switch_gmii.gds' | sort | head -1)
+                  -name 'es_switch_gmii.gds' | sort | head -1)
           if [ -z "$gds" ]; then
             gds=$(find librelane/runs -type f -name '*.gds' \
                     ! -name '*.magic.gds' ! -name '*.klayout.gds' | sort | head -1)
@@ -641,7 +641,7 @@ jobs:
           echo "GDSII: $gds"
           echo "gds_path=$gds" >> "$GITHUB_OUTPUT"
           mkdir -p out
-          cp "$gds" out/sw_switch_gmii.gds
+          cp "$gds" out/es_switch_gmii.gds
           ls -l out/
 
       # The step directories are numbered (`34-openroad-cts`) and the numbering
@@ -715,7 +715,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: gdsii
-          path: out/sw_switch_gmii.gds
+          path: out/es_switch_gmii.gds
           if-no-files-found: error
           retention-days: 90
 

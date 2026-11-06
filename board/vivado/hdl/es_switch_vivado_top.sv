@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_vivado_top.sv
+//  File        : es_switch_vivado_top.sv
 //  Description : Eight-port, fixed 100 Mbit/s MII board template for Vivado.
 //                Keeps the switch's control and statistics buses inside the
 //                FPGA; the physical pin list is limited to 138 port bits.
@@ -14,7 +14,7 @@
 //                    external adapter must preserve these and the frame gap.
 //
 //                The RX_CLK/TX_CLK inputs are reserved, not capture clocks.
-//                Direct data wiring below assumes the synchronous sw_mii
+//                Direct data wiring below assumes the synchronous es_switch_mii
 //                contract; it provides no CDC or physical MII timing closure.
 //                A real board needs per-port PHY clock adaptation, PHY reset
 //                timing and management before this template can be used.
@@ -26,16 +26,20 @@
 //  Language    : SystemVerilog; no vendor primitives or power-on initial block.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_VIVADO_TOP_SV
-`define SW_VIVADO_TOP_SV
+`ifndef ES_SWITCH_VIVADO_TOP_SV
+`define ES_SWITCH_VIVADO_TOP_SV
 `default_nettype none
 
 // Shared speed encodings and the statistics layout remain identical to the
 // rtl/ wrappers. Explicit input var logic avoids the implicit-net error seen
 // in Vivado 2026.1 under default_nettype none, retaining the four-state type.
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
+`default_nettype none
 
-module sw_vivado_top (
+module es_switch_vivado_top (
   // ---- board clock and mechanical reset ------------------------------------
   input  var logic       clk_i,          ///< 50 MHz; always running during reset
   input  var logic       rst_button_ni,  ///< asynchronous, active-low button
@@ -60,7 +64,7 @@ module sw_vivado_top (
 );
   // ---- board-fixed configuration -------------------------------------------
   // At 50 MHz / 100 Mbit/s, sw_byte_period is 4. Its even half-period is
-  // required by sw_mii; these settings do not support PHY speed negotiation.
+  // required by es_switch_mii; these settings do not support PHY speed negotiation.
   localparam int unsigned NUM_PORTS = 8;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
 
@@ -95,13 +99,19 @@ module sw_vivado_top (
   // The 448-bit statistics bus stays internal. Making the core itself the
   // physical top exposes this bus as package pins and causes I/O exhaustion.
   logic [32*SW_STAT_COUNT-1:0] stat;
-  sw_switch_mii #(
+  // Telemetry is not exposed by this physical template; consume its responses.
+  logic unused_mon_ready, unused_mon_valid;
+  logic [31:0] unused_mon_data;
+  es_switch_mii #(
     .NUM_PORTS(NUM_PORTS),
     .CLK_FREQ_HZ(CLK_FREQ_HZ),
     // Each packed speed field is exactly two bits; this cast represents the
     // enum in the replication, rather than truncating an arithmetic result.
     .PORT_SPEED({NUM_PORTS{2'(SW_SPEED_100M)}})
   ) u_switch (
+    .phy_status_i('0), .mon_req_i(1'b0), .mon_addr_i(32'd0),
+    .mon_ready_o(unused_mon_ready), .mon_valid_o(unused_mon_valid),
+    .mon_data_o(unused_mon_data),
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     // Ports are administratively enabled without reading PHY link status.
@@ -134,4 +144,5 @@ endmodule
 // Restore the compilation-unit default so this board file cannot turn an
 // unrelated module's implicit connection into an error merely by file order.
 `default_nettype wire
-`endif // SW_VIVADO_TOP_SV
+`endif // ES_SWITCH_VIVADO_TOP_SV
+

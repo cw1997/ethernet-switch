@@ -4,7 +4,7 @@
 #  Device    : Cyclone IV E, EP4CE115F29C7 (the DE2-115's FPGA; boards from
 #              some batches carry a C8 - if programming fails with a JTAG ID
 #              mismatch, change the speed grade on the DEVICE line).
-#  Top       : sw_de2_115_top (board/de2_115/quartus_ii/hdl/sw_de2_115_top.sv)
+#  Top       : es_switch_de2_115_top (board/de2_115/quartus_ii/hdl/es_switch_de2_115_top.sv)
 #  Interface : MII, both ports at 100BASE-TX, JP1 in the MII position.
 #
 #  Pin assignments are copied from the official Terasic / Altera University
@@ -19,7 +19,7 @@
 # ---- device and top ---------------------------------------------------------
 set_global_assignment -name FAMILY "Cyclone IV E"
 set_global_assignment -name DEVICE EP4CE115F29C7
-set_global_assignment -name TOP_LEVEL_ENTITY sw_de2_115_top
+set_global_assignment -name TOP_LEVEL_ENTITY es_switch_de2_115_top
 set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 
 # ---- HDL input --------------------------------------------------------------
@@ -30,7 +30,7 @@ set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005
 set_global_assignment -name VERILOG_MACRO "SYNTHESIS=1"
 
-# `include "sw_defs.sv" is resolved here; every RTL file includes it.
+# `include "es_defs.sv" is resolved here; every RTL file includes it.
 set_global_assignment -name SEARCH_PATH ../../../rtl
 
 set_global_assignment -name SDC_FILE de2_115.sdc
@@ -41,26 +41,39 @@ set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-ST
 
 # ---- source files -------------------------------------------------------------
 # hdl/ first (the top), then the RTL in the same dependency order the
-# repository Makefile uses.  sw_defs.sv is included by every file, so its
+# repository Makefile uses.  es_defs.sv is included by every file, so its
 # location only matters for the include path above.
-set_global_assignment -name SYSTEMVERILOG_FILE hdl/sw_de2_115_top.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_crc32.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_sync_fifo.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_gmii_rx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_mii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_rmii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_rx_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_arbiter.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_mac_table.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_gmii_tx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_tx_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_ratio.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_monitor.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_gmii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_mii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/sw_switch_rmii.sv
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_uart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_cache.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_decimal.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_display.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_lcd.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_mdio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_page.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_phy.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_ratio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_arbiter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_crc32.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii_rx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii_tx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mac_table.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii_adapter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii_adapter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rx_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_sync_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_tx_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE hdl/es_switch_de2_115_top.sv
 
 # ---- board clock, buttons, LEDs ------------------------------------------------
 set_location_assignment PIN_Y2  -to CLOCK_50

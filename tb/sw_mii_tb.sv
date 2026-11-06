@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb/sw_mii_tb.sv
-//  Description : Unit testbench of the MII symbol adapter (`sw_mii`).
+//  Description : Unit testbench of the MII symbol adapter (`es_switch_mii`).
 //
 //                Verified here, against the contract stated in the module
 //                header:
@@ -19,7 +19,7 @@
 //                     link so the next frame is presented again,
 //                  5. TX serialisation - the canonical octet stream is split
 //                     into a low and a high nibble per octet time, on the
-//                     reset grid the adapter shares with sw_gmii_tx,
+//                     reset grid the adapter shares with es_switch_gmii_tx,
 //                  6. the BYTE_PERIOD = 2 edge case (one clock per nibble).
 //
 //                Self-checking: every expectation prints PASS/FAIL, the run
@@ -67,7 +67,7 @@ module sw_mii_tb;
   logic       oct_en_i;
   logic [7:0] oct_d_i;
 
-  sw_mii #(
+  es_switch_mii_adapter #(
       .BYTE_PERIOD (BP)
   ) u_mii (
       .clk_i      (clk),
@@ -101,7 +101,7 @@ module sw_mii_tb;
   logic       f_oct_en_i;
   logic [7:0] f_oct_d_i;
 
-  sw_mii #(
+  es_switch_mii_adapter #(
       .BYTE_PERIOD (BP2)
   ) u_fast (
       .clk_i      (clk),
@@ -190,7 +190,7 @@ module sw_mii_tb;
   /// the timestep of the posedge that opens a cycle whose number is a multiple
   /// of `bp`; the caller drives its octet enable in that same timestep (the
   /// non-blocking update lands on the pins for exactly that aligned window),
-  /// which is what sw_gmii_tx guarantees for its own stream.
+  /// which is what es_switch_gmii_tx guarantees for its own stream.
   task automatic align_to_grid(input int unsigned bp);
     int unsigned guard;
     guard = 0;
@@ -261,7 +261,7 @@ module sw_mii_tb;
       expect_1bit(oct_en_o, 1'b1, $sformatf("%s: window start en (octet %0d)", tag, k));
       expect_data(oct_d_o, get_oct(octs, k), $sformatf("%s: window start octet %0d", tag, k));
       // walk to the last clock of the window: the octet must be stable all the
-      // way through, which is what sw_gmii_rx relies on.
+      // way through, which is what es_switch_gmii_rx relies on.
       repeat (BP - 1) step1();
       expect_1bit(oct_en_o, 1'b1, $sformatf("%s: window end en (octet %0d)", tag, k));
       expect_data(oct_d_o, get_oct(octs, k), $sformatf("%s: window end octet %0d", tag, k));
@@ -286,7 +286,7 @@ module sw_mii_tb;
 
   // ---------------------------------------------------------------------------
   // TX drive and check.  The canonical octet stream is presented aligned to
-  // the reset grid (as sw_gmii_tx guarantees), one octet per BYTE_PERIOD
+  // the reset grid (as es_switch_gmii_tx guarantees), one octet per BYTE_PERIOD
   // clocks; the nibbles on the pins are checked in the first clock of each
   // nibble window.  `octets_skew` starts the frame that many octet times
   // later, which must not change anything: the adapter's transmit counter

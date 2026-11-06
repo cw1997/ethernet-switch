@@ -6,17 +6,17 @@ build_dir="$2"
 rtl_dir="$3"
 checks=0
 for config in \
-  sw_uart:DATA_BITS:4 sw_uart:DATA_BITS:9 \
-  sw_uart:PARITY:3 sw_uart:STOP_BITS:0 sw_uart:STOP_BITS:3 \
-  sw_uart:FLOW_CONTROL:2 sw_uart:BAUD_RATE:0 sw_uart:BAUD_RATE:7800000 sw_uart:BAUD_RATE:12250000 \
-  sw_console:UART_DATA_BITS:5 sw_console:UART_DATA_BITS:6 \
-  sw_monitor:REFRESH_INTERVAL_MS:0 sw_monitor:CLK_FREQ_HZ:0 sw_monitor:NUM_PORTS:0
+  es_console_uart:DATA_BITS:4 es_console_uart:DATA_BITS:9 \
+  es_console_uart:PARITY:3 es_console_uart:STOP_BITS:0 es_console_uart:STOP_BITS:3 \
+  es_console_uart:FLOW_CONTROL:2 es_console_uart:BAUD_RATE:0 es_console_uart:BAUD_RATE:7800000 es_console_uart:BAUD_RATE:12250000 \
+  es_console_core:UART_DATA_BITS:5 es_console_core:UART_DATA_BITS:6 \
+  es_monitor_core:REFRESH_INTERVAL_MS:0 es_monitor_core:CLK_FREQ_HZ:0 es_monitor_core:NUM_PORTS:0
 do
   IFS=: read -r top parameter value <<< "$config"
   if "$simulator" -g2012 -I "$rtl_dir" -s "$top" "-P$top.$parameter=$value" \
     -o "$build_dir/invalid-monitor.vvp" \
-    "$rtl_dir/sw_defs.sv" "$rtl_dir/sw_uart.sv" "$rtl_dir/sw_console.sv" \
-    "$rtl_dir/sw_ratio.sv" "$rtl_dir/sw_monitor.sv" \
+    "$rtl_dir/es_defs.sv" "$rtl_dir/es_console_uart.sv" "$rtl_dir/es_console_core.sv" \
+    "$rtl_dir/es_monitor_ratio.sv" "$rtl_dir/es_monitor_core.sv" \
     > "$build_dir/invalid-monitor.log" 2>&1; then
     echo "FAIL invalid configuration accepted: $config"
     exit 1

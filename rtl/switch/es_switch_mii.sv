@@ -1,18 +1,18 @@
 // ============================================================================
-//  File        : sw_switch_mii.sv
+//  File        : es_switch_mii.sv
 //  Description : Top-level MII front-end wrapper around the interface-agnostic
-//                switch core (`sw_switch_core`).  MII carries two 4-bit
+//                switch core (`es_switch_core`).  MII carries two 4-bit
 //                nibbles per octet time, so each port's pins are assembled /
-//                serialised onto the canonical octet stream by a `sw_mii`
+//                serialised onto the canonical octet stream by a `es_switch_mii`
 //                symbol adapter before reaching the core.
 //
 //                Selecting this module as the elaborated top connects the
 //                switch to an MII PHY.  MII is a 10/100 Mbit/s front-end only:
 //                a port configured for 1000 Mbit/s is rejected at elaboration
-//                time.  Use `sw_switch_gmii` for 1000 Mbit/s ports, or
-//                `sw_switch_rmii` for the two-wire front-end.
+//                time.  Use `es_switch_gmii` for 1000 Mbit/s ports, or
+//                `es_switch_rmii` for the two-wire front-end.
 //
-//                See sw_switch_core.sv for the parameter encoding and the
+//                See es_switch_core.sv for the parameter encoding and the
 //                octet-stream contract.
 // ============================================================================
 // ---------------------------------------------------------------------------
@@ -21,8 +21,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef SW_SWITCH_MII_SV
-`define SW_SWITCH_MII_SV
+`ifndef ES_SWITCH_MII_SV
+`define ES_SWITCH_MII_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -30,12 +30,14 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`default_nettype none
 
-module sw_switch_mii #(
+module es_switch_mii #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
-  parameter int unsigned NUM_PORTS      = 4,
+  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
   /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
   /// (125 MHz for full line rate); a slower core simply stretches the octet
   /// clock enables and loses line rate, nothing else.
@@ -103,9 +105,9 @@ module sw_switch_mii #(
   output logic [NUM_PORTS*4-1:0]              mii_txd_o,
 
   // Telemetry PHY metadata is independent of the administrative link enable.
-  input logic [NUM_PORTS*8-1:0] phy_status_i,
-  input logic mon_req_i,
-  input logic [31:0] mon_addr_i,
+  input var logic [NUM_PORTS*8-1:0] phy_status_i,
+  input var logic mon_req_i,
+  input var logic [31:0] mon_addr_i,
   output logic mon_ready_o, mon_valid_o,
   output logic [31:0] mon_data_o,
 
@@ -126,13 +128,13 @@ module sw_switch_mii #(
   initial begin
     for (int unsigned p = 0; p < NUM_PORTS; p++) begin
       if (sw_speed_e'(PORT_SPEED[p*2 +: 2]) == SW_SPEED_1000M) begin
-        $error("sw_switch_mii: port %0d is configured for 1000 Mbit/s, which the MII front-end cannot carry", p);
+        $error("es_switch_mii: port %0d is configured for 1000 Mbit/s, which the MII front-end cannot carry", p);
       end
     end
   end
 `endif
 
-  sw_switch_core #(
+  es_switch_core #(
       .NUM_PORTS      (NUM_PORTS),
       .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
       .CLK_FREQ_HZ    (CLK_FREQ_HZ),
@@ -173,14 +175,14 @@ module sw_switch_mii #(
   // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
-  // all forms (see sw_arbiter.sv for the full note).
+  // all forms (see es_switch_arbiter.sv for the full note).
   genvar g;
   generate
   for (g = 0; g < NUM_PORTS; g++) begin : g_port
     localparam int unsigned BP_G =
         sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
 
-    sw_mii #(
+    es_switch_mii_adapter #(
         .BYTE_PERIOD (BP_G)
     ) u_fe (
         .clk_i       (clk_i),
@@ -199,11 +201,11 @@ module sw_switch_mii #(
   end
   endgenerate
 
-endmodule : sw_switch_mii
+endmodule : es_switch_mii
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // SW_SWITCH_MII_SV
+`endif // ES_SWITCH_MII_SV

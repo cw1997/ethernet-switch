@@ -1,24 +1,36 @@
-// Write-only HD44780-compatible 16x2 LCD. Input is 32 ASCII bytes, MSB first.
-// A complete screen is latched before refresh so its two rows share a snapshot.
+// ============================================================================
+//  File        : es_monitor_lcd.sv
+//  Description : Character LCD write sequencer.
+//
+//                All state advances on clk_i; rst_ni is synchronous active low.
+//                Serializes the formatted two-row text with clock-counted initialization and
+//                enable timing. The board owns LCD pin and voltage assignments.
+//  Interface   : CLK_FREQ_HZ is in hertz. text_i supplies the packed LCD rows;
+//                the sequencer drives write-only data, register-select and enable.
+//                LCD access timing is counted in clk_i cycles, not delayed RTL.
+// ============================================================================
 `timescale 1ns/1ps
-`ifndef SW_LCD_SV
-`define SW_LCD_SV
+`ifndef ES_MONITOR_LCD_SV
+`define ES_MONITOR_LCD_SV
 `default_nettype none
-module sw_lcd #(
+// ---- configuration and public interface -------------------------------------
+module es_monitor_lcd #(
   parameter int unsigned CLK_FREQ_HZ = 50_000_000
 ) (
-  input logic clk_i, rst_ni,
-  input logic [255:0] text_i,
+  input var logic clk_i, rst_ni,
+  input var logic [255:0] text_i,
   output logic [7:0] data_o,
   output logic rs_o, rw_o, en_o, on_o, blon_o
 );
   localparam int unsigned US = (CLK_FREQ_HZ+999_999)/1_000_000;
+  // ---- control state --------------------------------------------------------
   typedef enum logic [1:0] {S_WAIT, S_HIGH, S_LOW, S_IDLE} state_e;
   state_e state_q;
   logic [31:0] timer_q;
   logic [5:0] index_q;
   logic [255:0] text_q;
   assign rw_o = 1'b0; assign on_o = 1'b1; assign blon_o = 1'b1;
+  // ---- synchronous state and datapath ---------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       state_q <= S_WAIT; timer_q <= 32'(40_000*US); index_q <= '0;

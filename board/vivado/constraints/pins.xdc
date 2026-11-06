@@ -1,6 +1,6 @@
 # ============================================================================
 # File        : pins.xdc
-# Description : Physical pin/electrical TEMPLATE for sw_vivado_top, eight MII
+# Description : Physical pin/electrical TEMPLATE for es_switch_vivado_top, eight MII
 #               ports plus a 50 MHz clock and an active-low reset button.
 #               All assignments below are intentionally commented: the FPGA
 #               package identifies legal pins, not the board's actual wiring.
@@ -278,7 +278,7 @@
 # set_property IOSTANDARD <STANDARD> [get_ports {mii_tx_er_o[7]}]
 
 # ---- transmit data, four pins per port --------------------------------------
-# Bus packing is the same as RX; nibble serialization is performed in sw_mii.
+# Bus packing is the same as RX; nibble serialization is performed in es_switch_mii.
 # set_property PACKAGE_PIN <PIN> [get_ports {mii_txd_o[0]}]
 # set_property IOSTANDARD <STANDARD> [get_ports {mii_txd_o[0]}]
 

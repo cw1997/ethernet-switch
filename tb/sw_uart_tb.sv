@@ -1,5 +1,14 @@
+// ============================================================================
+//  File        : sw_uart_tb.sv
+//  Description : Simulation support and self-checking regression for sw_uart_tb.
+//                Uses the test clock/reset and explicit stimulus below. Wire
+//                models and scoreboards check behavior, not board CDC timing.
+// ============================================================================
 `timescale 1ns/1ps
-`include "sw_defs.sv"
+`include "es_defs.sv"
+`include "switch/es_switch_defs.sv"
+`include "monitor/es_monitor_defs.sv"
+`include "console/es_console_defs.sv"
 module sw_uart_case #(parameter int BITS=8,PAR=0,STOPS=1,FLOW=0,
                      HZ=1_600_000,BAUD=100_000)(output logic finished=0);
   logic clk=0,rst=0,rx=1,cts=0,tx,rts;
@@ -10,7 +19,7 @@ module sw_uart_case #(parameter int BITS=8,PAR=0,STOPS=1,FLOW=0,
   int errors=0, received=0;
   localparam int PERIOD=(HZ+BAUD/2)/BAUD;
   localparam logic [7:0] MASK=8'(255 >> (8-BITS));
-  sw_uart #(.CLK_FREQ_HZ(HZ),.BAUD_RATE(BAUD),.DATA_BITS(BITS),.PARITY(PAR),.STOP_BITS(STOPS),.FLOW_CONTROL(FLOW)) dut(
+  es_console_uart #(.CLK_FREQ_HZ(HZ),.BAUD_RATE(BAUD),.DATA_BITS(BITS),.PARITY(PAR),.STOP_BITS(STOPS),.FLOW_CONTROL(FLOW)) dut(
     .clk_i(clk),.rst_ni(rst),.rx_i(rx),.cts_ni(cts),.tx_o(tx),.rts_no(rts),
     .tx_valid_i(send),.tx_data_i(txdata),.tx_ready_o(ready),.rx_valid_o(got),.rx_data_o(rxdata),
     .rx_ready_i(accept),.parity_error_o(parerr),.frame_error_o(frerr),.overflow_o(overflow));
