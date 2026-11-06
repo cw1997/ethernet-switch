@@ -11,6 +11,13 @@
 `define ES_MONITOR_DEFS_SV
 `default_nettype none
 // Included by es_defs.sv after common declarations.
+// --------------------------------------------------------------------------
+// Snapshot word layout
+//
+// Offsets are 32-bit word indices unless declared as byte-address constants.
+// Each port record follows the aggregate record; 64-bit fields store the low
+// word first.
+// --------------------------------------------------------------------------
 localparam int unsigned SW_MON_ABI_VERSION = 1;
 localparam int unsigned SW_MON_STATUS_WORD = 0;
 localparam int unsigned SW_MON_RX_USED_WORD = 1;
@@ -35,11 +42,11 @@ localparam logic [31:0] SW_MON_LIVE_CLOCK = 32'hf0;
 localparam logic [31:0] SW_MON_LIVE_FLUSH = 32'hf8;
 // Read-only monitoring ABI, version 1. Byte addresses; little-word-first 64-bit values.
 localparam logic [31:0] SW_MON_PORT_BASE = 32'h1000_0000;
-localparam logic [31:0] SW_MON_MAC_BASE  = 32'h2000_0000;
+localparam logic [31:0] SW_MON_MAC_BASE = 32'h2000_0000;
 localparam int unsigned SW_MON_WORDS = 64;
-localparam int unsigned SW_MON_BITS = 32*SW_MON_WORDS;
-localparam int unsigned SW_MON_COUNTER = 8; // 14 counter pairs, same IDs as stat_o
-localparam int unsigned SW_MON_RATE = 36;   // RX pps, TX pps, RX bit/s, TX bit/s pairs
+localparam int unsigned SW_MON_BITS = 32 * SW_MON_WORDS;
+localparam int unsigned SW_MON_COUNTER = 8;  // 14 counter pairs, same IDs as stat_o
+localparam int unsigned SW_MON_RATE = 36;  // RX pps, TX pps, RX bit/s, TX bit/s pairs
 
 `default_nettype wire
-`endif // ES_MONITOR_DEFS_SV
+`endif  // ES_MONITOR_DEFS_SV

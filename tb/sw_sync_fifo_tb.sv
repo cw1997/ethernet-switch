@@ -24,44 +24,43 @@ module sw_sync_fifo_tb;
   localparam int unsigned DEPTH = 8;
   localparam int unsigned CNT_W = $clog2(DEPTH) + 1;
 
-  logic            clk = 1'b0;
-  logic            rst_n = 1'b0;
-  logic            undo;
-  logic [CNT_W-1:0] undo_cnt;
-  logic            flush;
-  logic            wr_en;
-  logic [WIDTH-1:0] wr_data;
-  logic            full;
-  logic [CNT_W-1:0] free_cnt;
-  logic            rd_en;
-  logic [WIDTH-1:0] rd_data;
-  logic            empty;
+  logic                    clk = 1'b0;
+  logic                    rst_n = 1'b0;
+  logic                    undo;
+  logic        [CNT_W-1:0] undo_cnt;
+  logic                    flush;
+  logic                    wr_en;
+  logic        [WIDTH-1:0] wr_data;
+  logic                    full;
+  logic        [CNT_W-1:0] free_cnt;
+  logic                    rd_en;
+  logic        [WIDTH-1:0] rd_data;
+  logic                    empty;
 
-  int unsigned errors;
-  int unsigned checks;
+  int unsigned             errors;
+  int unsigned             checks;
 
   always #5 clk = ~clk;
 
   es_switch_sync_fifo #(
-      .WIDTH (WIDTH),
-      .DEPTH (DEPTH)
+    .WIDTH(WIDTH),
+    .DEPTH(DEPTH)
   ) u_dut (
-      .clk_i      (clk),
-      .rst_ni     (rst_n),
-      .undo_i     (undo),
-      .undo_cnt_i (undo_cnt),
-      .flush_i    (flush),
-      .wr_en_i    (wr_en),
-      .wr_data_i  (wr_data),
-      .full_o     (full),
-      .free_o     (free_cnt),
-      .rd_en_i    (rd_en),
-      .rd_data_o  (rd_data),
-      .empty_o    (empty)
+    .clk_i     (clk),
+    .rst_ni    (rst_n),
+    .undo_i    (undo),
+    .undo_cnt_i(undo_cnt),
+    .flush_i   (flush),
+    .wr_en_i   (wr_en),
+    .wr_data_i (wr_data),
+    .full_o    (full),
+    .free_o    (free_cnt),
+    .rd_en_i   (rd_en),
+    .rd_data_o (rd_data),
+    .empty_o   (empty)
   );
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -71,8 +70,8 @@ module sw_sync_fifo_tb;
     end
   endtask
 
-  task automatic expect_data(input logic [WIDTH-1:0] got,
-                             input logic [WIDTH-1:0] exp, input string what);
+  task automatic expect_data(input logic [WIDTH-1:0] got, input logic [WIDTH-1:0] exp,
+                             input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -98,9 +97,9 @@ module sw_sync_fifo_tb;
     @(negedge clk);
     wr_en   = 1'b1;
     wr_data = v;
-    @(posedge clk);          // the entry is written here
+    @(posedge clk);  // the entry is written here
     @(negedge clk);
-    wr_en   = 1'b0;
+    wr_en = 1'b0;
   endtask
 
   /// Check the fall-through head, then consume it.
@@ -109,7 +108,7 @@ module sw_sync_fifo_tb;
     expect_data(rd_data, exp, {what, " (fall-through head)"});
     @(negedge clk);
     rd_en = 1'b1;
-    @(posedge clk);          // the entry is consumed here
+    @(posedge clk);  // the entry is consumed here
     @(negedge clk);
     rd_en = 1'b0;
   endtask
@@ -135,7 +134,7 @@ module sw_sync_fifo_tb;
 
     // ---- empty state -----------------------------------------------------
     expect_eq(empty, 1'b1, "empty after reset");
-    expect_eq(full,  1'b0, "not full after reset");
+    expect_eq(full, 1'b0, "not full after reset");
     expect_eq(free_cnt, DEPTH, "free entries after reset");
 
     // ---- basic ordering --------------------------------------------------
@@ -158,7 +157,7 @@ module sw_sync_fifo_tb;
     @(negedge clk);
     wr_en   = 1'b1;
     wr_data = 16'hDEAD;
-    @(posedge clk);          // the write is attempted here
+    @(posedge clk);  // the write is attempted here
     @(negedge clk);
     wr_en = 1'b0;
     expect_data(rd_data, 16'd1, "head unchanged by a write while full");
@@ -172,7 +171,7 @@ module sw_sync_fifo_tb;
     wr_en   = 1'b1;
     wr_data = 16'hBBBB;
     rd_en   = 1'b1;
-    @(posedge clk);          // read and write are sampled together here
+    @(posedge clk);  // read and write are sampled together here
     @(negedge clk);
     wr_en = 1'b0;
     rd_en = 1'b0;
@@ -194,7 +193,7 @@ module sw_sync_fifo_tb;
     @(negedge clk);
     undo     = 1'b1;
     undo_cnt = CNT_W'(2);
-    @(posedge clk);          // the rewind is sampled here
+    @(posedge clk);  // the rewind is sampled here
     @(negedge clk);
     undo     = 1'b0;
     undo_cnt = '0;
@@ -208,7 +207,7 @@ module sw_sync_fifo_tb;
     @(negedge clk);
     undo     = 1'b1;
     undo_cnt = CNT_W'(DEPTH);
-    @(posedge clk);          // the rewind is sampled here
+    @(posedge clk);  // the rewind is sampled here
     @(negedge clk);
     undo     = 1'b0;
     undo_cnt = '0;
@@ -222,7 +221,7 @@ module sw_sync_fifo_tb;
     push(16'h6666);
     expect_eq(empty, 1'b0, "not empty before the flush");
     flush = 1'b1;
-    @(posedge clk);          // the flush is sampled here
+    @(posedge clk);  // the flush is sampled here
     @(negedge clk);
     flush = 1'b0;
     expect_eq(empty, 1'b1, "empty after the flush");

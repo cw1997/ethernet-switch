@@ -33,7 +33,9 @@
 // type in Icarus Verilog.  The RTL declarations (`sw_byte_period`, `sw_speed_e`)
 // need no import - they arrive at compilation-unit scope through
 // `rtl/es_defs.sv`, which the DUT pulls in.
-module sw_if_array import sw_tb_pkg::*; #(
+module sw_if_array
+  import sw_tb_pkg::*;
+#(
   /// Number of switch ports under test.
   parameter int unsigned NUM_PORTS = 4,
   /// Core clock frequency in Hz, used to derive every octet period.
@@ -41,14 +43,14 @@ module sw_if_array import sw_tb_pkg::*; #(
   /// Capacity of one port's scoreboard queue.
   parameter int unsigned EXP_DEPTH = 256
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
-  input  logic [NUM_PORTS-1:0]    link_up,
+  input logic                 clk_i,
+  input logic                 rst_ni,
+  input logic [NUM_PORTS-1:0] link_up,
 
-  output logic [NUM_PORTS-1:0]    rx_en,
-  output logic [NUM_PORTS*8-1:0]  rx_d,
-  input  logic [NUM_PORTS-1:0]    tx_en,
-  input  logic [NUM_PORTS*8-1:0]  tx_d
+  output logic [  NUM_PORTS-1:0] rx_en,
+  output logic [NUM_PORTS*8-1:0] rx_d,
+  input  logic [  NUM_PORTS-1:0] tx_en,
+  input  logic [NUM_PORTS*8-1:0] tx_d
 );
 
   // --------------------------------------------------------------------------
@@ -79,47 +81,94 @@ module sw_if_array import sw_tb_pkg::*; #(
   // ==========================================================================
   // Per-port GMII models
   // ==========================================================================
-  sw_gmii_if #(.PORT_ID(0), .BYTE_PERIOD(BP0)) u0 (
-      .clk_i (clk_i), .rst_ni (rst_ni), .enable_i (link_up[0]),
-      .gmii_rx_en (rx_en[0]), .gmii_rx_d (rx_d[0*8 +: 8]),
-      .gmii_tx_en (tx_en[0]), .gmii_tx_d (tx_d[0*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(0),
+    .BYTE_PERIOD(BP0)
+  ) u0 (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .enable_i(link_up[0]),
+    .gmii_rx_en(rx_en[0]),
+    .gmii_rx_d(rx_d[0*8 +: 8]),
+    .gmii_tx_en(tx_en[0]),
+    .gmii_tx_d(tx_d[0*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(1), .BYTE_PERIOD(BP1)) u1 (
-      .clk_i (clk_i), .rst_ni (rst_ni), .enable_i (link_up[1]),
-      .gmii_rx_en (rx_en[1]), .gmii_rx_d (rx_d[1*8 +: 8]),
-      .gmii_tx_en (tx_en[1]), .gmii_tx_d (tx_d[1*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(1),
+    .BYTE_PERIOD(BP1)
+  ) u1 (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .enable_i(link_up[1]),
+    .gmii_rx_en(rx_en[1]),
+    .gmii_rx_d(rx_d[1*8 +: 8]),
+    .gmii_tx_en(tx_en[1]),
+    .gmii_tx_d(tx_d[1*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(2), .BYTE_PERIOD(BP2)) u2 (
-      .clk_i (clk_i), .rst_ni (rst_ni), .enable_i (link_up[2]),
-      .gmii_rx_en (rx_en[2]), .gmii_rx_d (rx_d[2*8 +: 8]),
-      .gmii_tx_en (tx_en[2]), .gmii_tx_d (tx_d[2*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(2),
+    .BYTE_PERIOD(BP2)
+  ) u2 (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .enable_i(link_up[2]),
+    .gmii_rx_en(rx_en[2]),
+    .gmii_rx_d(rx_d[2*8 +: 8]),
+    .gmii_tx_en(tx_en[2]),
+    .gmii_tx_d(tx_d[2*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(3), .BYTE_PERIOD(BP3)) u3 (
-      .clk_i (clk_i), .rst_ni (rst_ni), .enable_i (link_up[3]),
-      .gmii_rx_en (rx_en[3]), .gmii_rx_d (rx_d[3*8 +: 8]),
-      .gmii_tx_en (tx_en[3]), .gmii_tx_d (tx_d[3*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(3),
+    .BYTE_PERIOD(BP3)
+  ) u3 (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .enable_i(link_up[3]),
+    .gmii_rx_en(rx_en[3]),
+    .gmii_rx_d(rx_d[3*8 +: 8]),
+    .gmii_tx_en(tx_en[3]),
+    .gmii_tx_d(tx_d[3*8 +: 8])
+  );
 
   // ==========================================================================
   // Per-port scoreboard queues
   // ==========================================================================
-  sw_rec_q #(.DEPTH(EXP_DEPTH)) q0 (.clk_i(clk_i), .rst_ni(rst_ni));
-  sw_rec_q #(.DEPTH(EXP_DEPTH)) q1 (.clk_i(clk_i), .rst_ni(rst_ni));
-  sw_rec_q #(.DEPTH(EXP_DEPTH)) q2 (.clk_i(clk_i), .rst_ni(rst_ni));
-  sw_rec_q #(.DEPTH(EXP_DEPTH)) q3 (.clk_i(clk_i), .rst_ni(rst_ni));
+  sw_rec_q #(
+    .DEPTH(EXP_DEPTH)
+  ) q0 (
+    .clk_i (clk_i),
+    .rst_ni(rst_ni)
+  );
+  sw_rec_q #(
+    .DEPTH(EXP_DEPTH)
+  ) q1 (
+    .clk_i (clk_i),
+    .rst_ni(rst_ni)
+  );
+  sw_rec_q #(
+    .DEPTH(EXP_DEPTH)
+  ) q2 (
+    .clk_i (clk_i),
+    .rst_ni(rst_ni)
+  );
+  sw_rec_q #(
+    .DEPTH(EXP_DEPTH)
+  ) q3 (
+    .clk_i (clk_i),
+    .rst_ni(rst_ni)
+  );
 
   // ==========================================================================
   // Traffic injection
   // ==========================================================================
   /// Present a frame on `port`.  Blocks for the frame and its inter-frame gap.
-  task automatic send_on(
-      input int unsigned port,
-      input sw_mac_t     dst,
-      input sw_mac_t     src,
-      input logic [15:0] l2type,
-      input int unsigned total_len,
-      input bit          vlan_en     = 1'b0,
-      input bit          corrupt_fcs = 1'b0,
-      input bit          drop_fcs    = 1'b0);
+  task automatic send_on(input int unsigned port, input sw_mac_t dst, input sw_mac_t src,
+                         input logic [15:0] l2type, input int unsigned total_len,
+                         input bit vlan_en = 1'b0, input bit corrupt_fcs = 1'b0,
+                         input bit drop_fcs = 1'b0);
     case (port)
       0: u0.send(dst, src, l2type, total_len, vlan_en, corrupt_fcs, drop_fcs);
       1: u1.send(dst, src, l2type, total_len, vlan_en, corrupt_fcs, drop_fcs);
@@ -158,15 +207,21 @@ module sw_if_array import sw_tb_pkg::*; #(
   ///
   /// This is a task rather than a function because removing an element from the
   /// queue takes a clock, and a function cannot contain a wait.
-  task automatic expect_take(
-      input  int unsigned port,
-      output tb_rec_t     r);
+  task automatic expect_take(input int unsigned port, output tb_rec_t r);
     r = '0;
     case (port)
-      0: begin if (q0.size_o > 0) q0.pop(r); end
-      1: begin if (q1.size_o > 0) q1.pop(r); end
-      2: begin if (q2.size_o > 0) q2.pop(r); end
-      3: begin if (q3.size_o > 0) q3.pop(r); end
+      0: begin
+        if (q0.size_o > 0) q0.pop(r);
+      end
+      1: begin
+        if (q1.size_o > 0) q1.pop(r);
+      end
+      2: begin
+        if (q2.size_o > 0) q2.pop(r);
+      end
+      3: begin
+        if (q3.size_o > 0) q3.pop(r);
+      end
       default: ;
     endcase
   endtask
@@ -176,17 +231,17 @@ module sw_if_array import sw_tb_pkg::*; #(
     tb_rec_t dummy;
     int      guard;
     guard = 0;
-    while ((expect_count(port) > 0) && (guard < 4 * EXP_DEPTH)) begin
+    while ((expect_count(
+        port
+    ) > 0) && (guard < 4 * EXP_DEPTH)) begin
       expect_take(port, dummy);
       guard++;
     end
   endtask
 
   /// Pop the oldest frame the monitor of `port` saw; length 0 means "none".
-  task automatic pop_on(
-      input  int unsigned port,
-      output tb_rec_t     r,
-      input  int unsigned timeout = 20000);
+  task automatic pop_on(input int unsigned port, output tb_rec_t r,
+                        input int unsigned timeout = 20000);
     case (port)
       0: u0.pop_frame(r, timeout);
       1: u1.pop_frame(r, timeout);
@@ -225,4 +280,4 @@ module sw_if_array import sw_tb_pkg::*; #(
 
 endmodule : sw_if_array
 
-`endif // SW_IF_ARRAY_SV
+`endif  // SW_IF_ARRAY_SV

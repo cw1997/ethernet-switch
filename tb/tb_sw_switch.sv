@@ -57,11 +57,11 @@ module tb_sw_switch;
   // Configuration
   // ==========================================================================
   localparam int unsigned NUM_PORTS = 4;
-  localparam int unsigned CLK_FREQ  = 125_000_000;
-  localparam int unsigned RX_DEPTH  = 256;
-  localparam int unsigned TX_DEPTH  = 256;
-  localparam int unsigned CAM_SETS  = 64;
-  localparam int unsigned CAM_WAYS  = 4;
+  localparam int unsigned CLK_FREQ = 125_000_000;
+  localparam int unsigned RX_DEPTH = 256;
+  localparam int unsigned TX_DEPTH = 256;
+  localparam int unsigned CAM_SETS = 64;
+  localparam int unsigned CAM_WAYS = 4;
   localparam int unsigned MAX_FRAME = 1518;
 
   // --------------------------------------------------------------------------
@@ -86,11 +86,11 @@ module tb_sw_switch;
   // The bound is a function of the frame size rather than of MAX_FRAME, so a
   // test with a 100 octet frame does not have to wait for a 1518 octet one.
   // --------------------------------------------------------------------------
-  localparam int unsigned OCT_PERIOD_MAX = 100;   // 10 Mbit/s at 125 MHz
+  localparam int unsigned OCT_PERIOD_MAX = 100;  // 10 Mbit/s at 125 MHz
   localparam int unsigned DEFAULT_FRAME_OCTETS = 128;
 
   function automatic int unsigned settle_clocks(input int unsigned octets);
-    return OCT_PERIOD_MAX * (octets + SW_FCS_LEN) + 4*OCT_PERIOD_MAX + 2000;
+    return OCT_PERIOD_MAX * (octets + SW_FCS_LEN) + 4 * OCT_PERIOD_MAX + 2000;
   endfunction
 
   /// Clocks the slowest port needs to serialise *one* complete frame: eight
@@ -115,10 +115,10 @@ module tb_sw_switch;
   // given the locally administered default 02:00:00:00:00:<p>, so the testbench
   // spells the addresses out explicitly to keep them readable.
   localparam logic [NUM_PORTS*48-1:0] PORT_MAC = {
-    48'h02_00_00_00_00_03,   // port 3
-    48'h02_00_00_00_00_02,   // port 2
-    48'h02_00_00_00_00_01,   // port 1
-    48'h02_00_00_00_00_00    // port 0
+    48'h02_00_00_00_00_03,  // port 3
+    48'h02_00_00_00_00_02,  // port 2
+    48'h02_00_00_00_00_01,  // port 1
+    48'h02_00_00_00_00_00  // port 0
   };
 
   /// The address a port owns, taken straight from `PORT_MAC`.
@@ -126,59 +126,61 @@ module tb_sw_switch;
     return PORT_MAC[p*48 +: 48];
   endfunction
 
-  sw_mac_t mac_of_port [NUM_PORTS];
+  sw_mac_t mac_of_port[NUM_PORTS];
 
   // ==========================================================================
   // Clock and reset
   // ==========================================================================
-  logic clk_i  = 1'b0;
+  logic clk_i = 1'b0;
   logic rst_ni = 1'b0;
 
-  always #4 clk_i = ~clk_i;   // 125 MHz, i.e. an 8 ns period
+  always #4 clk_i = ~clk_i;  // 125 MHz, i.e. an 8 ns period
 
   // ==========================================================================
   // DUT wiring
   // ==========================================================================
-  logic [NUM_PORTS-1:0]        link_up;
-  logic [1:0]                  flood_mode;
+  logic [       NUM_PORTS-1:0] link_up;
+  logic [                 1:0] flood_mode;
   logic                        learning_en;
   logic                        cfg_ovr;
   logic                        cam_flush;
 
-  logic [NUM_PORTS-1:0]        gmii_rx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_rx_d;
-  logic [NUM_PORTS-1:0]        gmii_tx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_tx_d;
+  logic [       NUM_PORTS-1:0] gmii_rx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_rx_d;
+  logic [       NUM_PORTS-1:0] gmii_tx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_tx_d;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
   es_switch_gmii #(
-      .NUM_PORTS      (NUM_PORTS),
-      .CLK_FREQ_HZ    (CLK_FREQ),
-      .PORT_MAC       (PORT_MAC),
-      .PORT_SPEED     (PORT_SPEED),
-      .RX_FIFO_DEPTH  (RX_DEPTH),
-      .TX_FIFO_DEPTH  (TX_DEPTH),
-      .TAG_FIFO_DEPTH (16),
-      .MAX_FRAME_LEN  (MAX_FRAME),
-      .FLOOD_MODE     (2'd1),
-      .LEARNING_EN    (1'b1),
-      .CAM_SETS       (CAM_SETS),
-      .CAM_WAYS       (CAM_WAYS),
-      .CAM_AGE_EN     (1'b0)
+    .NUM_PORTS     (NUM_PORTS),
+    .CLK_FREQ_HZ   (CLK_FREQ),
+    .PORT_MAC      (PORT_MAC),
+    .PORT_SPEED    (PORT_SPEED),
+    .RX_FIFO_DEPTH (RX_DEPTH),
+    .TX_FIFO_DEPTH (TX_DEPTH),
+    .TAG_FIFO_DEPTH(16),
+    .MAX_FRAME_LEN (MAX_FRAME),
+    .FLOOD_MODE    (2'd1),
+    .LEARNING_EN   (1'b1),
+    .CAM_SETS      (CAM_SETS),
+    .CAM_WAYS      (CAM_WAYS),
+    .CAM_AGE_EN    (1'b0)
   ) u_dut (
-      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
-      .clk_i           (clk_i),
-      .rst_ni          (rst_ni),
-      .link_up_i       (link_up),
-      .flood_mode_i    (flood_mode),
-      .learning_en_i   (learning_en),
-      .cfg_ovr_i       (cfg_ovr),
-      .cam_flush_i     (cam_flush),
-      .gmii_rx_en_i    (gmii_rx_en),
-      .gmii_rx_data_i  (gmii_rx_d),
-      .gmii_tx_en_o    (gmii_tx_en),
-      .gmii_tx_data_o  (gmii_tx_d),
-      .stat_o          (stat)
+    .phy_status_i  ('0),
+    .mon_req_i     (1'b0),
+    .mon_addr_i    (32'd0),
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .link_up_i     (link_up),
+    .flood_mode_i  (flood_mode),
+    .learning_en_i (learning_en),
+    .cfg_ovr_i     (cfg_ovr),
+    .cam_flush_i   (cam_flush),
+    .gmii_rx_en_i  (gmii_rx_en),
+    .gmii_rx_data_i(gmii_rx_d),
+    .gmii_tx_en_o  (gmii_tx_en),
+    .gmii_tx_data_o(gmii_tx_d),
+    .stat_o        (stat)
   );
 
   // ==========================================================================
@@ -194,14 +196,17 @@ module tb_sw_switch;
   // Flat access, so the tests can be written port-agnostically.  A wrapper
   // module instance is the portable way to gather the four models into an
   // array: Icarus Verilog does not support an unpacked array of instances.
-  sw_if_array #(.NUM_PORTS(NUM_PORTS), .CLK_FREQ(CLK_FREQ)) u_ifs (
-      .clk_i   (clk_i),
-      .rst_ni  (rst_ni),
-      .link_up (link_up),
-      .rx_en   (gmii_rx_en),
-      .rx_d    (gmii_rx_d),
-      .tx_en   (gmii_tx_en),
-      .tx_d    (gmii_tx_d)
+  sw_if_array #(
+    .NUM_PORTS(NUM_PORTS),
+    .CLK_FREQ (CLK_FREQ)
+  ) u_ifs (
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .link_up(link_up),
+    .rx_en  (gmii_rx_en),
+    .rx_d   (gmii_rx_d),
+    .tx_en  (gmii_tx_en),
+    .tx_d   (gmii_tx_d)
   );
 
   // ==========================================================================
@@ -209,8 +214,8 @@ module tb_sw_switch;
   // ==========================================================================
   // For every learned address, the port it sits behind.  Plain vectors rather
   // than a struct queue, for Icarus portability.
-  sw_mac_t     ref_mac  [$];
-  int unsigned ref_port [$];
+  sw_mac_t     ref_mac [$];
+  int unsigned ref_port[$];
 
   /// Look a destination address up in the reference table; -1 when unknown.
   function automatic int ref_lookup(input sw_mac_t m);
@@ -242,13 +247,10 @@ module tb_sw_switch;
   /// Compute the expected egress set for a frame, mirroring the ingress filter
   /// of es_switch_rx_port exactly.
   function automatic logic [NUM_PORTS-1:0] ref_forward(
-      input sw_mac_t     dst,
-      input sw_mac_t     src,
-      input int unsigned ingress,
-      input logic [1:0] mode);
+      input sw_mac_t dst, input sw_mac_t src, input int unsigned ingress, input logic [1:0] mode);
     logic [NUM_PORTS-1:0] mask;
-    int                  hit;
-    int                  i;
+    int                   hit;
+    int                   i;
 
     mask = '1;
     mask[ingress] = 1'b0;
@@ -265,7 +267,7 @@ module tb_sw_switch;
 
     hit = ref_lookup(dst);
     if (hit >= 0) begin
-      if (hit == ingress) return '0;   // unicast loop back to the sender
+      if (hit == ingress) return '0;  // unicast loop back to the sender
       mask = '0;
       mask[hit] = 1'b1;
       return mask;
@@ -318,21 +320,14 @@ module tb_sw_switch;
 
   /// Inject a frame on `ingress` and record what the reference model expects on
   /// every port.  `expect_fwd` is the override for the malformed-frame cases.
-  task automatic inject(
-      input int unsigned ingress,
-      input sw_mac_t     dst,
-      input sw_mac_t     src,
-      input int unsigned total_len,
-      input logic [15:0] l2type     = TB_ET_IPV4,
-      input bit          vlan_en    = 1'b0,
-      input bit          corrupt    = 1'b0,
-      input bit          truncate   = 1'b0,
-      input bit          do_learn   = 1'b1,
-      input bit          async_send = 1'b1,
-      input bit          expect_fwd = 1'b1);
-    logic [NUM_PORTS-1:0] mask;
-    int                  p;
-    tb_rec_t             rec;
+  task automatic inject(input int unsigned ingress, input sw_mac_t dst, input sw_mac_t src,
+                        input int unsigned total_len, input logic [15:0] l2type = TB_ET_IPV4,
+                        input bit vlan_en = 1'b0, input bit corrupt = 1'b0,
+                        input bit truncate = 1'b0, input bit do_learn = 1'b1,
+                        input bit async_send = 1'b1, input bit expect_fwd = 1'b1);
+    logic    [NUM_PORTS-1:0] mask;
+    int                      p;
+    tb_rec_t                 rec;
 
     mask = expect_fwd ? ref_forward(dst, src, ingress, flood_mode) : '0;
 
@@ -340,7 +335,7 @@ module tb_sw_switch;
     // expectation.  The record only carries the fields the scoreboard compares;
     // the payload itself is validated on the wire by the FCS check in the
     // monitor, which is a strictly stronger test than a byte comparison here.
-    rec = tb_rec_pack(dst, src, l2type, total_len, 1'b1, 1'b1);
+    rec  = tb_rec_pack(dst, src, l2type, total_len, 1'b1, 1'b1);
     for (p = 0; p < NUM_PORTS; p++) begin
       if (mask[p]) u_ifs.expect_push(p, rec);
     end
@@ -367,14 +362,13 @@ module tb_sw_switch;
       async_corrupt = corrupt;
       async_trunc   = truncate;
       async_port    = ingress;
-      async_req     <= 1'b1;
+      async_req <= 1'b1;
       @(posedge clk_i);
-      async_req     <= 1'b0;        // one-clock request pulse
+      async_req <= 1'b0;  // one-clock request pulse
       @(posedge clk_i);
       while (async_done != 1'b1) @(posedge clk_i);
     end else begin
-      u_ifs.send_on(ingress, dst, src, l2type, total_len, vlan_en,
-                    corrupt, truncate);
+      u_ifs.send_on(ingress, dst, src, l2type, total_len, vlan_en, corrupt, truncate);
     end
 
     if (do_learn && expect_fwd && sw_is_unicast(src) && (src != mac_of_port[ingress])) begin
@@ -401,17 +395,17 @@ module tb_sw_switch;
   // the test writes them and the worker reads them in the very next clock, which
   // is all the handshake below needs.
   // --------------------------------------------------------------------------
-  sw_mac_t     async_dst;
-  sw_mac_t     async_src;
-  logic [15:0] async_l2type;
-  int unsigned async_len;
-  bit          async_vlan;
-  bit          async_corrupt;
-  bit          async_trunc;
-  int unsigned async_port;
-  logic        async_req;
-  logic        async_done;
-  logic        async_busy;
+  sw_mac_t            async_dst;
+  sw_mac_t            async_src;
+  logic        [15:0] async_l2type;
+  int unsigned        async_len;
+  bit                 async_vlan;
+  bit                 async_corrupt;
+  bit                 async_trunc;
+  int unsigned        async_port;
+  logic               async_req;
+  logic               async_done;
+  logic               async_busy;
 
   // The worker is a *one-shot*: the request is a single-clock pulse and the
   // completion strobe is raised only after the send has returned.
@@ -434,8 +428,8 @@ module tb_sw_switch;
       async_busy <= 1'b0;
     end else if (async_req && !async_busy) begin
       async_busy <= 1'b1;
-      u_ifs.send_on(async_port, async_dst, async_src, async_l2type, async_len,
-                    async_vlan, async_corrupt, async_trunc);
+      u_ifs.send_on(async_port, async_dst, async_src, async_l2type, async_len, async_vlan,
+                    async_corrupt, async_trunc);
       async_busy <= 1'b0;
       async_done <= 1'b1;
     end
@@ -446,13 +440,12 @@ module tb_sw_switch;
   /// `silent[p]` asserts that port p must produce nothing at all; the other
   /// ports have to produce exactly the queued frames, in order, and nothing
   /// more.
-  task automatic check_outputs(
-      input logic [NUM_PORTS-1:0] silent = '0,
-      input int unsigned          octets = DEFAULT_FRAME_OCTETS);
-    tb_rec_t   got;
-    tb_rec_t   want;
-    int        p;
-    bit        ok;
+  task automatic check_outputs(input logic [NUM_PORTS-1:0] silent = '0,
+                               input int unsigned octets = DEFAULT_FRAME_OCTETS);
+    tb_rec_t     got;
+    tb_rec_t     want;
+    int          p;
+    bit          ok;
     int unsigned queued;
 
     // Let the fabric and every transmit path finish.  The bound is derived, for
@@ -474,7 +467,7 @@ module tb_sw_switch;
     for (p = 0; p < NUM_PORTS; p++) begin
       if (u_ifs.expect_count(p) > queued) queued = u_ifs.expect_count(p);
     end
-    repeat (settle_clocks(octets) + queued*queue_clocks(octets)) @(posedge clk_i);
+    repeat (settle_clocks(octets) + queued * queue_clocks(octets)) @(posedge clk_i);
 
     for (p = 0; p < NUM_PORTS; p++) begin
       if (silent[p]) begin
@@ -485,29 +478,53 @@ module tb_sw_switch;
         note_check();
       end else begin
         // Every queued expectation has to appear, in order.
-        while (u_ifs.expect_count(p) > 0) begin
+        while (u_ifs.expect_count(
+            p
+        ) > 0) begin
           u_ifs.expect_take(p, want);
           u_ifs.pop_on(p, got);
           if (tb_rec_len(got) == 0) begin
-            note_error($sformatf("port %0d: expected a frame to %s of %0d octets, none arrived",
-                                 p, tb_mac_str(tb_rec_dst(want)), tb_rec_len(want)));
+            note_error($sformatf(
+                       "port %0d: expected a frame to %s of %0d octets, none arrived",
+                       p,
+                       tb_mac_str(
+                           tb_rec_dst(want)
+                       ),
+                       tb_rec_len(
+                           want
+                       )
+                       ));
           end else begin
             ok = 1'b1;
             if (tb_rec_dst(got) != tb_rec_dst(want)) begin
-              note_error($sformatf("port %0d: dst %s, expected %s",
-                                   p, tb_mac_str(tb_rec_dst(got)),
-                                   tb_mac_str(tb_rec_dst(want))));
+              note_error($sformatf(
+                         "port %0d: dst %s, expected %s",
+                         p,
+                         tb_mac_str(
+                             tb_rec_dst(got)
+                         ),
+                         tb_mac_str(
+                             tb_rec_dst(want)
+                         )
+                         ));
               ok = 1'b0;
             end
             if (tb_rec_src(got) != tb_rec_src(want)) begin
-              note_error($sformatf("port %0d: src %s, expected %s",
-                                   p, tb_mac_str(tb_rec_src(got)),
-                                   tb_mac_str(tb_rec_src(want))));
+              note_error($sformatf(
+                         "port %0d: src %s, expected %s",
+                         p,
+                         tb_mac_str(
+                             tb_rec_src(got)
+                         ),
+                         tb_mac_str(
+                             tb_rec_src(want)
+                         )
+                         ));
               ok = 1'b0;
             end
             if (tb_rec_len(got) != tb_rec_len(want)) begin
-              note_error($sformatf("port %0d: len %0d, expected %0d",
-                                   p, tb_rec_len(got), tb_rec_len(want)));
+              note_error($sformatf(
+                         "port %0d: len %0d, expected %0d", p, tb_rec_len(got), tb_rec_len(want)));
               ok = 1'b0;
             end
             if (!tb_rec_fcs_ok(got)) begin
@@ -524,8 +541,8 @@ module tb_sw_switch;
 
         // Nothing else may show up.
         if (u_ifs.pending_on(p) != 0) begin
-          note_error($sformatf("port %0d produced %0d unexpected frame(s)",
-                               p, u_ifs.pending_on(p)));
+          note_error($sformatf("port %0d produced %0d unexpected frame(s)", p, u_ifs.pending_on(p)
+                     ));
           u_ifs.pop_on(p, got, 0);
         end
       end
@@ -558,7 +575,7 @@ module tb_sw_switch;
   // Test sequence
   // ==========================================================================
   sw_mac_t station_a, station_b, station_c, stranger;
-  int      t;
+  int t;
 
   initial begin
     async_dst     = 48'd0;
@@ -577,15 +594,15 @@ module tb_sw_switch;
       mac_of_port[t] = mac_of(t);
     end
     // Stations attached to ports, plus one the switch has never seen.
-    station_a = 48'h02_00_00_00_AA_01;   // behind port 0
-    station_b = 48'h02_00_00_00_BB_02;   // behind port 1
-    station_c = 48'h02_00_00_00_CC_03;   // behind port 2
-    stranger  = 48'h02_00_00_00_DD_09;   // never attached
+    station_a = 48'h02_00_00_00_AA_01;  // behind port 0
+    station_b = 48'h02_00_00_00_BB_02;  // behind port 1
+    station_c = 48'h02_00_00_00_CC_03;  // behind port 2
+    stranger  = 48'h02_00_00_00_DD_09;  // never attached
 
     $display("======================================================================");
     $display(" sw_switch testbench");
     $display("   ports         : %0d", NUM_PORTS);
-    $display("   core clock    : %0d MHz", CLK_FREQ/1_000_000);
+    $display("   core clock    : %0d MHz", CLK_FREQ / 1_000_000);
     $display("   port speeds   : 10M, 100M, 1000M, 1000M (one shared clock)");
     $display("   max frame     : %0d octets", MAX_FRAME);
     $display("======================================================================");
@@ -780,8 +797,7 @@ module tb_sw_switch;
     settle();
 
     // Port 0 receives a frame claiming to come from port 0's own address.
-    inject(0, station_b, mac_of_port[0], 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-           1'b1, 1'b0, 1'b0);
+    inject(0, station_b, mac_of_port[0], 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0, 1'b0);
     check_outputs('1, 128);
   endtask
 
@@ -815,24 +831,20 @@ module tb_sw_switch;
     settle();
 
     // Bad FCS: the receiver must drop it.
-    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b1, 1'b0,
-           1'b0, 1'b0, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0);
     check_outputs('1, 128);
 
     // Truncated: the frame stops before its FCS.
-    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b1,
-           1'b0, 1'b0, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0);
     check_outputs('1, 128);
 
     // Runt: shorter than the 802.3 minimum of 64 octets.
-    inject(0, SW_MAC_BROADCAST, station_a, 32, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-           1'b0, 1'b0, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, 32, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0);
     check_outputs('1, 128);
 
     // A good frame right afterwards must still get through, which proves the
     // receive path recovered frame synchronisation after every rejection.
-    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-           1'b1, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0);
     check_outputs('0, 128);
   endtask
 
@@ -847,21 +859,18 @@ module tb_sw_switch;
     settle();
 
     // Exactly the 802.3 minimum: no padding required.
-    inject(0, SW_MAC_BROADCAST, station_a, 64, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-           1'b1, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, 64, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0);
     check_outputs('0, 256);
 
     // Sizes around the eight octet beat boundary, which is where a masking or
     // length-arithmetic error would show up.
     for (t = 60; t <= 75; t++) begin
-      inject(0, SW_MAC_BROADCAST, station_a, 64, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-             1'b1, 1'b0);
+      inject(0, SW_MAC_BROADCAST, station_a, 64, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0);
       check_outputs('0, 256);
     end
 
     // Maximum frame: 1518 octets, i.e. 190 beats.
-    inject(0, SW_MAC_BROADCAST, station_a, MAX_FRAME, TB_ET_IPV4, 1'b0, 1'b0,
-           1'b0, 1'b1, 1'b0);
+    inject(0, SW_MAC_BROADCAST, station_a, MAX_FRAME, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0);
     check_outputs('0, MAX_FRAME);
   endtask
 
@@ -897,14 +906,13 @@ module tb_sw_switch;
     set_default_config();
     settle();
 
-    f_in       = stat_get(int'(SW_STAT_RX_FRAMES));
-    o_in       = stat_get(int'(SW_STAT_RX_OCTETS));
+    f_in        = stat_get(int'(SW_STAT_RX_FRAMES));
+    o_in        = stat_get(int'(SW_STAT_RX_OCTETS));
     f_tx_before = stat_get(int'(SW_STAT_TX_FRAMES));
 
     // Two broadcasts of 100 octets from port 0: each produces three copies.
     for (t = 0; t < 2; t++) begin
-      inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0,
-             1'b0, 1'b0);
+      inject(0, SW_MAC_BROADCAST, station_a, 100, TB_ET_IPV4, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0);
     end
     check_outputs('0, 256);
 
@@ -912,20 +920,19 @@ module tb_sw_switch;
 
     note_check();
     if (stat_get(int'(SW_STAT_RX_FRAMES)) != f_in + 2) begin
-      note_error($sformatf("RX_FRAMES is %0d, expected %0d",
-                           stat_get(int'(SW_STAT_RX_FRAMES)), f_in + 2));
+      note_error($sformatf(
+                 "RX_FRAMES is %0d, expected %0d", stat_get(int'(SW_STAT_RX_FRAMES)), f_in + 2));
     end
     if (stat_get(int'(SW_STAT_RX_OCTETS)) != o_in + 200) begin
-      note_error($sformatf("RX_OCTETS is %0d, expected %0d",
-                           stat_get(int'(SW_STAT_RX_OCTETS)), o_in + 200));
+      note_error($sformatf(
+                 "RX_OCTETS is %0d, expected %0d", stat_get(int'(SW_STAT_RX_OCTETS)), o_in + 200));
     end
     if (f_tx_after != f_tx_before + 6) begin
-      note_error($sformatf("TX_FRAMES is %0d, expected %0d",
-                           f_tx_after, f_tx_before + 6));
+      note_error($sformatf("TX_FRAMES is %0d, expected %0d", f_tx_after, f_tx_before + 6));
     end
     if (stat_get(int'(SW_STAT_TX_OCTETS)) < 600) begin
-      note_error($sformatf("TX_OCTETS is %0d, expected at least 600",
-                           stat_get(int'(SW_STAT_TX_OCTETS))));
+      note_error($sformatf(
+                 "TX_OCTETS is %0d, expected at least 600", stat_get(int'(SW_STAT_TX_OCTETS))));
     end
   endtask
 

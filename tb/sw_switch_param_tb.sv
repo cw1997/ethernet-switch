@@ -45,12 +45,13 @@ module sw_switch_param_tb;
   // ==========================================================================
   // 1.  Configuration under test
   // ==========================================================================
-  localparam int unsigned NUM_PORTS   = 3;
+  localparam int unsigned NUM_PORTS = 3;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
-  localparam int unsigned CLK_PERIOD  = 20;   // ns -> 50 MHz
+  localparam int unsigned CLK_PERIOD = 20;  // ns -> 50 MHz
 
   localparam logic [NUM_PORTS*48-1:0] PORT_MAC = {
-      48'hDE_AD_00_00_00_03, 48'hDE_AD_00_00_00_02, 48'hDE_AD_00_00_00_01};
+    48'hDE_AD_00_00_00_03, 48'hDE_AD_00_00_00_02, 48'hDE_AD_00_00_00_01
+  };
 
   /// 10 Mbit/s on port 0, 100 Mbit/s on ports 1 and 2.
   localparam logic [NUM_PORTS*2-1:0] PORT_SPEED = {2'd1, 2'd1, 2'd0};
@@ -72,41 +73,43 @@ module sw_switch_param_tb;
   // ==========================================================================
   logic clk = 1'b0;
   logic rst_n = 1'b0;
-  always #(CLK_PERIOD/2) clk = ~clk;
+  always #(CLK_PERIOD / 2) clk = ~clk;
 
-  logic [NUM_PORTS-1:0]        link_up;
-  logic [1:0]                  flood_mode;
-  logic                        learning_en, cfg_ovr, cam_flush;
-  logic [NUM_PORTS-1:0]        gmii_rx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_rx_data;
-  logic [NUM_PORTS-1:0]        gmii_tx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_tx_data;
+  logic [NUM_PORTS-1:0] link_up;
+  logic [          1:0] flood_mode;
+  logic learning_en, cfg_ovr, cam_flush;
+  logic [       NUM_PORTS-1:0] gmii_rx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_rx_data;
+  logic [       NUM_PORTS-1:0] gmii_tx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_tx_data;
   logic [32*SW_STAT_COUNT-1:0] stat_bus;
 
   es_switch_gmii #(
-      .NUM_PORTS      (NUM_PORTS),
-      .CLK_FREQ_HZ    (CLK_FREQ_HZ),
-      .PORT_MAC       (PORT_MAC),
-      .PORT_SPEED     (PORT_SPEED),
-      .RX_FIFO_DEPTH  (256),
-      .TX_FIFO_DEPTH  (256),
-      .TAG_FIFO_DEPTH (8),
-      .CAM_SETS       (32),
-      .CAM_WAYS       (2)
+    .NUM_PORTS     (NUM_PORTS),
+    .CLK_FREQ_HZ   (CLK_FREQ_HZ),
+    .PORT_MAC      (PORT_MAC),
+    .PORT_SPEED    (PORT_SPEED),
+    .RX_FIFO_DEPTH (256),
+    .TX_FIFO_DEPTH (256),
+    .TAG_FIFO_DEPTH(8),
+    .CAM_SETS      (32),
+    .CAM_WAYS      (2)
   ) u_dut (
-      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
-      .clk_i         (clk),
-      .rst_ni        (rst_n),
-      .link_up_i     (link_up),
-      .flood_mode_i  (flood_mode),
-      .learning_en_i (learning_en),
-      .cfg_ovr_i     (cfg_ovr),
-      .cam_flush_i   (cam_flush),
-      .gmii_rx_en_i  (gmii_rx_en),
-      .gmii_rx_data_i(gmii_rx_data),
-      .gmii_tx_en_o  (gmii_tx_en),
-      .gmii_tx_data_o(gmii_tx_data),
-      .stat_o        (stat_bus)
+    .phy_status_i  ('0),
+    .mon_req_i     (1'b0),
+    .mon_addr_i    (32'd0),
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .flood_mode_i  (flood_mode),
+    .learning_en_i (learning_en),
+    .cfg_ovr_i     (cfg_ovr),
+    .cam_flush_i   (cam_flush),
+    .gmii_rx_en_i  (gmii_rx_en),
+    .gmii_rx_data_i(gmii_rx_data),
+    .gmii_tx_en_o  (gmii_tx_en),
+    .gmii_tx_data_o(gmii_tx_data),
+    .stat_o        (stat_bus)
   );
 
   // ==========================================================================
@@ -116,20 +119,44 @@ module sw_switch_param_tb;
   // which is fixed to four ports: this configuration has three, and a power of
   // two port count is exactly what the other testbenches already cover.
   // ==========================================================================
-  sw_gmii_if #(.PORT_ID(0), .BYTE_PERIOD(BP0)) i0 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[0]),
-      .gmii_rx_en(gmii_rx_en[0]), .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[0]), .gmii_tx_d(gmii_tx_data[0*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(0),
+    .BYTE_PERIOD(BP0)
+  ) i0 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[0]),
+    .gmii_rx_en(gmii_rx_en[0]),
+    .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[0]),
+    .gmii_tx_d(gmii_tx_data[0*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(1), .BYTE_PERIOD(BP1)) i1 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[1]),
-      .gmii_rx_en(gmii_rx_en[1]), .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[1]), .gmii_tx_d(gmii_tx_data[1*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(1),
+    .BYTE_PERIOD(BP1)
+  ) i1 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[1]),
+    .gmii_rx_en(gmii_rx_en[1]),
+    .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[1]),
+    .gmii_tx_d(gmii_tx_data[1*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(2), .BYTE_PERIOD(BP2)) i2 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[2]),
-      .gmii_rx_en(gmii_rx_en[2]), .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[2]), .gmii_tx_d(gmii_tx_data[2*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(2),
+    .BYTE_PERIOD(BP2)
+  ) i2 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[2]),
+    .gmii_rx_en(gmii_rx_en[2]),
+    .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[2]),
+    .gmii_tx_d(gmii_tx_data[2*8 +: 8])
+  );
 
   // ==========================================================================
   // 4.  Bookkeeping
@@ -143,15 +170,14 @@ module sw_switch_param_tb;
   // written through a runtime port index inside a task, and an unpacked array
   // indexed that way is not resolved reliably by every simulator.  A packed
   // vector indexed by a bit position behaves identically everywhere.
-  logic [NUM_PORTS-1:0] expected_frames;   ///< 0..255 frames per port
+  logic [NUM_PORTS-1:0] expected_frames;  ///< 0..255 frames per port
 
   task automatic note_error(input string msg);
     errors++;
     $display("[%0t] ERROR %s", $time, msg);
   endtask
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -167,8 +193,8 @@ module sw_switch_param_tb;
   /// to arrive and the check has to outlast the frame it is waiting for.
   task automatic wait_all_settled(input int unsigned bound);
     for (int unsigned w = 0; w < bound; w++) begin
-      if ((expected_frames[0] == 0) && (expected_frames[1] == 0) &&
-          (expected_frames[2] == 0)) w = bound;   // all delivered
+      if ((expected_frames[0] == 0) && (expected_frames[1] == 0) && (expected_frames[2] == 0))
+        w = bound;  // all delivered
       @(posedge clk);
     end
   endtask
@@ -188,10 +214,16 @@ module sw_switch_param_tb;
     // possible ports are handled explicitly.
     for (int unsigned guard = 0; guard < 32; guard++) begin
       got_one = 1'b1;
-      if      (p == 0) begin got_one = (i0.pending() != 0); if (got_one) i0.pop_frame(r); end
-      else if (p == 1) begin got_one = (i1.pending() != 0); if (got_one) i1.pop_frame(r); end
-      else if (p == 2) begin got_one = (i2.pending() != 0); if (got_one) i2.pop_frame(r); end
-      else begin
+      if (p == 0) begin
+        got_one = (i0.pending() != 0);
+        if (got_one) i0.pop_frame(r);
+      end else if (p == 1) begin
+        got_one = (i1.pending() != 0);
+        if (got_one) i1.pop_frame(r);
+      end else if (p == 2) begin
+        got_one = (i2.pending() != 0);
+        if (got_one) i2.pop_frame(r);
+      end else begin
         note_error($sformatf("bad port index %0d", p));
         got_one = 1'b0;
       end
@@ -203,15 +235,14 @@ module sw_switch_param_tb;
       else begin
         expect_eq(tb_rec_len(r), PAYLOAD, $sformatf("port %0d frame length", p));
         if (!tb_rec_fcs_ok(r))
-          note_error($sformatf("port %0d: frame of %0d octets has a bad FCS",
-                               p, tb_rec_len(r)));
+          note_error($sformatf("port %0d: frame of %0d octets has a bad FCS", p, tb_rec_len(r)));
         if (!tb_rec_pre_ok(r))
-          note_error($sformatf("port %0d: frame of %0d octets has a bad preamble",
-                               p, tb_rec_len(r)));
+          note_error($sformatf("port %0d: frame of %0d octets has a bad preamble", p, tb_rec_len(r)
+                     ));
         // Counted against the expectation, and reported if there was none.
         if (expected_frames[p] == 0) begin
-          note_error($sformatf("port %0d produced an unexpected frame to %s",
-                               p, tb_mac_str(tb_rec_dst(r))));
+          note_error($sformatf(
+                     "port %0d produced an unexpected frame to %s", p, tb_mac_str(tb_rec_dst(r))));
         end else begin
           expected_frames[p]--;
         end
@@ -229,7 +260,7 @@ module sw_switch_param_tb;
   // ==========================================================================
   // 5.  Test sequence
   // ==========================================================================
-  localparam int unsigned PAYLOAD = 100;   // MAC client data octets
+  localparam int unsigned PAYLOAD = 100;  // MAC client data octets
 
   // --------------------------------------------------------------------------
   // Settle bound.
@@ -243,46 +274,43 @@ module sw_switch_param_tb;
   // as frames arriving late, out of order, and leftovers from the previous test
   // counted as "unexpected".
   // --------------------------------------------------------------------------
-  localparam int unsigned SETTLE = BP0*(PAYLOAD + 4) + 4*BP0 + 5000;
+  localparam int unsigned SETTLE = BP0 * (PAYLOAD + 4) + 4 * BP0 + 5000;
 
   localparam sw_mac_t HOST_A = 48'h02_BA_BA_00_00_01;
   localparam sw_mac_t HOST_B = 48'h02_BA_BA_00_00_02;
   localparam sw_mac_t HOST_C = 48'h02_BA_BA_00_00_03;
 
-  task automatic send_on(input int unsigned port, input sw_mac_t dst,
-                         input sw_mac_t src, input int unsigned len);
+  task automatic send_on(input int unsigned port, input sw_mac_t dst, input sw_mac_t src,
+                         input int unsigned len);
     case (port)
       0: i0.send(dst, src, TB_ET_IPV4, len);
       1: i1.send(dst, src, TB_ET_IPV4, len);
       2: i2.send(dst, src, TB_ET_IPV4, len);
       default: note_error($sformatf("bad port index %0d", port));
     endcase
-    $display("[%0t] TX  port %0d -> %s (%0d octets)",
-             $time, port, tb_mac_str(dst), len);
+    $display("[%0t] TX  port %0d -> %s (%0d octets)", $time, port, tb_mac_str(dst), len);
   endtask
 
   initial begin
-    link_up     = '1;
-    flood_mode  = SW_FLOOD_BCAST_UKN;
-    learning_en = 1'b1;
-    cfg_ovr     = 1'b0;
-    cam_flush   = 1'b0;
-    errors      = 0;
-    checks      = 0;
+    link_up         = '1;
+    flood_mode      = SW_FLOOD_BCAST_UKN;
+    learning_en     = 1'b1;
+    cfg_ovr         = 1'b0;
+    cam_flush       = 1'b0;
+    errors          = 0;
+    checks          = 0;
     expected_frames = '0;
 
-    rst_n = 1'b0;
+    rst_n           = 1'b0;
     repeat (16) @(posedge clk);
     rst_n = 1'b1;
     repeat (16) @(posedge clk);
 
     $display("=====================================================================");
-    $display(" sw_switch_param_tb: %0d ports at %0d MHz", NUM_PORTS,
-             CLK_FREQ_HZ/1_000_000);
+    $display(" sw_switch_param_tb: %0d ports at %0d MHz", NUM_PORTS, CLK_FREQ_HZ / 1_000_000);
     $display("   octet periods: %0d, %0d, %0d core clocks", BP0, BP1, BP2);
     $display("   port speeds  : 10M, 100M, 100M");
-    $display("   port MACs    : %s, %s, %s",
-             tb_mac_str(port_mac(0)), tb_mac_str(port_mac(1)),
+    $display("   port MACs    : %s, %s, %s", tb_mac_str(port_mac(0)), tb_mac_str(port_mac(1)),
              tb_mac_str(port_mac(2)));
     $display("=====================================================================");
 
@@ -417,18 +445,16 @@ module sw_switch_param_tb;
     $display("   switch statistics: rx frames %0d, rx octets %0d, tx frames %0d",
              stat_bus[32*0 +: 32], stat_bus[32*1 +: 32], stat_bus[32*7 +: 32]);
     $display("                     filtered %0d, bad FCS %0d, runts %0d, oversize %0d",
-             stat_bus[32*2 +: 32], stat_bus[32*3 +: 32], stat_bus[32*4 +: 32],
-             stat_bus[32*5 +: 32]);
-    $display("                     cam hits %0d, misses %0d, learns %0d",
-             stat_bus[32*10 +: 32], stat_bus[32*11 +: 32], stat_bus[32*12 +: 32]);
+             stat_bus[32*2 +: 32], stat_bus[32*3 +: 32], stat_bus[32*4 +: 32], stat_bus[32*5 +: 32]);
+    $display("                     cam hits %0d, misses %0d, learns %0d", stat_bus[32*10 +: 32],
+             stat_bus[32*11 +: 32], stat_bus[32*12 +: 32]);
     $display("-----------------------------------------------------------------------");
 
     if (errors == 0) begin
       $display(" sw_switch_param_tb: PASSED (%0d checks)", checks);
       $finish;
     end else begin
-      $fatal(1, " sw_switch_param_tb: FAILED (%0d of %0d checks failed)",
-             errors, checks);
+      $fatal(1, " sw_switch_param_tb: FAILED (%0d of %0d checks failed)", errors, checks);
     end
   end
 

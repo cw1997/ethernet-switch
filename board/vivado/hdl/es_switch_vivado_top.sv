@@ -41,31 +41,31 @@
 
 module es_switch_vivado_top (
   // ---- board clock and mechanical reset ------------------------------------
-  input  var logic       clk_i,          ///< 50 MHz; always running during reset
-  input  var logic       rst_button_ni,  ///< asynchronous, active-low button
+  input var logic clk_i,         ///< 50 MHz; always running during reset
+  input var logic rst_button_ni, ///< asynchronous, active-low button
 
   // ---- PHY-supplied clocks (reserved for future clock-domain adapters) ------
-  input  var logic [7:0] mii_rx_clk_i,    ///< PHY RX clocks; currently unused
-  input  var logic [7:0] mii_tx_clk_i,    ///< PHY TX clocks, not FPGA outputs
+  input var logic [7:0] mii_rx_clk_i,  ///< PHY RX clocks; currently unused
+  input var logic [7:0] mii_tx_clk_i,  ///< PHY TX clocks, not FPGA outputs
 
   // ---- synchronous MII model pins ------------------------------------------
-  input  var logic [7:0] mii_rx_dv_i,     ///< valid for whole octets in this model
-  input  var logic [7:0] mii_rx_er_i,     ///< per-port receive error indication
-  input  var logic [31:0] mii_rxd_i,     ///< low nibble first, port 0 in [3:0]
-  output logic [7:0] mii_tx_en_o,        ///< per-port transmit frame enable
-  output logic [7:0] mii_tx_er_o,        ///< held low: adapter has no TX error source
-  output logic [31:0] mii_txd_o,         ///< port 7 in [31:28], low nibble first
+  input var logic [ 7:0] mii_rx_dv_i,  ///< valid for whole octets in this model
+  input var logic [ 7:0] mii_rx_er_i,  ///< per-port receive error indication
+  input var logic [31:0] mii_rxd_i,    ///< low nibble first, port 0 in [3:0]
+  output    logic [ 7:0] mii_tx_en_o,  ///< per-port transmit frame enable
+  output    logic [ 7:0] mii_tx_er_o,  ///< held low: adapter has no TX error source
+  output    logic [31:0] mii_txd_o,    ///< port 7 in [31:28], low nibble first
 
   // ---- PHY reset and unmanaged MDIO ----------------------------------------
-  output logic [7:0] phy_reset_no,       ///< follows synchronized button reset
-  output logic [7:0] phy_mdc_o,          ///< idle low; no management transactions
+  output logic     [7:0] phy_reset_no,  ///< follows synchronized button reset
+  output logic     [7:0] phy_mdc_o,     ///< idle low; no management transactions
   // MDIO needs an explicit net kind under default_nettype none in Vivado.
-  inout  tri logic [7:0] phy_mdio_io     ///< released; requires external pull-ups
+  inout  tri logic [7:0] phy_mdio_io    ///< released; requires external pull-ups
 );
   // ---- board-fixed configuration -------------------------------------------
   // At 50 MHz / 100 Mbit/s, sw_byte_period is 4. Its even half-period is
   // required by es_switch_mii; these settings do not support PHY speed negotiation.
-  localparam int unsigned NUM_PORTS = 8;
+  localparam int unsigned NUM_PORTS   = 8;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
 
   // ---- reset sampling -------------------------------------------------------
@@ -76,8 +76,8 @@ module es_switch_vivado_top (
   // ASYNC_REG identifies the sampling chain to Vivado; it does not debounce
   // the button. On release the second stage rises on sample two, and the core
   // sees that new level on the following edge because all state uses NBA.
-  (* ASYNC_REG = "TRUE" *) logic rst_meta_q;
-  (* ASYNC_REG = "TRUE" *) logic rst_sync_q;
+  (* ASYNC_REG = "TRUE" *)logic rst_meta_q;
+  (* ASYNC_REG = "TRUE" *)logic rst_sync_q;
   logic rst_ni;
   always_ff @(posedge clk_i) begin
     rst_meta_q <= rst_button_ni;
@@ -103,14 +103,17 @@ module es_switch_vivado_top (
   logic unused_mon_ready, unused_mon_valid;
   logic [31:0] unused_mon_data;
   es_switch_mii #(
-    .NUM_PORTS(NUM_PORTS),
+    .NUM_PORTS  (NUM_PORTS),
     .CLK_FREQ_HZ(CLK_FREQ_HZ),
     // Each packed speed field is exactly two bits; this cast represents the
     // enum in the replication, rather than truncating an arithmetic result.
-    .PORT_SPEED({NUM_PORTS{2'(SW_SPEED_100M)}})
+    .PORT_SPEED ({NUM_PORTS{2'(SW_SPEED_100M)}})
   ) u_switch (
-    .phy_status_i('0), .mon_req_i(1'b0), .mon_addr_i(32'd0),
-    .mon_ready_o(unused_mon_ready), .mon_valid_o(unused_mon_valid),
+    .phy_status_i('0),
+    .mon_req_i(1'b0),
+    .mon_addr_i(32'd0),
+    .mon_ready_o(unused_mon_ready),
+    .mon_valid_o(unused_mon_valid),
     .mon_data_o(unused_mon_data),
     .clk_i(clk_i),
     .rst_ni(rst_ni),
@@ -137,12 +140,12 @@ module es_switch_vivado_top (
   // synchronizers; neither reserved PHY clock currently clocks any logic.
   logic unused_phy;
   logic unused_stat;
-  assign unused_phy = ^{mii_rx_clk_i, mii_tx_clk_i, phy_mdio_io};
+  assign unused_phy  = ^{mii_rx_clk_i, mii_tx_clk_i, phy_mdio_io};
   assign unused_stat = ^stat;
 endmodule
 
 // Restore the compilation-unit default so this board file cannot turn an
 // unrelated module's implicit connection into an error merely by file order.
 `default_nettype wire
-`endif // ES_SWITCH_VIVADO_TOP_SV
+`endif  // ES_SWITCH_VIVADO_TOP_SV
 

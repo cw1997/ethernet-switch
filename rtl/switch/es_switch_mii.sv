@@ -37,19 +37,19 @@
 module es_switch_mii #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
-  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
+  parameter int unsigned                    NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
   /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
   /// (125 MHz for full line rate); a slower core simply stretches the octet
   /// clock enables and loses line rate, nothing else.
-  parameter int unsigned CLK_FREQ_HZ     = 125_000_000,
+  parameter int unsigned                    CLK_FREQ_HZ = 125_000_000,
   /// Per-port MAC addresses, 48 bits per port, port p at bits [48*p +: 48].
   /// A port left at all zero gets the locally administered address
   /// 02:00:00:00:00:<p>.
-  parameter logic [NUM_PORTS*48-1:0]  PORT_MAC   = '0,
+  parameter logic        [NUM_PORTS*48-1:0] PORT_MAC    = '0,
   /// Per-port link speed, 2 bits per port, port p at bits [2*p +: 2]:
   /// 0 = 10 Mbit/s, 1 = 100 Mbit/s, 2 = 1000 Mbit/s, 3 = administratively
   /// down.  Defaults to 1000 Mbit/s on every port.
-  parameter logic [NUM_PORTS*2-1:0]    PORT_SPEED = {NUM_PORTS{2'd2}},
+  parameter logic        [ NUM_PORTS*2-1:0] PORT_SPEED  = {NUM_PORTS{2'd2}},
 
   /// Telemetry publication interval in milliseconds, rounded up to a clock.
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
@@ -68,14 +68,14 @@ module es_switch_mii #(
 
   // ---- switching fabric ----------------------------------------------------
   /// Largest frame accepted, in octets, FCS excluded.
-  parameter int unsigned MAX_FRAME_LEN  = 1518,
+  parameter int unsigned       MAX_FRAME_LEN = 1518,
   /// 0 = block unknown unicast, 1 = flood it, 2 = flood unknown group too.
-  parameter logic [1:0]  FLOOD_MODE     = 2'd1,
+  parameter logic        [1:0] FLOOD_MODE    = 2'd1,
   /// Source address learning default.
-  parameter logic        LEARNING_EN    = 1'b1,
+  parameter logic              LEARNING_EN   = 1'b1,
   /// Cycles a head-of-line frame may wait at a congested egress before it is
   /// dropped.  0 stalls forever and never drops.
-  parameter int unsigned STALL_LIMIT    = 0,
+  parameter int unsigned       STALL_LIMIT   = 0,
 
   // ---- forwarding address table -------------------------------------------
   parameter int unsigned CAM_SETS       = 128,
@@ -86,23 +86,23 @@ module es_switch_mii #(
   parameter int unsigned CAM_AGE_CYCLES = 1_000_000,
   parameter int unsigned CAM_AGE_LIMIT  = 4
 ) (
-  input  var logic                                clk_i,
-  input  var logic                                rst_ni,   ///< active-low reset
+  input var logic clk_i,
+  input var logic rst_ni, ///< active-low reset
 
   // ---- control -------------------------------------------------------------
-  input  var logic [NUM_PORTS-1:0]                link_up_i,   ///< port is enabled
-  input  var logic [1:0]                          flood_mode_i,
-  input  var logic                                learning_en_i,
-  input  var logic                                cfg_ovr_i,   ///< use run-time config
-  input  var logic                                cam_flush_i, ///< flush the CAM
+  input var logic [NUM_PORTS-1:0] link_up_i,      ///< port is enabled
+  input var logic [          1:0] flood_mode_i,
+  input var logic                 learning_en_i,
+  input var logic                 cfg_ovr_i,      ///< use run-time config
+  input var logic                 cam_flush_i,    ///< flush the CAM
 
   // ---- MII front-end pins --------------------------------------------------
-  input  var logic [NUM_PORTS-1:0]                mii_rx_dv_i,
-  input  var logic [NUM_PORTS-1:0]                mii_rx_er_i,
-  input  var logic [NUM_PORTS*4-1:0]              mii_rxd_i,
-  output logic [NUM_PORTS-1:0]                mii_tx_en_o,
-  output logic [NUM_PORTS-1:0]                mii_tx_er_o,
-  output logic [NUM_PORTS*4-1:0]              mii_txd_o,
+  input var logic [  NUM_PORTS-1:0] mii_rx_dv_i,
+  input var logic [  NUM_PORTS-1:0] mii_rx_er_i,
+  input var logic [NUM_PORTS*4-1:0] mii_rxd_i,
+  output    logic [  NUM_PORTS-1:0] mii_tx_en_o,
+  output    logic [  NUM_PORTS-1:0] mii_tx_er_o,
+  output    logic [NUM_PORTS*4-1:0] mii_txd_o,
 
   // Telemetry PHY metadata is independent of the administrative link enable.
   input var logic [NUM_PORTS*8-1:0] phy_status_i,
@@ -112,14 +112,14 @@ module es_switch_mii #(
   output logic [31:0] mon_data_o,
 
   // ---- observability -------------------------------------------------------
-  output logic [32*SW_STAT_COUNT-1:0]         stat_o
+  output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
   // The canonical octet stream between the per-port symbol adapters and the
   // interface-agnostic core.
-  logic [NUM_PORTS-1:0]   rx_oct_en;
+  logic [  NUM_PORTS-1:0] rx_oct_en;
   logic [NUM_PORTS*8-1:0] rx_oct_data;
-  logic [NUM_PORTS-1:0]   tx_oct_en;
+  logic [  NUM_PORTS-1:0] tx_oct_en;
   logic [NUM_PORTS*8-1:0] tx_oct_data;
 
   // Elaboration-time sanity checks (excluded from synthesis).  MII is a
@@ -128,47 +128,52 @@ module es_switch_mii #(
   initial begin
     for (int unsigned p = 0; p < NUM_PORTS; p++) begin
       if (sw_speed_e'(PORT_SPEED[p*2 +: 2]) == SW_SPEED_1000M) begin
-        $error("es_switch_mii: port %0d is configured for 1000 Mbit/s, which the MII front-end cannot carry", p);
+        $error(
+            "es_switch_mii: port %0d is configured for 1000 Mbit/s, which the MII front-end cannot carry",
+            p);
       end
     end
   end
 `endif
 
   es_switch_core #(
-      .NUM_PORTS      (NUM_PORTS),
-      .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
-      .CLK_FREQ_HZ    (CLK_FREQ_HZ),
-      .PORT_MAC       (PORT_MAC),
-      .PORT_SPEED     (PORT_SPEED),
-      .RX_FIFO_DEPTH  (RX_FIFO_DEPTH),
-      .TX_FIFO_DEPTH  (TX_FIFO_DEPTH),
-      .TAG_FIFO_DEPTH (TAG_FIFO_DEPTH),
-      .WF_DEPTH       (WF_DEPTH),
-      .MAX_FRAME_LEN  (MAX_FRAME_LEN),
-      .FLOOD_MODE     (FLOOD_MODE),
-      .LEARNING_EN    (LEARNING_EN),
-      .STALL_LIMIT    (STALL_LIMIT),
-      .CAM_SETS       (CAM_SETS),
-      .CAM_WAYS       (CAM_WAYS),
-      .CAM_AGE_EN     (CAM_AGE_EN),
-      .CAM_AGE_CYCLES (CAM_AGE_CYCLES),
-      .CAM_AGE_LIMIT  (CAM_AGE_LIMIT)
+    .NUM_PORTS          (NUM_PORTS),
+    .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS),
+    .CLK_FREQ_HZ        (CLK_FREQ_HZ),
+    .PORT_MAC           (PORT_MAC),
+    .PORT_SPEED         (PORT_SPEED),
+    .RX_FIFO_DEPTH      (RX_FIFO_DEPTH),
+    .TX_FIFO_DEPTH      (TX_FIFO_DEPTH),
+    .TAG_FIFO_DEPTH     (TAG_FIFO_DEPTH),
+    .WF_DEPTH           (WF_DEPTH),
+    .MAX_FRAME_LEN      (MAX_FRAME_LEN),
+    .FLOOD_MODE         (FLOOD_MODE),
+    .LEARNING_EN        (LEARNING_EN),
+    .STALL_LIMIT        (STALL_LIMIT),
+    .CAM_SETS           (CAM_SETS),
+    .CAM_WAYS           (CAM_WAYS),
+    .CAM_AGE_EN         (CAM_AGE_EN),
+    .CAM_AGE_CYCLES     (CAM_AGE_CYCLES),
+    .CAM_AGE_LIMIT      (CAM_AGE_LIMIT)
   ) u_core (
-      .phy_status_i (phy_status_i),
-      .mon_req_i (mon_req_i), .mon_addr_i (mon_addr_i),
-      .mon_ready_o (mon_ready_o), .mon_valid_o (mon_valid_o), .mon_data_o (mon_data_o),
-      .clk_i         (clk_i),
-      .rst_ni        (rst_ni),
-      .link_up_i     (link_up_i),
-      .flood_mode_i  (flood_mode_i),
-      .learning_en_i (learning_en_i),
-      .cfg_ovr_i     (cfg_ovr_i),
-      .cam_flush_i   (cam_flush_i),
-      .rx_oct_en_i   (rx_oct_en),
-      .rx_oct_data_i (rx_oct_data),
-      .tx_oct_en_o   (tx_oct_en),
-      .tx_oct_data_o (tx_oct_data),
-      .stat_o        (stat_o)
+    .phy_status_i (phy_status_i),
+    .mon_req_i    (mon_req_i),
+    .mon_addr_i   (mon_addr_i),
+    .mon_ready_o  (mon_ready_o),
+    .mon_valid_o  (mon_valid_o),
+    .mon_data_o   (mon_data_o),
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .link_up_i    (link_up_i),
+    .flood_mode_i (flood_mode_i),
+    .learning_en_i(learning_en_i),
+    .cfg_ovr_i    (cfg_ovr_i),
+    .cam_flush_i  (cam_flush_i),
+    .rx_oct_en_i  (rx_oct_en),
+    .rx_oct_data_i(rx_oct_data),
+    .tx_oct_en_o  (tx_oct_en),
+    .tx_oct_data_o(tx_oct_data),
+    .stat_o       (stat_o)
   );
 
   // Per-port symbol adapters: nibble pairs <-> canonical octets.
@@ -178,27 +183,26 @@ module es_switch_mii #(
   // all forms (see es_switch_arbiter.sv for the full note).
   genvar g;
   generate
-  for (g = 0; g < NUM_PORTS; g++) begin : g_port
-    localparam int unsigned BP_G =
-        sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+    for (g = 0; g < NUM_PORTS; g++) begin : g_port
+      localparam int unsigned BP_G = sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
 
-    es_switch_mii_adapter #(
-        .BYTE_PERIOD (BP_G)
-    ) u_fe (
-        .clk_i       (clk_i),
-        .rst_ni      (rst_ni),
-        .mii_rx_dv_i (mii_rx_dv_i[g]),
-        .mii_rx_er_i (mii_rx_er_i[g]),
-        .mii_rxd_i   (mii_rxd_i[g*4 +: 4]),
-        .mii_tx_en_o (mii_tx_en_o[g]),
-        .mii_tx_er_o (mii_tx_er_o[g]),
-        .mii_txd_o   (mii_txd_o[g*4 +: 4]),
-        .oct_en_o    (rx_oct_en[g]),
-        .oct_d_o     (rx_oct_data[g*8 +: 8]),
-        .oct_en_i    (tx_oct_en[g]),
-        .oct_d_i     (tx_oct_data[g*8 +: 8])
-    );
-  end
+      es_switch_mii_adapter #(
+        .BYTE_PERIOD(BP_G)
+      ) u_fe (
+        .clk_i      (clk_i),
+        .rst_ni     (rst_ni),
+        .mii_rx_dv_i(mii_rx_dv_i[g]),
+        .mii_rx_er_i(mii_rx_er_i[g]),
+        .mii_rxd_i  (mii_rxd_i[g*4 +: 4]),
+        .mii_tx_en_o(mii_tx_en_o[g]),
+        .mii_tx_er_o(mii_tx_er_o[g]),
+        .mii_txd_o  (mii_txd_o[g*4 +: 4]),
+        .oct_en_o   (rx_oct_en[g]),
+        .oct_d_o    (rx_oct_data[g*8 +: 8]),
+        .oct_en_i   (tx_oct_en[g]),
+        .oct_d_i    (tx_oct_data[g*8 +: 8])
+      );
+    end
   endgenerate
 
 endmodule : es_switch_mii
@@ -208,4 +212,4 @@ endmodule : es_switch_mii
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_MII_SV
+`endif  // ES_SWITCH_MII_SV

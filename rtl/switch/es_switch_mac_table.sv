@@ -75,43 +75,43 @@ module es_switch_mac_table #(
   /// Ageing countdown reload value; 0 expires an entry on the next sweep.
   parameter int unsigned AGE_LIMIT       = 0
 ) (
-  input  var logic                    clk_i,
-  input  var logic                    rst_ni,
-  input  var logic                    flush_i,   ///< invalidate every entry
+  input var logic clk_i,
+  input var logic rst_ni,
+  input var logic flush_i, ///< invalidate every entry
 
   // ---- lookup ports: one per ingress port, one clock of latency ------------
-  input  var logic [NUM_PORTS-1:0]    req_i,
-  input  var logic [NUM_PORTS*48-1:0] mac_i,
+  input var logic [NUM_PORTS-1:0]    req_i,
+  input var logic [NUM_PORTS*48-1:0] mac_i,
   output logic [NUM_PORTS-1:0]    hit_o,     ///< a valid entry matched
   /// One-hot learned egress port, one NUM_PORTS-wide vector per lookup port.
   output logic [NUM_PORTS*NUM_PORTS-1:0] port_o,
 
   // ---- learn ports: one per ingress port, serialised internally -----------
-  input  var logic [NUM_PORTS-1:0]    learn_i,
-  input  var logic [NUM_PORTS*48-1:0] learn_mac_i,
+  input var logic [NUM_PORTS-1:0]    learn_i,
+  input var logic [NUM_PORTS*48-1:0] learn_mac_i,
   /// Ingress port index of every learn port (`learn_port_i[p]` == p).
-  input  var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
+  input var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
 
   // ---- status counters -----------------------------------------------------
-  output logic [31:0]             entries_o,///< entries currently held
-  output logic [31:0]             hits_o,    ///< lookups that resolved
-  output logic [31:0]             misses_o,  ///< lookups that did not resolve
-  input var logic mon_req_i,
-  input var logic [31:0] mon_index_i,
-  output logic mon_valid_o,
-  output logic [127:0] mon_entry_o,
-  output logic [31:0]             learns_o   ///< learn operations performed
+  output            logic [ 31:0] entries_o,    ///< entries currently held
+  output            logic [ 31:0] hits_o,       ///< lookups that resolved
+  output            logic [ 31:0] misses_o,     ///< lookups that did not resolve
+  input var logic         mon_req_i,
+  input var logic [ 31:0] mon_index_i,
+  output            logic         mon_valid_o,
+  output            logic [127:0] mon_entry_o,
+  output            logic [ 31:0] learns_o      ///< learn operations performed
 );
 
   // --------------------------------------------------------------------------
   // Local parameters and storage declarations
   // --------------------------------------------------------------------------
-  localparam int unsigned PW    = sw_port_w(NUM_PORTS);
+  localparam int unsigned PW = sw_port_w(NUM_PORTS);
   localparam int unsigned IDX_W = (NUM_SETS <= 2) ? 1 : $clog2(NUM_SETS);
   localparam int unsigned WAY_W = (NUM_WAYS <= 2) ? 1 : $clog2(NUM_WAYS);
   localparam int unsigned AGE_W = (AGE_LIMIT < 2) ? 1 : $clog2(AGE_LIMIT + 1);
-  localparam int unsigned ENT_W = 1 + PW + 48;      // { valid, port, mac }
-  localparam int unsigned LQ_W  = 48 + PW;          // queued learn request
+  localparam int unsigned ENT_W = 1 + PW + 48;  // { valid, port, mac }
+  localparam int unsigned LQ_W = 48 + PW;  // queued learn request
   /// Depth of the learn request queue.
   ///
   /// Every port can request a learn in the same clock, and the write port drains
@@ -119,10 +119,10 @@ module es_switch_mac_table #(
   /// queue fills completely and the next request is dropped.  One spare slot per
   /// port is added so a burst of simultaneous learns is always absorbed, and the
   /// extra storage is a handful of small registers.
-  localparam int unsigned QP_DEPTH = 2*NUM_PORTS;
+  localparam int unsigned QP_DEPTH = 2 * NUM_PORTS;
   /// Queue occupancy needs to represent QP_DEPTH entries plus a guard bit.
-  localparam int unsigned QN_W  = (QP_DEPTH < 2) ? 1 : $clog2(QP_DEPTH + 1);
-  localparam int unsigned QP_W  = (QP_DEPTH <= 2) ? 1 : $clog2(QP_DEPTH);
+  localparam int unsigned QN_W = (QP_DEPTH < 2) ? 1 : $clog2(QP_DEPTH + 1);
+  localparam int unsigned QP_W = (QP_DEPTH <= 2) ? 1 : $clog2(QP_DEPTH);
 
   /// One entry: validity, the port the station sits behind, and its address.
   typedef logic [ENT_W-1:0] entry_t;
@@ -145,9 +145,9 @@ module es_switch_mac_table #(
   // The flat index of way `w` of bucket `s` is always `s*NUM_WAYS + w`; it is
   // written out explicitly rather than computed by a helper function, because a
   // function that writes a module level array would be an illegal side effect.
-  entry_t          mem    [0:NUM_SETS*NUM_WAYS-1];
-  logic [AGE_W-1:0] age    [0:NUM_SETS*NUM_WAYS-1];  ///< expiry countdown
-  logic [WAY_W-1:0] rr_ptr [0:NUM_SETS-1];           ///< replacement pointer
+  entry_t             mem   [0:NUM_SETS*NUM_WAYS-1];
+  logic   [AGE_W-1:0] age   [0:NUM_SETS*NUM_WAYS-1];  ///< expiry countdown
+  logic   [WAY_W-1:0] rr_ptr[         0:NUM_SETS-1];  ///< replacement pointer
 
   logic [31:0] entries_q, hits_q, misses_q, learns_q;
 
@@ -179,14 +179,14 @@ module es_switch_mac_table #(
   // address width keeps these accessors consistent with `make_entry` and
   // `kill_entry` by construction.
   // --------------------------------------------------------------------------
-  localparam int P_LSB = 48;   // port field offset
+  localparam int P_LSB = 48;  // port field offset
   localparam int V_LSB = 48 + PW;  // valid flag offset
 
   // The accessors are field extractors: each deliberately returns one field of
   // the packed entry, so the remaining bits of the argument are unused by
   // construction.  The waiver keeps `-Wall` clean without hiding real issues.
   /* verilator lint_off UNUSEDSIGNAL */
-  function automatic logic        entry_valid(input entry_t e);
+  function automatic logic entry_valid(input entry_t e);
     entry_valid = e[V_LSB];
   endfunction
 
@@ -194,7 +194,7 @@ module es_switch_mac_table #(
     entry_port = e[P_LSB +: PW];
   endfunction
 
-  function automatic sw_mac_t     entry_mac(input entry_t e);
+  function automatic sw_mac_t entry_mac(input entry_t e);
     entry_mac = e[47:0];
   endfunction
   /* verilator lint_on UNUSEDSIGNAL */
@@ -223,8 +223,8 @@ module es_switch_mac_table #(
   // which makes the result independent of the physical way order.
   // ==========================================================================
   // Candidate address per lookup port, and the bucket it hashes to.
-  logic [47:0]     rd_mac [NUM_PORTS];
-  logic [IDX_W-1:0] rd_idx [NUM_PORTS];
+  logic [     47:0] rd_mac[NUM_PORTS];
+  logic [IDX_W-1:0] rd_idx[NUM_PORTS];
 
   // Quartus's parser rejects the SV inline form `for (gp = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
@@ -235,17 +235,17 @@ module es_switch_mac_table #(
   genvar gp, gw, gp2, gw2, gp3, gq, gv, gt, gh;
   genvar gl, gl2, gs, ga, gb, gf, gs2, gm, gr;
   generate
-  for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_addr
-    assign rd_mac[gp] = mac_i[gp*48 +: 48];
-    assign rd_idx[gp] = mac_hash(rd_mac[gp]);
-  end
+    for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_addr
+      assign rd_mac[gp] = mac_i[gp*48 +: 48];
+      assign rd_idx[gp] = mac_hash(rd_mac[gp]);
+    end
   endgenerate
 
   // Per-port result, held in unpacked arrays so that the process body below
   // needs no part-select at all; the flattening into the output vectors happens
   // in the generate loop that follows.
-  logic             rd_hit_v  [NUM_PORTS];
-  logic [NUM_PORTS-1:0] rd_port_v [NUM_PORTS];
+  logic                      rd_hit_v [NUM_PORTS];
+  logic [     NUM_PORTS-1:0] rd_port_v[NUM_PORTS];
 
   // The search is deliberately split across *two* combinational blocks.
   //
@@ -272,14 +272,14 @@ module es_switch_mac_table #(
   // assignment is the ordinary way to describe a combinational RAM read, and it
   // leaves the process body touching only plain vectors, which every simulator
   // handles.  The generated hardware is the same array of comparators.
-  logic [ENT_W*NUM_WAYS-1:0] rd_bucket [NUM_PORTS];
+  logic [ENT_W*NUM_WAYS-1:0] rd_bucket[NUM_PORTS];
 
   generate
-  for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_fetch
-    for (gw = 0; gw < NUM_WAYS; gw++) begin : g_rd_word
-      assign rd_bucket[gp][gw*ENT_W +: ENT_W] = mem[rd_idx[gp]*NUM_WAYS + gw];
+    for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_fetch
+      for (gw = 0; gw < NUM_WAYS; gw++) begin : g_rd_word
+        assign rd_bucket[gp][gw*ENT_W +: ENT_W] = mem[rd_idx[gp]*NUM_WAYS+gw];
+      end
     end
-  end
   endgenerate
 
   // The per-way compare, one continuous assignment per (port, way).
@@ -290,17 +290,17 @@ module es_switch_mac_table #(
   // outputs forever.  A generate loop gives every way a constant offset, so each
   // comparison is a fixed slice of a fixed signal and there is nothing left to
   // over-approximate.
-  logic [NUM_WAYS-1:0] way_hit [NUM_PORTS];      ///< per-way tag match
-  logic [PW-1:0]      way_port[NUM_PORTS][NUM_WAYS];
+  logic [NUM_WAYS-1:0] way_hit [NUM_PORTS];  ///< per-way tag match
+  logic [      PW-1:0] way_port[NUM_PORTS]                         [NUM_WAYS];
 
   generate
-  for (gp2 = 0; gp2 < NUM_PORTS; gp2++) begin : g_way
-    for (gw2 = 0; gw2 < NUM_WAYS; gw2++) begin : g_way_w
-      localparam int unsigned WB = gw2*ENT_W;
-      assign way_hit[gp2][gw2]  = entry_match(rd_bucket[gp2][WB +: ENT_W], rd_mac[gp2]);
-      assign way_port[gp2][gw2] = entry_port (rd_bucket[gp2][WB +: ENT_W]);
+    for (gp2 = 0; gp2 < NUM_PORTS; gp2++) begin : g_way
+      for (gw2 = 0; gw2 < NUM_WAYS; gw2++) begin : g_way_w
+        localparam int unsigned WB = gw2 * ENT_W;
+        assign way_hit[gp2][gw2]  = entry_match(rd_bucket[gp2][WB +: ENT_W], rd_mac[gp2]);
+        assign way_port[gp2][gw2] = entry_port(rd_bucket[gp2][WB +: ENT_W]);
+      end
     end
-  end
   endgenerate
 
   // Priority encode across the ways: the lowest matching way wins, which makes
@@ -316,9 +316,8 @@ module es_switch_mac_table #(
   //
   // The per-way ports arrive as one packed vector rather than an unpacked array
   // because Icarus cannot pass an unpacked array to a subroutine.
-  function automatic logic [PW-1:0] prio_port(
-      input var logic [NUM_WAYS-1:0]         hit_v,
-      input var logic [PW*NUM_WAYS-1:0]      port_v);
+  function automatic logic [PW-1:0] prio_port(input var logic [NUM_WAYS-1:0] hit_v,
+                                              input var logic [PW*NUM_WAYS-1:0] port_v);
     logic [PW-1:0] p;
     p = '0;
     for (int unsigned k = NUM_WAYS; k > 0; k--) begin
@@ -328,47 +327,47 @@ module es_switch_mac_table #(
   endfunction
 
   // Per-way port fields, flattened into the packed vector the function takes.
-  logic [PW*NUM_WAYS-1:0] way_port_flat [NUM_PORTS];
-  logic          hit_f  [NUM_PORTS];
-  logic [PW-1:0] port_f [NUM_PORTS];
+  logic [PW*NUM_WAYS-1:0] way_port_flat[NUM_PORTS];
+  logic                   hit_f        [NUM_PORTS];
+  logic [         PW-1:0] port_f       [NUM_PORTS];
 
   generate
-  for (gp3 = 0; gp3 < NUM_PORTS; gp3++) begin : g_prio
-    for (gq = 0; gq < NUM_WAYS; gq++) begin : g_prio_flat
-      assign way_port_flat[gp3][gq*PW +: PW] = way_port[gp3][gq];
+    for (gp3 = 0; gp3 < NUM_PORTS; gp3++) begin : g_prio
+      for (gq = 0; gq < NUM_WAYS; gq++) begin : g_prio_flat
+        assign way_port_flat[gp3][gq*PW +: PW] = way_port[gp3][gq];
+      end
+      assign hit_f[gp3]  = |way_hit[gp3];
+      assign port_f[gp3] = prio_port(way_hit[gp3], way_port_flat[gp3]);
     end
-    assign hit_f[gp3]  = |way_hit[gp3];
-    assign port_f[gp3] = prio_port(way_hit[gp3], way_port_flat[gp3]);
-  end
   endgenerate
 
   generate
-  for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_out_flat
-    assign rd_hit_v[gp]  = hit_f[gp];
-    // A miss produces an all-zero port mask, which is exactly "no hit".
-    assign rd_port_v[gp] = hit_f[gp] ? (NUM_PORTS'(1) << PW'(port_f[gp])) : '0;
-  end
+    for (gp = 0; gp < NUM_PORTS; gp++) begin : g_rd_out_flat
+      assign rd_hit_v[gp]  = hit_f[gp];
+      // A miss produces an all-zero port mask, which is exactly "no hit".
+      assign rd_port_v[gp] = hit_f[gp] ? (NUM_PORTS'(1) << PW'(port_f[gp])) : '0;
+    end
   endgenerate
 
   // Per-clock lookup tally, so that two ports hitting in the same clock are
   // both counted (a non-blocking assignment inside a loop would only count one).
   logic [31:0] hits_inc, misses_inc;
-  logic [NUM_PORTS-1:0] hit_b, miss_b;   ///< per-port qualifiers for the tally
-  logic [31:0] occ_add, occ_sub;         ///< occupancy delta, see the storage block
+  logic [NUM_PORTS-1:0] hit_b, miss_b;  ///< per-port qualifiers for the tally
+  logic [31:0] occ_add, occ_sub;  ///< occupancy delta, see the storage block
 
   // Per-port result registers, held unpacked for the same reason as the
   // combinational results above.
-  logic             hit_v_q  [NUM_PORTS];
-  logic [NUM_PORTS-1:0] port_v_q [NUM_PORTS];
+  logic                 hit_v_q [NUM_PORTS];
+  logic [NUM_PORTS-1:0] port_v_q[NUM_PORTS];
 
   // Hoisted one-bit views of the request and hit signals, so neither process
   // below needs a part-select.
   logic [NUM_PORTS-1:0] req_v, hit_v;
   generate
-  for (gv = 0; gv < NUM_PORTS; gv++) begin : g_tally
-    assign req_v[gv] = req_i[gv];
-    assign hit_v[gv] = rd_hit_v[gv];
-  end
+    for (gv = 0; gv < NUM_PORTS; gv++) begin : g_tally
+      assign req_v[gv] = req_i[gv];
+      assign hit_v[gv] = rd_hit_v[gv];
+    end
   endgenerate
 
   // The tally is a popcount of the per-port qualifiers, computed with a
@@ -379,10 +378,10 @@ module es_switch_mac_table #(
   // sensitivity list: the block then re-triggers on its own output, never
   // settles, and the run hangs with time standing still.  This form cannot.
   generate
-  for (gt = 0; gt < NUM_PORTS; gt++) begin : g_tally_bit
-    assign hit_b[gt]    = req_v[gt] &&  hit_v[gt];
-    assign miss_b[gt]   = req_v[gt] && !hit_v[gt];
-  end
+    for (gt = 0; gt < NUM_PORTS; gt++) begin : g_tally_bit
+      assign hit_b[gt]  = req_v[gt] && hit_v[gt];
+      assign miss_b[gt] = req_v[gt] && !hit_v[gt];
+    end
   endgenerate
 
   // `popcount` is not available in every simulator, and an adder over the
@@ -400,7 +399,7 @@ module es_switch_mac_table #(
       input var logic [NUM_SETS*NUM_WAYS-1:0] v);
     logic [31:0] n;
     n = 32'd0;
-    for (int unsigned b = 0; b < NUM_SETS*NUM_WAYS; b++) n = n + {31'd0, v[b]};
+    for (int unsigned b = 0; b < NUM_SETS * NUM_WAYS; b++) n = n + {31'd0, v[b]};
     count_entry_bits = n;
   endfunction
 
@@ -422,16 +421,16 @@ module es_switch_mac_table #(
           port_v_q[p] <= rd_port_v[p];
         end
       end
-      hits_q   <= hits_q   + hits_inc;
+      hits_q   <= hits_q + hits_inc;
       misses_q <= misses_q + misses_inc;
     end
   end
 
   generate
-  for (gh = 0; gh < NUM_PORTS; gh++) begin : g_hit_out
-    assign hit_o [gh]                        = hit_v_q[gh];
-    assign port_o[gh*NUM_PORTS +: NUM_PORTS] = port_v_q[gh];
-  end
+    for (gh = 0; gh < NUM_PORTS; gh++) begin : g_hit_out
+      assign hit_o[gh]                       = hit_v_q[gh];
+      assign port_o[gh*NUM_PORTS +: NUM_PORTS] = port_v_q[gh];
+    end
   endgenerate
 
   // ==========================================================================
@@ -457,15 +456,15 @@ module es_switch_mac_table #(
   // index down and every request overwrites the accumulator, so the last write is
   // the lowest requesting port.  The accumulator is therefore never read back
   // inside its own block.
-  logic          lq_push;
-  logic [PW-1:0] lq_push_idx;
+  logic            lq_push;
+  logic [  PW-1:0] lq_push_idx;
   always_comb begin
     lq_push     = 1'b0;
     lq_push_idx = '0;
     for (int unsigned k = NUM_PORTS; k > 0; k--) begin
       if (learn_i[k-1]) begin
         lq_push     = 1'b1;
-        lq_push_idx = PW'(k-1);
+        lq_push_idx = PW'(k - 1);
       end
     end
   end
@@ -489,11 +488,11 @@ module es_switch_mac_table #(
   always_comb begin
     lq_cnt_d = lq_cnt;
     if (lq_push_ok) lq_cnt_d = lq_cnt + QN_W'(1);
-    if (lq_pop)      lq_cnt_d = lq_cnt - QN_W'(1);
+    if (lq_pop) lq_cnt_d = lq_cnt - QN_W'(1);
   end
 
   // Queued address and port of the requesting port, hoisted out of the push.
-  logic [47:0]  lq_push_mac;
+  logic [  47:0] lq_push_mac;
   logic [PW-1:0] lq_push_port;
   assign lq_push_mac  = learn_mac_i[lq_push_idx*48 +: 48];
   assign lq_push_port = learn_port_i[lq_push_idx*PW +: PW];
@@ -506,9 +505,9 @@ module es_switch_mac_table #(
       lq_cnt  <= '0;
     end else begin
       lq <= (lq & ~lq_push_mask) | (lq_push_din & lq_push_mask);
-      if (lq_pop)      lq_head <= lq_head + QP_W'(1);
-      if (lq_push_ok)  lq_tail <= lq_tail + QP_W'(1);
-      lq_cnt  <= lq_cnt_d;
+      if (lq_pop) lq_head <= lq_head + QP_W'(1);
+      if (lq_push_ok) lq_tail <= lq_tail + QP_W'(1);
+      lq_cnt <= lq_cnt_d;
     end
   end
 
@@ -522,7 +521,7 @@ module es_switch_mac_table #(
     for (int unsigned e = 0; e < QP_DEPTH; e++) begin
       if (lq_push_ok && (lq_tail == QP_W'(e))) begin
         lq_push_mask[e*LQ_W +: LQ_W] = {LQ_W{1'b1}};
-        lq_push_din [e*LQ_W +: LQ_W] = {lq_push_port, lq_push_mac};
+        lq_push_din[e*LQ_W +: LQ_W]  = {lq_push_port, lq_push_mac};
       end
     end
   end
@@ -534,16 +533,16 @@ module es_switch_mac_table #(
   // offsets are derived from LQ_W, so the extraction cannot silently drift - an
   // off-by-one here would read the port field into the top of the address and
   // silently hash every station into the wrong bucket.
-  logic        lq_valid;
-  logic [47:0] lq_mac;
+  logic          lq_valid;
+  logic [  47:0] lq_mac;
   logic [PW-1:0] lq_port;
   // The queue storage is never cleared, so its contents are undefined until
   // first written.  While the queue is empty the head is a don't-care; reading
   // it as zero keeps X out of the hash function and the comparator below
   // without needing a reset over the whole array.
   assign lq_valid = lq_pop;
-  assign lq_mac   = lq_pop ? lq[lq_head*LQ_W +: 48]          : 48'd0;
-  assign lq_port  = lq_pop ? lq[lq_head*LQ_W + LQ_W-1 -: PW] : '0;
+  assign lq_mac   = lq_pop ? lq[lq_head*LQ_W +: 48] : 48'd0;
+  assign lq_port  = lq_pop ? lq[lq_head*LQ_W+LQ_W-1 -: PW] : '0;
 
   // ==========================================================================
   // Ageing - a slow divider paces a pointer that walks the whole table.
@@ -557,10 +556,10 @@ module es_switch_mac_table #(
   // first sweep after the last refresh" without any special casing.
   // ==========================================================================
   localparam int unsigned DIV_W = (AGE_TICK_CYCLES < 2) ? 1 : $clog2(AGE_TICK_CYCLES);
-  logic [DIV_W-1:0]  age_div;
-  logic              age_tick;
-  logic [IDX_W-1:0]  age_idx;
-  logic [WAY_W-1:0]  age_way;
+  logic [DIV_W-1:0] age_div;
+  logic             age_tick;
+  logic [IDX_W-1:0] age_idx;
+  logic [WAY_W-1:0] age_way;
 
   assign age_tick = AGE_EN && (age_div == DIV_W'(AGE_TICK_CYCLES) - DIV_W'(1));
 
@@ -569,7 +568,7 @@ module es_switch_mac_table #(
   // of two.
   logic age_way_wrap;
   logic age_idx_wrap;
-  assign age_way_wrap = (age_way == logic'(NUM_WAYS)  - WAY_W'(1));
+  assign age_way_wrap = (age_way == logic'(NUM_WAYS) - WAY_W'(1));
   assign age_idx_wrap = (age_idx == IDX_W'(NUM_SETS) - IDX_W'(1));
 
   always_ff @(posedge clk_i) begin
@@ -596,18 +595,18 @@ module es_switch_mac_table #(
   // A single process owns `mem` / `age`, so the array is inferred as one
   // coherent structure.
   // ==========================================================================
-  logic [IDX_W-1:0] lr_idx;
+  logic [   IDX_W-1:0] lr_idx;
 
   // Per-way match vector for the queued learn request; the OR of it tells the
   // write port whether this is a relocation (the address is already present in
   // the bucket) or a genuine insertion.
-  logic lr_hit;
+  logic                lr_hit;
 
   // Per-way write enables, hoisted out of the storage process so that the body
   // of that process contains no part-select.
-  logic [NUM_WAYS-1:0] learn_hit_way;   ///< exact tag match in this bucket
+  logic [NUM_WAYS-1:0] learn_hit_way;  ///< exact tag match in this bucket
   logic                learn_this_set;  ///< the learn request targets this bucket
-  logic                learn_advance;   ///< genuine insertion: move the pointer
+  logic                learn_advance;  ///< genuine insertion: move the pointer
 
   // The learn queue storage is written but never cleared on reset, so while the
   // queue is empty its head holds an undefined address.  Hashing that undefined
@@ -621,18 +620,18 @@ module es_switch_mac_table #(
   // reason: an always_comb must not index the table directly.
   logic [ENT_W*NUM_WAYS-1:0] lr_bucket;
   generate
-  for (gl = 0; gl < NUM_WAYS; gl++) begin : g_lr_fetch
-    assign lr_bucket[gl*ENT_W +: ENT_W] = mem[lr_idx*NUM_WAYS + gl];
-  end
+    for (gl = 0; gl < NUM_WAYS; gl++) begin : g_lr_fetch
+      assign lr_bucket[gl*ENT_W +: ENT_W] = mem[lr_idx*NUM_WAYS+gl];
+    end
   endgenerate
 
   // Per-way match bits, one continuous assignment per way, for the same reason
   // as the lookup compares above.
   generate
-  for (gl2 = 0; gl2 < NUM_WAYS; gl2++) begin : g_lr_cmp
-    localparam int unsigned LB = gl2*ENT_W;
-    assign learn_hit_way[gl2] = entry_match(lr_bucket[LB +: ENT_W], lq_mac);
-  end
+    for (gl2 = 0; gl2 < NUM_WAYS; gl2++) begin : g_lr_cmp
+      localparam int unsigned LB = gl2 * ENT_W;
+      assign learn_hit_way[gl2] = entry_match(lr_bucket[LB +: ENT_W], lq_mac);
+    end
   endgenerate
 
   assign lr_hit         = |learn_hit_way;
@@ -652,15 +651,15 @@ module es_switch_mac_table #(
   // simulator, and it keeps the structure correct for a NUM_WAYS that is not a
   // power of two.
   logic [NUM_SETS*NUM_WAYS-1:0] rr_onehot;
-  logic [NUM_SETS-1:0]         rr_last;
+  logic [         NUM_SETS-1:0] rr_last;
 
   generate
-  for (gs = 0; gs < NUM_SETS; gs++) begin : g_rr
-    assign rr_last[gs] = (rr_ptr[gs] == WAY_LAST);
-    for (gw = 0; gw < NUM_WAYS; gw++) begin : g_rr_way
-      assign rr_onehot[gs*NUM_WAYS + gw] = (rr_ptr[gs] == WAY_W'(gw));
+    for (gs = 0; gs < NUM_SETS; gs++) begin : g_rr
+      assign rr_last[gs] = (rr_ptr[gs] == WAY_LAST);
+      for (gw = 0; gw < NUM_WAYS; gw++) begin : g_rr_way
+        assign rr_onehot[gs*NUM_WAYS+gw] = (rr_ptr[gs] == WAY_W'(gw));
+      end
     end
-  end
   endgenerate
 
   // Ageing: which entry (if any) this tick touches.
@@ -673,14 +672,14 @@ module es_switch_mac_table #(
   logic [NUM_WAYS-1:0] age_way_hit;
 
   generate
-  for (ga = 0; ga < NUM_SETS; ga++) begin : g_age_set
-    assign age_set_hit[ga] = age_tick && (age_idx == IDX_W'(ga));
-  end
+    for (ga = 0; ga < NUM_SETS; ga++) begin : g_age_set
+      assign age_set_hit[ga] = age_tick && (age_idx == IDX_W'(ga));
+    end
   endgenerate
   generate
-  for (gb = 0; gb < NUM_WAYS; gb++) begin : g_age_way
-    assign age_way_hit[gb] = age_tick && (age_way == WAY_W'(gb));
-  end
+    for (gb = 0; gb < NUM_WAYS; gb++) begin : g_age_way
+      assign age_way_hit[gb] = age_tick && (age_way == WAY_W'(gb));
+    end
   endgenerate
 
   // Comparisons against a generate-loop index.  These are pure elaboration
@@ -707,14 +706,14 @@ module es_switch_mac_table #(
   // vectors first makes the process a plain "read these wires, write those
   // registers" and the inferred hardware is unchanged.
   // --------------------------------------------------------------------------
-  logic [ENT_W-1:0] mem_flat [0:NUM_SETS*NUM_WAYS-1];
+  logic [ENT_W-1:0] mem_flat[0:NUM_SETS*NUM_WAYS-1];
   logic [AGE_W-1:0] age_flat[0:NUM_SETS*NUM_WAYS-1];
 
   generate
-  for (gf = 0; gf < NUM_SETS*NUM_WAYS; gf++) begin : g_flat
-    assign mem_flat[gf] = mem[gf];
-    assign age_flat[gf] = age[gf];
-  end
+    for (gf = 0; gf < NUM_SETS * NUM_WAYS; gf++) begin : g_flat
+      assign mem_flat[gf] = mem[gf];
+      assign age_flat[gf] = age[gf];
+    end
   endgenerate
 
   // --------------------------------------------------------------------------
@@ -736,56 +735,54 @@ module es_switch_mac_table #(
   // is the one remaining construct Icarus fails to settle: the write enable and
   // the data are correct, the store just never lands, so a learned entry silently
   // never appears in the table.
-  logic [ENT_W-1:0] wr_dat [0:NUM_SETS*NUM_WAYS-1];
-  logic [AGE_W-1:0] wr_age [0:NUM_SETS*NUM_WAYS-1];
+  logic [ENT_W-1:0] wr_dat[0:NUM_SETS*NUM_WAYS-1];
+  logic [AGE_W-1:0] wr_age[0:NUM_SETS*NUM_WAYS-1];
 
   generate
-  for (gs2 = 0; gs2 < NUM_SETS; gs2++) begin : g_side_set
-    for (gw2 = 0; gw2 < NUM_WAYS; gw2++) begin : g_side_way
-      localparam int unsigned IX = gs2*NUM_WAYS + gw2;
+    for (gs2 = 0; gs2 < NUM_SETS; gs2++) begin : g_side_set
+      for (gw2 = 0; gw2 < NUM_WAYS; gw2++) begin : g_side_way
+        localparam int unsigned IX = gs2 * NUM_WAYS + gw2;
 
-      // A learn writes the way that either holds the station (relocation) or is
-      // the round-robin victim (eviction).  The learn can only target its own
-      // bucket, so the enable is qualified with the bucket comparison.
-      logic learn_wr;
-      assign learn_wr = learn_this_set && (lr_idx == IDX_W'(gs2)) &&
-                        (learn_hit_way[gw2] || rr_onehot[IX]);
+        // A learn writes the way that either holds the station (relocation) or is
+        // the round-robin victim (eviction).  The learn can only target its own
+        // bucket, so the enable is qualified with the bucket comparison.
+        logic learn_wr;
+        assign learn_wr = learn_this_set && (lr_idx == IDX_W'(gs2)) &&
+            (learn_hit_way[gw2] || rr_onehot[IX]);
 
-      assign age_touch[IX] = age_set_hit[gs2] && age_way_hit[gw2];
+        assign age_touch[IX] = age_set_hit[gs2] && age_way_hit[gw2];
 
-      assign wr_en[IX] = learn_wr || (age_touch[IX] && (age_flat[IX] == '0));
+        assign wr_en[IX] = learn_wr || (age_touch[IX] && (age_flat[IX] == '0));
 
-      // A learn replaces the entry wholesale; an expiry only clears the valid
-      // flag and leaves the stored data bits alone.
-      assign wr_dat[IX] = learn_wr ? make_entry(lq_mac, lq_port)
-                                   : kill_entry(mem_flat[IX]);
-      assign wr_age[IX] = learn_wr ? AGE_W'(AGE_LIMIT) : age_flat[IX];
+        // A learn replaces the entry wholesale; an expiry only clears the valid
+        // flag and leaves the stored data bits alone.
+        assign wr_dat[IX] = learn_wr ? make_entry(lq_mac, lq_port) : kill_entry(mem_flat[IX]);
+        assign wr_age[IX] = learn_wr ? AGE_W'(AGE_LIMIT) : age_flat[IX];
 
-      // Occupancy bookkeeping.
-      //
-      // A learn writes one way, and that way holds exactly one entry before and
-      // after, so a learn is *always* net zero: relocating a station to another
-      // port overwrites the entry in place, and evicting a station to make room
-      // replaces it.  Only a learn that fills a genuinely empty way is an
-      // addition, and only ageing can remove an entry.  Treating "overwrote a
-      // live entry" as a removal as well would make a relocation look like a
-      // delete and drive the count down by one.
-      assign occ_add_b[IX] = learn_wr && !entry_valid(mem_flat[IX]);
-      assign occ_sub_b[IX] = age_touch[IX] && (age_flat[IX] == '0) &&
-                             entry_valid(mem_flat[IX]);
+        // Occupancy bookkeeping.
+        //
+        // A learn writes one way, and that way holds exactly one entry before and
+        // after, so a learn is *always* net zero: relocating a station to another
+        // port overwrites the entry in place, and evicting a station to make room
+        // replaces it.  Only a learn that fills a genuinely empty way is an
+        // addition, and only ageing can remove an entry.  Treating "overwrote a
+        // live entry" as a removal as well would make a relocation look like a
+        // delete and drive the count down by one.
+        assign occ_add_b[IX] = learn_wr && !entry_valid(mem_flat[IX]);
+        assign occ_sub_b[IX] = age_touch[IX] && (age_flat[IX] == '0) && entry_valid(mem_flat[IX]);
+      end
     end
-  end
   endgenerate
 
   // The replacement pointer of the bucket that receives a genuine insertion.
-  logic                  rr_adv [0:NUM_SETS-1];
-  logic [WAY_W-1:0]      rr_nxt[0:NUM_SETS-1];
+  logic             rr_adv[0:NUM_SETS-1];
+  logic [WAY_W-1:0] rr_nxt[0:NUM_SETS-1];
   generate
-  for (gp2 = 0; gp2 < NUM_SETS; gp2++) begin : g_rr_nxt
-    assign rr_adv[gp2] = learn_advance && (lr_idx == IDX_W'(gp2));
-    // Explicit wrap so that NUM_WAYS need not be a power of two.
-    assign rr_nxt[gp2] = rr_last[gp2] ? '0 : (rr_ptr[gp2] + WAY_W'(1));
-  end
+    for (gp2 = 0; gp2 < NUM_SETS; gp2++) begin : g_rr_nxt
+      assign rr_adv[gp2] = learn_advance && (lr_idx == IDX_W'(gp2));
+      // Explicit wrap so that NUM_WAYS need not be a power of two.
+      assign rr_nxt[gp2] = rr_last[gp2] ? '0 : (rr_ptr[gp2] + WAY_W'(1));
+    end
   endgenerate
 
   assign occ_add = count_entry_bits(occ_add_b);
@@ -804,30 +801,30 @@ module es_switch_mac_table #(
   //
   // The result is the same set of registers with the same enable conditions.
   generate
-  for (gm = 0; gm < NUM_SETS*NUM_WAYS; gm++) begin : g_mem_wr
-    always_ff @(posedge clk_i) begin
-      if (!rst_ni || flush_i) begin
-        mem[gm] <= '0;
-        age[gm] <= '0;
-      end else if (wr_en[gm]) begin
-        mem[gm] <= wr_dat[gm];
-        age[gm] <= wr_age[gm];
-      end else if (age_touch[gm]) begin
-        // Ageing decrements the countdown; the entry itself is left alone
-        // unless `wr_en` fired above, which is where the expiry happens.
-        age[gm] <= age_flat[gm] - AGE_W'(1);
+    for (gm = 0; gm < NUM_SETS * NUM_WAYS; gm++) begin : g_mem_wr
+      always_ff @(posedge clk_i) begin
+        if (!rst_ni || flush_i) begin
+          mem[gm] <= '0;
+          age[gm] <= '0;
+        end else if (wr_en[gm]) begin
+          mem[gm] <= wr_dat[gm];
+          age[gm] <= wr_age[gm];
+        end else if (age_touch[gm]) begin
+          // Ageing decrements the countdown; the entry itself is left alone
+          // unless `wr_en` fired above, which is where the expiry happens.
+          age[gm] <= age_flat[gm] - AGE_W'(1);
+        end
       end
     end
-  end
   endgenerate
 
   generate
-  for (gr = 0; gr < NUM_SETS; gr++) begin : g_rr_wr
-    always_ff @(posedge clk_i) begin
-      if (!rst_ni || flush_i) rr_ptr[gr] <= '0;
-      else if (rr_adv[gr])    rr_ptr[gr] <= rr_nxt[gr];
+    for (gr = 0; gr < NUM_SETS; gr++) begin : g_rr_wr
+      always_ff @(posedge clk_i) begin
+        if (!rst_ni || flush_i) rr_ptr[gr] <= '0;
+        else if (rr_adv[gr]) rr_ptr[gr] <= rr_nxt[gr];
+      end
     end
-  end
   endgenerate
 
   // The occupancy counter is owned by the same clock that writes the table, so
@@ -867,20 +864,21 @@ module es_switch_mac_table #(
   assign misses_o  = misses_q;
   assign learns_o  = learns_q;
 
-  localparam int unsigned MON_IDX_W = sw_port_w(NUM_SETS*NUM_WAYS);
+  localparam int unsigned MON_IDX_W = sw_port_w(NUM_SETS * NUM_WAYS);
   // Power-of-two padded words keep the management read a word mux. An offset
   // index*ENT_W instead builds a bit barrel shifter across the complete CAM.
   logic [NUM_SETS*NUM_WAYS*128-1:0] mon_flat;
   genvar mr;
   generate
-    for (mr = 0; mr < NUM_SETS*NUM_WAYS; mr++) begin : g_monitor_read
-      assign mon_flat[mr*128 +: 128] = {31'd0, entry_valid(mem[mr]),
-                                       32'(entry_port(mem[mr])), 16'd0, entry_mac(mem[mr])};
+    for (mr = 0; mr < NUM_SETS * NUM_WAYS; mr++) begin : g_monitor_read
+      assign mon_flat[mr*128 +: 128] = {
+        31'd0, entry_valid(mem[mr]), 32'(entry_port(mem[mr])), 16'd0, entry_mac(mem[mr])
+      };
     end
   endgenerate
   logic [127:0] mon_entry;
-  assign mon_entry = (mon_index_i < 32'(NUM_SETS*NUM_WAYS)) ?
-                     mon_flat[{mon_index_i[MON_IDX_W-1:0],7'd0} +: 128] : 128'd0;
+  assign mon_entry = (mon_index_i < 32'(NUM_SETS * NUM_WAYS)) ?
+      mon_flat[{mon_index_i[MON_IDX_W-1:0], 7'd0} +: 128] : 128'd0;
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       mon_valid_o <= 1'b0;
@@ -901,4 +899,4 @@ endmodule : es_switch_mac_table
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_MAC_TABLE_SV
+`endif  // ES_SWITCH_MAC_TABLE_SV

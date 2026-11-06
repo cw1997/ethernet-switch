@@ -48,11 +48,19 @@ module tb_sw_vivado_top;
   logic [NUM_PORTS*4-1:0] rxd, txd;
   tri [NUM_PORTS-1:0] mdio;
   es_switch_vivado_top u_dut (
-    .clk_i(clk), .rst_button_ni(rst_button_n),
-    .mii_rx_clk_i({NUM_PORTS{rx_clk}}), .mii_tx_clk_i({NUM_PORTS{tx_clk}}),
-    .mii_rx_dv_i(rx_dv), .mii_rx_er_i(rx_er), .mii_rxd_i(rxd),
-    .mii_tx_en_o(tx_en), .mii_tx_er_o(tx_er), .mii_txd_o(txd),
-    .phy_reset_no(phy_reset_n), .phy_mdc_o(mdc), .phy_mdio_io(mdio)
+    .clk_i(clk),
+    .rst_button_ni(rst_button_n),
+    .mii_rx_clk_i({NUM_PORTS{rx_clk}}),
+    .mii_tx_clk_i({NUM_PORTS{tx_clk}}),
+    .mii_rx_dv_i(rx_dv),
+    .mii_rx_er_i(rx_er),
+    .mii_rxd_i(rxd),
+    .mii_tx_en_o(tx_en),
+    .mii_tx_er_o(tx_er),
+    .mii_txd_o(txd),
+    .phy_reset_no(phy_reset_n),
+    .phy_mdc_o(mdc),
+    .phy_mdio_io(mdio)
   );
 
   // ---- one independent wire monitor per port -------------------------------
@@ -63,10 +71,18 @@ module tb_sw_vivado_top;
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
-      sw_mii_if #(.PORT_ID(g), .BYTE_PERIOD(BP)) u_if (
-        .clk_i(clk), .rst_ni(phy_reset_n[g]), .enable_i(1'b1),
-        .mii_rx_dv(rx_dv[g]), .mii_rx_er(rx_er[g]), .mii_rxd(rxd[g*4 +: 4]),
-        .mii_tx_en(tx_en[g]), .mii_txd(txd[g*4 +: 4])
+      sw_mii_if #(
+        .PORT_ID(g),
+        .BYTE_PERIOD(BP)
+      ) u_if (
+        .clk_i(clk),
+        .rst_ni(phy_reset_n[g]),
+        .enable_i(1'b1),
+        .mii_rx_dv(rx_dv[g]),
+        .mii_rx_er(rx_er[g]),
+        .mii_rxd(rxd[g*4 +: 4]),
+        .mii_tx_en(tx_en[g]),
+        .mii_txd(txd[g*4 +: 4])
       );
     end
   endgenerate
@@ -170,8 +186,8 @@ module tb_sw_vivado_top;
   // CRC and preamble verdicts come from the MII monitor, not DUT statistics.
   // The length below excludes the wire preamble/SFD and FCS; comparing those
   // bytes as part of the length would falsely report every legal frame long.
-  task automatic check_frame(input tb_rec_t rec, input sw_mac_t dst,
-                             input sw_mac_t src, input int unsigned p);
+  task automatic check_frame(input tb_rec_t rec, input sw_mac_t dst, input sw_mac_t src,
+                             input int unsigned p);
     check(tb_rec_len(rec) == 100, $sformatf("port %0d frame length", p));
     check(tb_rec_dst(rec) == dst, $sformatf("port %0d destination", p));
     check(tb_rec_src(rec) == src, $sformatf("port %0d source", p));
@@ -207,9 +223,11 @@ module tb_sw_vivado_top;
     check_management();
     #3 rst_button_n = 1'b1;
     #1 check(phy_reset_n === '0, "release remains synchronous");
-    @(posedge clk); #1;
+    @(posedge clk);
+    #1;
     check(phy_reset_n === '0, "first release sample remains reset");
-    @(posedge clk); #1;
+    @(posedge clk);
+    #1;
     check(phy_reset_n === ALL_PORTS, "second release sample releases all PHYs");
     repeat (4) @(negedge clk);
     // ---- 1. all-ingress unknown-unicast flooding ---------------------------
@@ -247,11 +265,14 @@ module tb_sw_vivado_top;
     // Reset after traffic and prove the highest ingress still works afterward.
     // The destination was learned earlier; after reset it must flood to all
     // seven other ports, exposing a stale CAM as well as broken upper wiring.
-    @(negedge clk); #3 rst_button_n = 1'b0;
+    @(negedge clk);
+    #3 rst_button_n = 1'b0;
     #1 check(phy_reset_n === ALL_PORTS, "press remains synchronous");
-    @(posedge clk); #1;
+    @(posedge clk);
+    #1;
     check(phy_reset_n === ALL_PORTS, "first press sample remains released");
-    @(posedge clk); #1;
+    @(posedge clk);
+    #1;
     check(phy_reset_n === '0, "second press sample resets all PHYs");
     repeat (4) @(negedge clk);
     check(tx_en === '0, "all eight TX enables inactive in reset");

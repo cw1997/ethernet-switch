@@ -24,7 +24,8 @@
 //   es_switch_rmii     RMII pins, four 2-bit chunks per octet (`rmii_*`)
 //
 // All three wrap the same core: the MII/RMII pin groups are adapted onto the
-// canonical octet stream by es_switch_mii_adapter / es_switch_rmii_adapter, so the datapath, the CAM and the
+// canonical octet stream by es_switch_mii_adapter / es_switch_rmii_adapter, so the datapath,
+// the CAM and the
 // statistics map never see a difference.  Both narrow interfaces are 10/100
 // Mbit/s front-ends only - a port configured for 1000 Mbit/s is rejected at
 // elaboration time in those wrappers.
@@ -35,15 +36,15 @@
 // ============================================================================
 // 2.  Frame geometry (octets; the FCS is excluded unless stated otherwise)
 // ============================================================================
-localparam int unsigned SW_HDR_LEN        = 14;   ///< dst MAC + src MAC + EtherType
-localparam int unsigned SW_HDR_LEN_VLAN   = 18;   ///< 802.1Q tagged header
-localparam int unsigned SW_FCS_LEN        = 4;    ///< Ethernet FCS (CRC-32)
-localparam int unsigned SW_MIN_FRAME_LEN  = 64;   ///< 802.3 minimum frame size
-localparam int unsigned SW_MAX_FRAME_LEN  = 1518; ///< 802.3 maximum frame size
-localparam int unsigned SW_MIN_PAYLOAD    = 46;   ///< minimum MAC client data
-localparam int unsigned SW_MAX_ETHERTYPE  = 1500; ///< largest legal 802.3 length
-localparam int unsigned SW_PREAMBLE_LEN   = 8;    ///< 7 x 0x55 + 1 x 0xD5
-localparam int unsigned SW_IFG_OCTETS     = 12;   ///< minimum inter-frame gap
+localparam int unsigned SW_HDR_LEN = 14;  ///< dst MAC + src MAC + EtherType
+localparam int unsigned SW_HDR_LEN_VLAN = 18;  ///< 802.1Q tagged header
+localparam int unsigned SW_FCS_LEN = 4;  ///< Ethernet FCS (CRC-32)
+localparam int unsigned SW_MIN_FRAME_LEN = 64;  ///< 802.3 minimum frame size
+localparam int unsigned SW_MAX_FRAME_LEN = 1518;  ///< 802.3 maximum frame size
+localparam int unsigned SW_MIN_PAYLOAD = 46;  ///< minimum MAC client data
+localparam int unsigned SW_MAX_ETHERTYPE = 1500;  ///< largest legal 802.3 length
+localparam int unsigned SW_PREAMBLE_LEN = 8;  ///< 7 x 0x55 + 1 x 0xD5
+localparam int unsigned SW_IFG_OCTETS = 12;  ///< minimum inter-frame gap
 
 /// Number of octets carried by one 64-bit beat of the switching datapath.
 localparam int unsigned SW_BEAT_BYTES = 8;
@@ -55,17 +56,16 @@ localparam int unsigned SW_BEAT_BYTES = 8;
 // ============================================================================
 // 3.  EtherType values recognised by the receive parser
 // ============================================================================
-localparam logic [15:0] SW_ETHERTYPE_IPV4  = 16'h0800;
-localparam logic [15:0] SW_ETHERTYPE_ARP   = 16'h0806;
-localparam logic [15:0] SW_ETHERTYPE_VLAN  = 16'h8100; ///< 802.1Q customer tag
-localparam logic [15:0] SW_ETHERTYPE_QINQ  = 16'h88A8; ///< 802.1ad service tag
-localparam logic [15:0] SW_ETHERTYPE_IPV6  = 16'h86DD;
+localparam logic [15:0] SW_ETHERTYPE_IPV4 = 16'h0800;
+localparam logic [15:0] SW_ETHERTYPE_ARP = 16'h0806;
+localparam logic [15:0] SW_ETHERTYPE_VLAN = 16'h8100;  ///< 802.1Q customer tag
+localparam logic [15:0] SW_ETHERTYPE_QINQ = 16'h88A8;  ///< 802.1ad service tag
+localparam logic [15:0] SW_ETHERTYPE_IPV6 = 16'h86DD;
 
 /// True when the length/EtherType field carries an 802.1Q / 802.1ad tag, which
 /// pushes the real EtherType four octets further into the header.
 function automatic logic sw_is_vlan_type(input var logic [15:0] l2type);
-  sw_is_vlan_type = (l2type == SW_ETHERTYPE_VLAN) ||
-                    (l2type == SW_ETHERTYPE_QINQ);
+  sw_is_vlan_type = (l2type == SW_ETHERTYPE_VLAN) || (l2type == SW_ETHERTYPE_QINQ);
 endfunction
 
 /// True when the second header word carries an 802.3 *length* rather than an
@@ -95,25 +95,23 @@ endfunction
 //  reverse32(0xC704DD1B) = 0xDEBB20E3.  Using the non-reflected constant with
 //  a reflected LFSR would reject every valid frame, which is exactly the kind
 //  of mismatch `sw_crc32_tb` is there to catch.
-localparam logic [31:0] SW_CRC32_POLY    = 32'hEDB8_8320;
-localparam logic [31:0] SW_CRC32_INIT    = 32'hFFFF_FFFF;
-localparam logic [31:0] SW_CRC32_XOROUT  = 32'hFFFF_FFFF;
+localparam logic [31:0] SW_CRC32_POLY = 32'hEDB8_8320;
+localparam logic [31:0] SW_CRC32_INIT = 32'hFFFF_FFFF;
+localparam logic [31:0] SW_CRC32_XOROUT = 32'hFFFF_FFFF;
 /// Residue of a valid frame in the *reflected* domain (see the note above).
 localparam logic [31:0] SW_CRC32_RESIDUE = 32'hDEBB_20E3;
 
 /// One reflected bit step of the CRC-32 LFSR, as the receiver and transmitter
 /// both use it.  Provided so the residue above can be re-derived and checked
 /// rather than taken on trust.
-function automatic logic [31:0] sw_crc32_bit(
-    input var logic [31:0] c,
-    input var logic        b);
+function automatic logic [31:0] sw_crc32_bit(input var logic [31:0] c,
+                                             input var logic b);
   sw_crc32_bit = (c[0] ^ b) ? ((c >> 1) ^ SW_CRC32_POLY) : (c >> 1);
 endfunction
 
 /// Absorb one octet into the LFSR, least significant bit first.
-function automatic logic [31:0] sw_crc32_absorb_octet(
-    input var logic [31:0] c,
-    input var logic [7:0]  d);
+function automatic logic [31:0] sw_crc32_absorb_octet(input var logic [31:0] c,
+                                                      input var logic [7:0] d);
   logic [31:0] x;
   x = c;
   for (int unsigned i = 0; i < 8; i++) x = sw_crc32_bit(x, d[i]);
@@ -128,12 +126,12 @@ function automatic logic [31:0] sw_crc32_residue();
   logic [31:0] c;
   logic [31:0] fcs;
   logic [31:0] x;
-  c   = sw_crc32_absorb_octet(SW_CRC32_INIT, 8'h00);
+  c = sw_crc32_absorb_octet(SW_CRC32_INIT, 8'h00);
   fcs = c ^ SW_CRC32_XOROUT;
-  x   = sw_crc32_absorb_octet(c, fcs[7:0]);
-  x   = sw_crc32_absorb_octet(x, fcs[15:8]);
-  x   = sw_crc32_absorb_octet(x, fcs[23:16]);
-  x   = sw_crc32_absorb_octet(x, fcs[31:24]);
+  x = sw_crc32_absorb_octet(c, fcs[7:0]);
+  x = sw_crc32_absorb_octet(x, fcs[15:8]);
+  x = sw_crc32_absorb_octet(x, fcs[23:16]);
+  x = sw_crc32_absorb_octet(x, fcs[31:24]);
   sw_crc32_residue = x;
 endfunction
 
@@ -154,7 +152,7 @@ typedef logic [47:0] sw_mac_t;
 localparam int SW_MAC_IG_BIT = 40;
 
 localparam sw_mac_t SW_MAC_BROADCAST = 48'hFF_FF_FF_FF_FF_FF;
-localparam sw_mac_t SW_MAC_NULL      = 48'h00_00_00_00_00_00;
+localparam sw_mac_t SW_MAC_NULL = 48'h00_00_00_00_00_00;
 
 /// True for the reserved all-ones broadcast address.
 function automatic logic sw_is_broadcast(input sw_mac_t mac);
@@ -182,7 +180,7 @@ endfunction
 // 6.  Unknown-unicast / group-address flooding policy
 // ============================================================================
 typedef enum logic [1:0] {
-  SW_FLOOD_BCAST_ONLY = 2'd0, ///< forward only dst == ff:ff:ff:ff:ff:ff
+  SW_FLOOD_BCAST_ONLY = 2'd0,  ///< forward only dst == ff:ff:ff:ff:ff:ff
   SW_FLOOD_BCAST_UKN  = 2'd1,  ///< also flood unicast addresses that miss
   SW_FLOOD_ALL        = 2'd2   ///< also flood unknown group addresses
 } sw_flood_mode_e;
@@ -209,8 +207,6 @@ typedef enum logic [1:0] {
 // `dst_mask` is the ingress filter's forwarding decision, already frozen when
 // the frame was buffered.  It is one-hot for a unicast hit and all-ones
 // (minus the ingress port) for a flooded frame.
-
-
 
 function automatic int sw_tag_dstm_lsb(input int unsigned n);
   sw_tag_dstm_lsb = 0;
@@ -247,11 +243,10 @@ function automatic int unsigned sw_beats_of(input int unsigned len);
   sw_beats_of = (len + (SW_BEAT_BYTES - 1)) / SW_BEAT_BYTES;
 endfunction
 
-
 `ifdef VERILATOR
 /* verilator lint_on UNUSEDSIGNAL */
 /* verilator lint_on UNUSEDPARAM */
 `endif
 
 `default_nettype wire
-`endif // ES_SWITCH_DEFS_SV
+`endif  // ES_SWITCH_DEFS_SV

@@ -68,58 +68,58 @@
 // be used here.
 module es_switch_rx_port #(
   /// Total number of switch ports (the port index must be < NUM_PORTS).
-  parameter int unsigned NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
+  parameter int unsigned        NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
   /// Index of this port; drives the ingress source index and the CAM learn.
-  parameter int unsigned PORT_ID        = 0,
+  parameter int unsigned        PORT_ID        = 0,
   /// MAC address owned by this port; frames sourced from it are not reflected.
-  parameter logic [47:0]  PORT_MAC      = 48'h0,
+  parameter logic        [47:0] PORT_MAC       = 48'h0,
   /// `clk_i` cycles per octet time of the canonical octet stream on this port.
-  parameter int unsigned BYTE_PERIOD    = 1,
+  parameter int unsigned        BYTE_PERIOD    = 1,
   /// Largest frame accepted, in octets (FCS excluded).
-  parameter int unsigned MAX_FRAME_LEN  = 1518,
+  parameter int unsigned        MAX_FRAME_LEN  = 1518,
   /// Payload beats buffered per port.  Must be >= ceil(MAX_FRAME_LEN/8) or
   /// maximum-length frames are dropped as ingress overflow.
-  parameter int unsigned RX_FIFO_DEPTH  = 256,
+  parameter int unsigned        RX_FIFO_DEPTH  = 256,
   /// Frame descriptors buffered per port.  Bounds how many complete frames
   /// may wait for the fabric.
-  parameter int unsigned TAG_FIFO_DEPTH = 16,
+  parameter int unsigned        TAG_FIFO_DEPTH = 16,
   /// Elastic beat FIFO between the octet adapter and the parser.
-  parameter int unsigned WF_DEPTH       = 16,
+  parameter int unsigned        WF_DEPTH       = 16,
   /// Unknown / group address flooding policy (elaboration-time default).
-  parameter logic [1:0]  FLOOD_MODE     = 2'd1,
+  parameter logic        [ 1:0] FLOOD_MODE     = 2'd1,
   /// Source address learning enable (elaboration-time default).
-  parameter logic        LEARNING_EN    = 1'b1
+  parameter logic               LEARNING_EN    = 1'b1
 ) (
-  input  var logic                    clk_i,
-  input  var logic                    rst_ni,
-  input  var logic                    link_up_i,   ///< port administratively up
+  input var logic clk_i,
+  input var logic rst_ni,
+  input var logic link_up_i, ///< port administratively up
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
-  input  var logic                    oct_en_i,
-  input  var logic [7:0]              oct_d_i,
+  input var logic       oct_en_i,
+  input var logic [7:0] oct_d_i,
 
   // ---- CAM lookup interface (answer valid one clock after the request) ------
-  output logic                    cam_req_o,
-  output logic [47:0]             cam_mac_o,
-  input  var logic                    cam_hit_i,
-  input  var logic [NUM_PORTS-1:0]    cam_port_i,
+  output    logic                 cam_req_o,
+  output    logic [         47:0] cam_mac_o,
+  input var logic                 cam_hit_i,
+  input var logic [NUM_PORTS-1:0] cam_port_i,
 
   // ---- CAM learn interface -------------------------------------------------
-  output logic                    learn_o,
-  output logic [47:0]             learn_mac_o,
+  output logic        learn_o,
+  output logic [47:0] learn_mac_o,
 
   // ---- configuration -------------------------------------------------------
   // `cfg_ovr_i` selects the run-time configuration ports over the
   // elaboration-time defaults `FLOOD_MODE` / `LEARNING_EN`.
-  input  var logic [1:0]              flood_mode_i,
-  input  var logic                    learning_en_i,
-  input  var logic                    cfg_ovr_i,
+  input var logic [1:0] flood_mode_i,
+  input var logic       learning_en_i,
+  input var logic       cfg_ovr_i,
 
   // ---- payload FIFO read side (driven by the arbiter) ---------------------
-  output logic [63:0]             rd_data_o,
-  output logic                    empty_o,
-  input  var logic                    rd_en_i,     ///< pop the next payload beat
-  input  var logic                    flush_i,     ///< discard everything buffered
+  output    logic [63:0] rd_data_o,
+  output    logic        empty_o,
+  input var logic        rd_en_i,    ///< pop the next payload beat
+  input var logic        flush_i,    ///< discard everything buffered
 
   // ---- tag FIFO read side (driven by the arbiter) -------------------------
   // The fabric owns the read side of this FIFO: it decides which ingress
@@ -127,24 +127,24 @@ module es_switch_rx_port #(
   // descriptor has to leave the tag FIFO in the same clock the fabric registers
   // it, otherwise the FIFO stalls, the fabric keeps re-reading the head, and the
   // same frame is forwarded over and over.
-  input  var logic                    tag_rd_en_i,  ///< pop the head descriptor
-  output logic [sw_tag_width(NUM_PORTS)-1:0] tag_rd_data_o,
-  output logic                    tag_empty_o,
+  input var logic                               tag_rd_en_i,    ///< pop the head descriptor
+  output    logic [sw_tag_width(NUM_PORTS)-1:0] tag_rd_data_o,
+  output    logic                               tag_empty_o,
 
   // ---- statistics ----------------------------------------------------------
   output logic [31:0] used_o,
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
-  localparam int unsigned PW    = sw_port_w(NUM_PORTS);
-  localparam int unsigned TAGW  = sw_tag_width(NUM_PORTS);
-  localparam int unsigned BEATW = 11;                ///< beat index width
-  localparam int unsigned OCTW  = SW_LEN_W + 7;      ///< wire octet counter
-  localparam int unsigned UF_W  = (RX_FIFO_DEPTH <= 2) ? 1 : $clog2(RX_FIFO_DEPTH);
+  localparam int unsigned PW = sw_port_w(NUM_PORTS);
+  localparam int unsigned TAGW = sw_tag_width(NUM_PORTS);
+  localparam int unsigned BEATW = 11;  ///< beat index width
+  localparam int unsigned OCTW = SW_LEN_W + 7;  ///< wire octet counter
+  localparam int unsigned UF_W = (RX_FIFO_DEPTH <= 2) ? 1 : $clog2(RX_FIFO_DEPTH);
   localparam int unsigned MAX_BEATS = sw_beats_of(MAX_FRAME_LEN);
 
   // A one-hot port bit, correctly sized for NUM_PORTS == 1 and 2 as well.
-  localparam logic [NUM_PORTS-1:0] PORT_BIT_ONE = {{(NUM_PORTS-1){1'b0}}, 1'b1};
+  localparam logic [NUM_PORTS-1:0] PORT_BIT_ONE = {{(NUM_PORTS - 1) {1'b0}}, 1'b1};
 
   // --------------------------------------------------------------------------
   // Helpers
@@ -152,11 +152,12 @@ module es_switch_rx_port #(
   /// Copy only the first `n` octets of a beat and zero the rest.  The final
   /// beat of a frame is almost never a full 8 octets, and the unused lanes must
   /// not leak stale data into the egress FIFO.
-  function automatic logic [63:0] mask_octets(input var logic [63:0] d, input var logic [3:0] n);
+  function automatic logic [63:0] mask_octets(input var logic [63:0] d,
+                                              input var logic [3:0] n);
     logic [63:0] r;
     r = 64'd0;
     for (int unsigned k = 0; k < 8; k++) begin
-      if (k < n) r[63 - k*8 -: 8] = d[63 - k*8 -: 8];
+      if (k < n) r[63-k*8 -: 8] = d[63-k*8 -: 8];
     end
     mask_octets = r;
   endfunction
@@ -164,33 +165,33 @@ module es_switch_rx_port #(
   // --------------------------------------------------------------------------
   // 1. Octet adapter and elastic beat FIFO
   // --------------------------------------------------------------------------
-  logic        beat_valid, beat_sof, beat_eof, beat_crc_ok;
+  logic beat_valid, beat_sof, beat_eof, beat_crc_ok;
   logic [63:0] beat_data;
-  logic [3:0]  beat_octets;
+  logic [ 3:0] beat_octets;
 
   es_switch_gmii_rx #(
-      .BYTE_PERIOD (BYTE_PERIOD)
+    .BYTE_PERIOD(BYTE_PERIOD)
   ) u_gmii_rx (
-      .clk_i         (clk_i),
-      .rst_ni        (rst_ni),
-      .oct_en_i     (oct_en_i & link_up_i),
-      .oct_d_i      (oct_d_i),
-      .beat_valid_o  (beat_valid),
-      .beat_data_o   (beat_data),
-      .beat_sof_o    (beat_sof),
-      .beat_eof_o    (beat_eof),
-      .beat_crc_ok_o (beat_crc_ok),
-      .beat_octets_o (beat_octets)
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .oct_en_i     (oct_en_i & link_up_i),
+    .oct_d_i      (oct_d_i),
+    .beat_valid_o (beat_valid),
+    .beat_data_o  (beat_data),
+    .beat_sof_o   (beat_sof),
+    .beat_eof_o   (beat_eof),
+    .beat_crc_ok_o(beat_crc_ok),
+    .beat_octets_o(beat_octets)
   );
 
   // Elastic beat FIFO word: { valid octets, FCS verdict, eof, sof, data }
   localparam int unsigned WF_W = 64 + 4 + 3;
 
-  logic           wf_wr_en;
+  logic            wf_wr_en;
   logic [WF_W-1:0] wf_wr_data;
-  logic           wf_rd_en;
+  logic            wf_rd_en;
   logic [WF_W-1:0] wf_rd_data;
-  logic           wf_empty;
+  logic            wf_empty;
 
   assign wf_wr_en   = beat_valid;
   assign wf_wr_data = {beat_octets, beat_crc_ok, beat_eof, beat_sof, beat_data};
@@ -202,7 +203,7 @@ module es_switch_rx_port #(
   logic        w_sof;
   logic        w_eof;
   logic        w_crcok;
-  logic [3:0]  w_oct;
+  logic [ 3:0] w_oct;
 
   assign w_data  = wf_rd_data[63:0];
   assign w_sof   = wf_rd_data[64];
@@ -214,30 +215,30 @@ module es_switch_rx_port #(
   // 2. Parser state machine
   // --------------------------------------------------------------------------
   typedef enum logic [2:0] {
-    S_IDLE  = 3'd0, ///< between frames
-    S_HDR2  = 3'd1, ///< collecting beat 1: source MAC + length/EtherType
-    S_HDR3  = 3'd2, ///< collecting beat 2: 802.1Q inner EtherType
-    S_DEC   = 3'd3, ///< CAM answer available, forwarding verdict frozen
-    S_PRE   = 3'd4, ///< pushing the captured header beats into the payload FIFO
-    S_BODY  = 3'd5, ///< streaming the remaining beats
-    S_TAIL  = 3'd6, ///< the payload is complete, only the FCS beat is left
-    S_DRAIN = 3'd7  ///< discarding the remainder of a rejected frame
+    S_IDLE  = 3'd0,  ///< between frames
+    S_HDR2  = 3'd1,  ///< collecting beat 1: source MAC + length/EtherType
+    S_HDR3  = 3'd2,  ///< collecting beat 2: 802.1Q inner EtherType
+    S_DEC   = 3'd3,  ///< CAM answer available, forwarding verdict frozen
+    S_PRE   = 3'd4,  ///< pushing the captured header beats into the payload FIFO
+    S_BODY  = 3'd5,  ///< streaming the remaining beats
+    S_TAIL  = 3'd6,  ///< the payload is complete, only the FCS beat is left
+    S_DRAIN = 3'd7   ///< discarding the remainder of a rejected frame
   } state_e;
 
   state_e state;
 
-  logic [63:0]  hdr_w0, hdr_w1, hdr_w2;   ///< captured header beats
-  logic [15:0]  src_hi_q;                 ///< first two octets of the source MAC
-  logic         hdr_vlan_q;               ///< header carried a 802.1Q tag
-  logic [15:0]  hdr_type_q;               ///< resolved (inner) length/EtherType
-  sw_mac_t      dst_mac_q, src_mac_q;
+  logic [63:0] hdr_w0, hdr_w1, hdr_w2;  ///< captured header beats
+  logic [15:0] src_hi_q;  ///< first two octets of the source MAC
+  logic        hdr_vlan_q;  ///< header carried a 802.1Q tag
+  logic [15:0] hdr_type_q;  ///< resolved (inner) length/EtherType
+  sw_mac_t dst_mac_q, src_mac_q;
 
-  logic                 fixed_len_q;   ///< 802.3 length field governs the size
-  logic [SW_LEN_W-1:0] frame_len_q;    ///< declared size (fixed) or the bound
-  logic [BEATW-1:0]     last_beat_q;   ///< index of the last payload beat
-  logic [BEATW-1:0]     widx;          ///< payload beats written so far
-  logic [BEATW-1:0]     wr_cnt;        ///< beats written for this frame
-  logic [OCTW-1:0]      oct_cnt;       ///< octets popped from the beat FIFO
+  logic                 fixed_len_q;  ///< 802.3 length field governs the size
+  logic [ SW_LEN_W-1:0] frame_len_q;  ///< declared size (fixed) or the bound
+  logic [    BEATW-1:0] last_beat_q;  ///< index of the last payload beat
+  logic [    BEATW-1:0] widx;  ///< payload beats written so far
+  logic [    BEATW-1:0] wr_cnt;  ///< beats written for this frame
+  logic [     OCTW-1:0] oct_cnt;  ///< octets popped from the beat FIFO
 
   logic [NUM_PORTS-1:0] verdict_mask_q;
   logic                 verdict_flood_q;
@@ -293,7 +294,7 @@ module es_switch_rx_port #(
   // --------------------------------------------------------------------------
   logic [1:0] flood_mode;
   logic       learning_en;
-  assign flood_mode = cfg_ovr_i ? flood_mode_i : 2'(FLOOD_MODE);
+  assign flood_mode  = cfg_ovr_i ? flood_mode_i : 2'(FLOOD_MODE);
   assign learning_en = cfg_ovr_i ? learning_en_i : LEARNING_EN;
 
   logic [NUM_PORTS-1:0] hit_mask;
@@ -304,9 +305,18 @@ module es_switch_rx_port #(
   logic flood_group;
   always_comb begin
     case (flood_mode)
-      SW_FLOOD_ALL       : begin flood_unknown_ucast = 1'b1; flood_group = 1'b1; end
-      SW_FLOOD_BCAST_UKN : begin flood_unknown_ucast = 1'b1; flood_group = 1'b0; end
-      default            : begin flood_unknown_ucast = 1'b0; flood_group = 1'b0; end
+      SW_FLOOD_ALL: begin
+        flood_unknown_ucast = 1'b1;
+        flood_group = 1'b1;
+      end
+      SW_FLOOD_BCAST_UKN: begin
+        flood_unknown_ucast = 1'b1;
+        flood_group = 1'b0;
+      end
+      default: begin
+        flood_unknown_ucast = 1'b0;
+        flood_group = 1'b0;
+      end
     endcase
   end
 
@@ -362,24 +372,21 @@ module es_switch_rx_port #(
     if (sw_is_8023_length(hdr_type_q)) begin
       // 802.3 length field: the frame is exactly this long.  Values below the
       // 802.3 minimum are zero padded by the transmitter.
-      declared_payload = (hdr_type_q < 16'(SW_MIN_PAYLOAD))
-                         ? 16'(SW_MIN_PAYLOAD) : hdr_type_q;
+      declared_payload = (hdr_type_q < 16'(SW_MIN_PAYLOAD)) ? 16'(SW_MIN_PAYLOAD) : hdr_type_q;
     end else begin
       // EtherType: the size is not known here, it is measured on the wire.
-      declared_payload = 16'(MAX_FRAME_LEN -
-                            (hdr_vlan_q ? SW_HDR_LEN_VLAN : SW_HDR_LEN));
+      declared_payload = 16'(MAX_FRAME_LEN - (hdr_vlan_q ? SW_HDR_LEN_VLAN : SW_HDR_LEN));
     end
   end
 
   logic [16:0] len_calc;
-  assign len_calc = 17'(hdr_vlan_q ? SW_HDR_LEN_VLAN : SW_HDR_LEN) +
-                    {1'b0, declared_payload};
+  assign len_calc = 17'(hdr_vlan_q ? SW_HDR_LEN_VLAN : SW_HDR_LEN) + {1'b0, declared_payload};
 
   logic [15:0] len_clamped;
   always_comb begin
-    if      (len_calc > 17'(MAX_FRAME_LEN))   len_clamped = 16'(MAX_FRAME_LEN);
+    if (len_calc > 17'(MAX_FRAME_LEN)) len_clamped = 16'(MAX_FRAME_LEN);
     else if (len_calc < 17'(SW_MIN_FRAME_LEN)) len_clamped = 16'(SW_MIN_FRAME_LEN);
-    else                                      len_clamped = 16'(len_calc);
+    else len_clamped = 16'(len_calc);
   end
 
   // --------------------------------------------------------------------------
@@ -392,17 +399,17 @@ module es_switch_rx_port #(
   // frame-close decision below, hence the early declaration.
   // --------------------------------------------------------------------------
   logic            data_wr_en;
-  logic [63:0]     data_wr_data;
+  logic [    63:0] data_wr_data;
   logic            data_full;
   logic            data_undo;
-  logic [UF_W:0]   data_undo_cnt;
+  logic [  UF_W:0] data_undo_cnt;
   logic            data_flush;
 
-  logic               tag_wr_en;
-  logic [TAGW-1:0]    tag_wr_data;
-  logic               tag_full;
-  logic [TAGW-1:0]    tag_rd_data;
-  logic               tag_empty;
+  logic            tag_wr_en;
+  logic [TAGW-1:0] tag_wr_data;
+  logic            tag_full;
+  logic [TAGW-1:0] tag_rd_data;
+  logic            tag_empty;
 
   // --------------------------------------------------------------------------
   // 7. Frame close decision
@@ -412,18 +419,18 @@ module es_switch_rx_port #(
   // for the beats already written and `w_oct` is the octet count of the closing
   // beat itself.
   // --------------------------------------------------------------------------
-  logic [16:0]  fin_wire;    ///< octets the whole frame occupied on the wire
-  logic [15:0]  fin_len;     ///< MAC client data length derived from the wire
-  logic [15:0]  fin_beats;   ///< payload beats the frame occupies
-  logic [3:0]   fin_octets;  ///< valid octets in the final payload beat
-  logic         fin_write;   ///< the closing beat still carries payload
-  logic [63:0]  fin_data;    ///< closing beat, masked to `fin_octets`
-  logic         fin_runt;    ///< too short, or shorter than declared
-  logic         fin_ovr;     ///< too long, or longer than declared
-  logic         fin_room;    ///< the closing beat and the tag still fit
+  logic [    16:0] fin_wire;  ///< octets the whole frame occupied on the wire
+  logic [    15:0] fin_len;  ///< MAC client data length derived from the wire
+  logic [    15:0] fin_beats;  ///< payload beats the frame occupies
+  logic [     3:0] fin_octets;  ///< valid octets in the final payload beat
+  logic            fin_write;  ///< the closing beat still carries payload
+  logic [    63:0] fin_data;  ///< closing beat, masked to `fin_octets`
+  logic            fin_runt;  ///< too short, or shorter than declared
+  logic            fin_ovr;  ///< too long, or longer than declared
+  logic            fin_room;  ///< the closing beat and the tag still fit
 
   // Hoisted constant select: the number of octets in the final payload beat.
-  logic [2:0]  fin_len_lo;
+  logic [     2:0] fin_len_lo;
   assign fin_len_lo = fin_len[2:0];
 
   always_comb begin
@@ -443,26 +450,25 @@ module es_switch_rx_port #(
       fin_len = 16'(frame_len_q);
     end else begin
       // EtherType frame: the size is whatever arrived, minus the FCS.
-      fin_len = (fin_wire > 17'(SW_FCS_LEN))
-                ? 16'(fin_wire - 17'(SW_FCS_LEN)) : 16'd0;
+      fin_len = (fin_wire > 17'(SW_FCS_LEN)) ? 16'(fin_wire - 17'(SW_FCS_LEN)) : 16'd0;
     end
 
-    fin_beats  = 16'((16'(fin_len) + 16'd7) >> 3);
+    fin_beats = 16'((16'(fin_len) + 16'd7) >> 3);
     fin_octets = (fin_len_lo == 3'd0) ? 4'd8 : {1'b0, fin_len_lo};
-    fin_write  = (widx < BEATW'(fin_beats));
-    fin_data   = mask_octets(w_data, fin_octets);
+    fin_write = (widx < BEATW'(fin_beats));
+    fin_data = mask_octets(w_data, fin_octets);
 
     // ---- length classification --------------------------------------------
     fin_runt = 1'b0;
-    fin_ovr  = 1'b0;
+    fin_ovr = 1'b0;
     if (fixed_len_q) begin
       if (fin_wire != 17'(frame_len_q) + 17'(SW_FCS_LEN)) begin
         if (fin_wire < 17'(frame_len_q) + 17'(SW_FCS_LEN)) fin_runt = 1'b1;
-        else                                              fin_ovr  = 1'b1;
+        else fin_ovr = 1'b1;
       end
     end else begin
-      if      (fin_len < 16'(SW_MIN_FRAME_LEN)) fin_runt = 1'b1;
-      else if (fin_len > 16'(MAX_FRAME_LEN))   fin_ovr  = 1'b1;
+      if (fin_len < 16'(SW_MIN_FRAME_LEN)) fin_runt = 1'b1;
+      else if (fin_len > 16'(MAX_FRAME_LEN)) fin_ovr = 1'b1;
     end
     // A frame that cannot possibly fit into the payload buffer is oversize.
     if (16'(MAX_BEATS) < fin_beats) fin_ovr = 1'b1;
@@ -477,15 +483,14 @@ module es_switch_rx_port #(
   // 8. Payload/tag FIFO read side and beat consumption
   // --------------------------------------------------------------------------
   assign tag_rd_data_o = tag_rd_data;
-  assign tag_empty_o   = tag_empty;
+  assign tag_empty_o = tag_empty;
 
   // A hard flush must never cut a frame in half, so it is only accepted while
   // the parser is not driving a payload FIFO write.
-  assign data_flush = flush_i && ((state == S_IDLE)  || (state == S_HDR2) ||
-                                  (state == S_HDR3) || (state == S_DEC)  ||
-                                  (state == S_DRAIN));
+  assign data_flush = flush_i && ((state == S_IDLE) || (state == S_HDR2) || (state == S_HDR3) ||
+                                  (state == S_DEC) || (state == S_DRAIN));
 
-  assign data_undo_cnt = (UF_W+1)'(wr_cnt);
+  assign data_undo_cnt = (UF_W + 1)'(wr_cnt);
 
   // Beat consumption.
   //
@@ -503,9 +508,9 @@ module es_switch_rx_port #(
   logic pop;
   always_comb begin
     case (state)
-      S_DEC, S_PRE : pop = 1'b0;
-      S_BODY       : pop = !wf_empty && !data_full;
-      default      : pop = !wf_empty;
+      S_DEC, S_PRE: pop = 1'b0;
+      S_BODY:       pop = !wf_empty && !data_full;
+      default:      pop = !wf_empty;
     endcase
   end
   assign wf_rd_en = pop;
@@ -517,35 +522,36 @@ module es_switch_rx_port #(
   // being received, and from the size measured on the wire once the frame
   // closes.  For an EtherType frame only the latter is meaningful.
   logic [SW_LEN_W-1:0] tag_len_src;
-  assign tag_len_src = ((state == S_BODY) || (state == S_TAIL))
-                         ? SW_LEN_W'(fin_len) : frame_len_q;
+  assign tag_len_src = ((state == S_BODY) || (state == S_TAIL)) ? SW_LEN_W'(fin_len) : frame_len_q;
 
   // The field order below is the mirror image of the `sw_tag_*_lsb()` helpers in
   // the package, so the two cannot drift apart: the package defines the bit
   // offsets and this concatenation defines the word, in the same order.
   //   { drop, flood, len[SW_LEN_W-1:0], src[PW-1:0], dst_mask[NUM_PORTS-1:0] }
   logic [TAGW-1:0] tag;
-  assign tag = { 1'b0,              // ingress filtering already applied
-                 verdict_flood_q,
-                 SW_LEN_W'(tag_len_src),
-                 PW'(PORT_ID),
-                 verdict_mask_q };
+  assign tag = {
+    1'b0,  // ingress filtering already applied
+    verdict_flood_q,
+    SW_LEN_W'(tag_len_src),
+    PW'(PORT_ID),
+    verdict_mask_q
+  };
 
   // --------------------------------------------------------------------------
   // 10. Statistics counters
   // --------------------------------------------------------------------------
   logic [31:0] cnt_frames, cnt_octets, cnt_filtered, cnt_crc, cnt_runt, cnt_ovr;
-  logic [31:0] cnt_ovf;   ///< ingress buffer exhaustion (distinct from oversize)
+  logic [31:0] cnt_ovf;  ///< ingress buffer exhaustion (distinct from oversize)
 
-  assign stat_o[32*int'(SW_STAT_RX_FRAMES)  +: 32] = cnt_frames;
-  assign stat_o[32*int'(SW_STAT_RX_OCTETS)  +: 32] = cnt_octets;
-  assign stat_o[32*int'(SW_STAT_RX_FILTERED)+: 32] = cnt_filtered;
-  assign stat_o[32*int'(SW_STAT_RX_CRC_ERR) +: 32] = cnt_crc;
-  assign stat_o[32*int'(SW_STAT_RX_RUNT)    +: 32] = cnt_runt;
-  assign stat_o[32*int'(SW_STAT_RX_OVERSIZE)+: 32] = cnt_ovr;
+  assign stat_o[32*int'(SW_STAT_RX_FRAMES) +: 32]   = cnt_frames;
+  assign stat_o[32*int'(SW_STAT_RX_OCTETS) +: 32]   = cnt_octets;
+  assign stat_o[32*int'(SW_STAT_RX_FILTERED) +: 32] = cnt_filtered;
+  assign stat_o[32*int'(SW_STAT_RX_CRC_ERR) +: 32]  = cnt_crc;
+  assign stat_o[32*int'(SW_STAT_RX_RUNT) +: 32]     = cnt_runt;
+  assign stat_o[32*int'(SW_STAT_RX_OVERSIZE) +: 32] = cnt_ovr;
   // Ingress buffer exhaustion is reported separately from an oversize frame,
   // because it points at a buffer that is too small rather than at a bad frame.
-  assign stat_o[32*int'(SW_STAT_RX_OVERFLOW)+: 32] = cnt_ovf;
+  assign stat_o[32*int'(SW_STAT_RX_OVERFLOW) +: 32] = cnt_ovf;
   // The remaining counters are produced by the transmit path, the scheduler
   // and the CAM; the top level sums them in.
   // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
@@ -554,14 +560,14 @@ module es_switch_rx_port #(
   // all forms (see es_switch_arbiter.sv for the full note).
   genvar gk;
   generate
-  for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
-    if ((gk != int'(SW_STAT_RX_FRAMES)) && (gk != int'(SW_STAT_RX_OCTETS)) &&
-        (gk != int'(SW_STAT_RX_FILTERED)) && (gk != int'(SW_STAT_RX_CRC_ERR)) &&
-        (gk != int'(SW_STAT_RX_RUNT)) && (gk != int'(SW_STAT_RX_OVERSIZE)) &&
-        (gk != int'(SW_STAT_RX_OVERFLOW))) begin : g_stat_zero_other
-      assign stat_o[32*gk +: 32] = 32'd0;
+    for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+      if ((gk != int'(SW_STAT_RX_FRAMES)) && (gk != int'(SW_STAT_RX_OCTETS)) &&
+          (gk != int'(SW_STAT_RX_FILTERED)) && (gk != int'(SW_STAT_RX_CRC_ERR)) &&
+          (gk != int'(SW_STAT_RX_RUNT)) && (gk != int'(SW_STAT_RX_OVERSIZE)) &&
+          (gk != int'(SW_STAT_RX_OVERFLOW))) begin : g_stat_zero_other
+        assign stat_o[32*gk +: 32] = 32'd0;
+      end
     end
-  end
   endgenerate
 
   // --------------------------------------------------------------------------
@@ -626,8 +632,8 @@ module es_switch_rx_port #(
           wr_cnt <= '0;
           if (pop && w_sof) begin
             hdr_w0    <= w_data;
-            dst_mac_q <= w_data[63:16];              // dst[0..5]
-            src_hi_q  <= w_data[15:0];               // src[0..1]
+            dst_mac_q <= w_data[63:16];  // dst[0..5]
+            src_hi_q  <= w_data[15:0];  // src[0..1]
             oct_cnt   <= OCTW'(w_oct);
             state     <= S_HDR2;
           end
@@ -638,7 +644,7 @@ module es_switch_rx_port #(
           if (pop) begin
             hdr_w1     <= w_data;
             src_mac_q  <= {src_hi_q, w_data[63:32]};  // src[0..1] ++ src[2..5]
-            hdr_type_q <= w_data[31:16];              // l2type[0..1]
+            hdr_type_q <= w_data[31:16];  // l2type[0..1]
             hdr_vlan_q <= sw_is_vlan_type(w_data[31:16]);
             state      <= sw_is_vlan_type(w_data[31:16]) ? S_HDR3 : S_DEC;
           end
@@ -654,7 +660,7 @@ module es_switch_rx_port #(
         S_HDR3: begin
           if (pop) begin
             hdr_w2     <= w_data;
-            hdr_type_q <= w_data[63:48];              // inner_type[0..1]
+            hdr_type_q <= w_data[63:48];  // inner_type[0..1]
             state      <= S_DEC;
           end
         end
@@ -667,8 +673,7 @@ module es_switch_rx_port #(
           verdict_mask_q  <= fwd_mask;
           verdict_flood_q <= fwd_flood;
           fixed_len_q     <= sw_is_8023_length(hdr_type_q);
-          frame_len_q     <= fixed_len_q ? SW_LEN_W'(len_clamped)
-                                         : SW_LEN_W'(MAX_FRAME_LEN);
+          frame_len_q     <= fixed_len_q ? SW_LEN_W'(len_clamped) : SW_LEN_W'(MAX_FRAME_LEN);
           last_beat_q     <= BEATW'((16'(len_clamped) + 16'd7) >> 3) - BEATW'(1);
           widx            <= '0;
           if (fwd_drop) begin
@@ -720,20 +725,20 @@ module es_switch_rx_port #(
                 data_undo <= 1'b1;
                 state     <= S_IDLE;
               end else if (fin_runt) begin
-                cnt_runt   <= cnt_runt + 32'd1;
-                data_undo  <= 1'b1;
-                state      <= S_IDLE;
+                cnt_runt  <= cnt_runt + 32'd1;
+                data_undo <= 1'b1;
+                state     <= S_IDLE;
               end else if (fin_ovr) begin
-                cnt_ovr    <= cnt_ovr  + 32'd1;
-                data_undo  <= 1'b1;
-                state      <= S_IDLE;
+                cnt_ovr   <= cnt_ovr + 32'd1;
+                data_undo <= 1'b1;
+                state     <= S_IDLE;
               end else if (!fin_room) begin
                 // The closing beat or the tag descriptor does not fit: the
                 // ingress buffer is too small for this traffic, not the frame
                 // being malformed.
-                cnt_ovf    <= cnt_ovf  + 32'd1;
-                data_undo  <= 1'b1;
-                state      <= S_IDLE;
+                cnt_ovf   <= cnt_ovf + 32'd1;
+                data_undo <= 1'b1;
+                state     <= S_IDLE;
               end else begin
                 if (fin_write) begin
                   data_wr_en   <= 1'b1;
@@ -742,8 +747,7 @@ module es_switch_rx_port #(
                 end
                 tag_wr_en   <= 1'b1;
                 tag_wr_data <= tag;
-                learn_o     <= learning_en && sw_is_unicast(src_mac_q) &&
-                               (src_mac_q != PORT_MAC);
+                learn_o     <= learning_en && sw_is_unicast(src_mac_q) && (src_mac_q != PORT_MAC);
                 learn_mac_o <= src_mac_q;
                 cnt_frames  <= cnt_frames + 32'd1;
                 cnt_octets  <= cnt_octets + {21'd0, fin_len[10:0]};
@@ -787,7 +791,7 @@ module es_switch_rx_port #(
               state     <= S_IDLE;
             end else if (fin_runt || fin_ovr) begin
               if (fin_runt) cnt_runt <= cnt_runt + 32'd1;
-              else          cnt_ovr  <= cnt_ovr  + 32'd1;
+              else cnt_ovr <= cnt_ovr + 32'd1;
               data_undo <= 1'b1;
               state     <= S_IDLE;
             end else if (!tag_full) begin
@@ -795,8 +799,7 @@ module es_switch_rx_port #(
               // complete, the closing beat carried FCS octets only.
               tag_wr_en   <= 1'b1;
               tag_wr_data <= tag;
-              learn_o     <= learning_en && sw_is_unicast(src_mac_q) &&
-                             (src_mac_q != PORT_MAC);
+              learn_o     <= learning_en && sw_is_unicast(src_mac_q) && (src_mac_q != PORT_MAC);
               learn_mac_o <= src_mac_q;
               cnt_frames  <= cnt_frames + 32'd1;
               cnt_octets  <= cnt_octets + {21'd0, fin_len[10:0]};
@@ -838,21 +841,21 @@ module es_switch_rx_port #(
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_sync_fifo #(
-      .WIDTH (64),
-      .DEPTH (RX_FIFO_DEPTH)
+    .WIDTH(64),
+    .DEPTH(RX_FIFO_DEPTH)
   ) u_data_fifo (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .undo_i    (data_undo),
-      .undo_cnt_i(data_undo_cnt),
-      .flush_i   (data_flush),
-      .wr_en_i   (data_wr_en),
-      .wr_data_i (data_wr_data),
-      .full_o    (data_full),
-      .free_o    (data_free),
-      .rd_en_i   (data_rd_en),
-      .rd_data_o (data_rd_data),
-      .empty_o   (empty_o)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .undo_i    (data_undo),
+    .undo_cnt_i(data_undo_cnt),
+    .flush_i   (data_flush),
+    .wr_en_i   (data_wr_en),
+    .wr_data_i (data_wr_data),
+    .full_o    (data_full),
+    .free_o    (data_free),
+    .rd_en_i   (data_rd_en),
+    .rd_data_o (data_rd_data),
+    .empty_o   (empty_o)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -860,41 +863,41 @@ module es_switch_rx_port #(
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_sync_fifo #(
-      .WIDTH (WF_W),
-      .DEPTH (WF_DEPTH)
+    .WIDTH(WF_W),
+    .DEPTH(WF_DEPTH)
   ) u_wf (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .undo_i    (1'b0),
-      .undo_cnt_i('0),
-      .flush_i   (1'b0),
-      .wr_en_i   (wf_wr_en),
-      .wr_data_i (wf_wr_data),
-      .full_o    (),     // the parser drains this FIFO unconditionally
-      .free_o    (),
-      .rd_en_i   (wf_rd_en),
-      .rd_data_o (wf_rd_data),
-      .empty_o   (wf_empty)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .undo_i    (1'b0),
+    .undo_cnt_i('0),
+    .flush_i   (1'b0),
+    .wr_en_i   (wf_wr_en),
+    .wr_data_i (wf_wr_data),
+    .full_o    (),            // the parser drains this FIFO unconditionally
+    .free_o    (),
+    .rd_en_i   (wf_rd_en),
+    .rd_data_o (wf_rd_data),
+    .empty_o   (wf_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_sync_fifo #(
-      .WIDTH (TAGW),
-      .DEPTH (TAG_FIFO_DEPTH)
+    .WIDTH(TAGW),
+    .DEPTH(TAG_FIFO_DEPTH)
   ) u_tag_fifo (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .undo_i    (1'b0),
-      .undo_cnt_i('0),
-      .flush_i   (1'b0),
-      .wr_en_i   (tag_wr_en),
-      .wr_data_i (tag_wr_data),
-      .full_o    (tag_full),
-      .free_o    (),
-      .rd_en_i   (tag_rd_en_i),
-      .rd_data_o (tag_rd_data),
-      .empty_o   (tag_empty)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .undo_i    (1'b0),
+    .undo_cnt_i('0),
+    .flush_i   (1'b0),
+    .wr_en_i   (tag_wr_en),
+    .wr_data_i (tag_wr_data),
+    .full_o    (tag_full),
+    .free_o    (),
+    .rd_en_i   (tag_rd_en_i),
+    .rd_data_o (tag_rd_data),
+    .empty_o   (tag_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -905,4 +908,4 @@ endmodule : es_switch_rx_port
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_RX_PORT_SV
+`endif  // ES_SWITCH_RX_PORT_SV

@@ -60,8 +60,8 @@ module sw_mac_table_tb #(
   logic [NUM_PORTS*PW-1:0] learn_port;
 
   logic [31:0] entries, hits, misses, learns;
-  logic mon_req=0, mon_valid;
-  logic [31:0] mon_index=0;
+  logic mon_req = 0, mon_valid;
+  logic [31:0] mon_index = 0;
   logic [127:0] mon_entry;
 
   int unsigned errors;
@@ -70,29 +70,31 @@ module sw_mac_table_tb #(
   always #5 clk = ~clk;
 
   es_switch_mac_table #(
-      .NUM_PORTS       (NUM_PORTS),
-      .NUM_SETS        (NUM_SETS),
-      .NUM_WAYS        (NUM_WAYS),
-      .AGE_EN          (1'b1),
-      .AGE_TICK_CYCLES (AGE_TICK),
-      .AGE_LIMIT       (AGE_LIMIT)
+    .NUM_PORTS      (NUM_PORTS),
+    .NUM_SETS       (NUM_SETS),
+    .NUM_WAYS       (NUM_WAYS),
+    .AGE_EN         (1'b1),
+    .AGE_TICK_CYCLES(AGE_TICK),
+    .AGE_LIMIT      (AGE_LIMIT)
   ) u_dut (
-      .mon_req_i(mon_req), .mon_index_i(mon_index),
-      .mon_valid_o(mon_valid), .mon_entry_o(mon_entry),
-      .clk_i        (clk),
-      .rst_ni       (rst_n),
-      .flush_i      (flush),
-      .req_i        (req),
-      .mac_i        (mac),
-      .hit_o        (hit),
-      .port_o       (port),
-      .learn_i      (learn),
-      .learn_mac_i  (learn_mac),
-      .learn_port_i (learn_port),
-      .entries_o    (entries),
-      .hits_o       (hits),
-      .misses_o     (misses),
-      .learns_o     (learns)
+    .mon_req_i   (mon_req),
+    .mon_index_i (mon_index),
+    .mon_valid_o (mon_valid),
+    .mon_entry_o (mon_entry),
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .flush_i     (flush),
+    .req_i       (req),
+    .mac_i       (mac),
+    .hit_o       (hit),
+    .port_o      (port),
+    .learn_i     (learn),
+    .learn_mac_i (learn_mac),
+    .learn_port_i(learn_port),
+    .entries_o   (entries),
+    .hits_o      (hits),
+    .misses_o    (misses),
+    .learns_o    (learns)
   );
 
   // Two test addresses and one that is never learned.
@@ -100,8 +102,7 @@ module sw_mac_table_tb #(
   localparam logic [47:0] MAC_B = 48'h02_00_00_00_00_0B;
   localparam logic [47:0] MAC_C = 48'h02_00_00_00_00_0C;
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -124,55 +125,59 @@ module sw_mac_table_tb #(
   /// One clock with the learn request of port `p` asserted.
   task automatic do_learn(input int unsigned p, input logic [47:0] m);
     @(negedge clk);
-    learn                   = '0;
-    learn_mac [p*48 +: 48]   = m;
-    learn_port[p*PW +: PW]   = PW'(p);
-    learn[p]                = 1'b1;
-    @(posedge clk);          // the request is sampled here
+    learn                = '0;
+    learn_mac[p*48 +: 48]  = m;
+    learn_port[p*PW +: PW] = PW'(p);
+    learn[p]             = 1'b1;
+    @(posedge clk);  // the request is sampled here
     @(negedge clk);
-    learn                   = '0;
+    learn = '0;
   endtask
 
   /// One lookup clock for port `p`; the registered result is visible one clock
   /// later, which the task accounts for.
   task automatic do_lookup(input int unsigned p, input logic [47:0] m);
     @(negedge clk);
-    req                = '0;
-    mac[p*48 +: 48]    = m;
-    req[p]             = 1'b1;
-    @(posedge clk);          // the lookup is sampled here
+    req           = '0;
+    mac[p*48 +: 48] = m;
+    req[p]        = 1'b1;
+    @(posedge clk);  // the lookup is sampled here
     @(negedge clk);
-    req[p]             = 1'b0;
-    @(posedge clk);          // result register updates here
+    req[p] = 1'b0;
+    @(posedge clk);  // result register updates here
     @(negedge clk);
   endtask
 
-  task automatic expect_hit(input int unsigned p, input bit exp_hit,
-                            input int unsigned exp_port, input string what);
+  task automatic expect_hit(input int unsigned p, input bit exp_hit, input int unsigned exp_port,
+                            input string what);
     checks++;
     if ((hit[p] !== exp_hit) ||
         (exp_hit && (port[p*NUM_PORTS +: NUM_PORTS] !== (NUM_PORTS'(1) << exp_port)))) begin
       errors++;
-      $display("[%0t] ERROR %s: hit=%b port=%b, expected hit=%b port=%0d",
-               $time, what, hit[p], port[p*NUM_PORTS +: NUM_PORTS], exp_hit, exp_port);
+      $display("[%0t] ERROR %s: hit=%b port=%b, expected hit=%b port=%0d", $time, what, hit[p],
+               port[p*NUM_PORTS +: NUM_PORTS], exp_hit, exp_port);
     end else begin
       $display("[%0t] PASS  %s: hit=%b port=%0d", $time, what, hit[p], exp_port);
     end
   endtask
 
-  task automatic scan_mac(input sw_mac_t address, input bit expected, input int unsigned expected_port);
+  task automatic scan_mac(input sw_mac_t address, input bit expected,
+                          input int unsigned expected_port);
     int unsigned found;
-    found=0;
-    for(int unsigned i=0;i<NUM_SETS*NUM_WAYS;i++)begin
-      @(negedge clk);mon_req=1;mon_index=32'(i);
-      @(negedge clk);mon_req=0;
-      if(!mon_valid)$fatal(1,"CAM monitor response missing");
-      if(mon_entry[96] && mon_entry[47:0]==address)begin
+    found = 0;
+    for (int unsigned i = 0; i < NUM_SETS * NUM_WAYS; i++) begin
+      @(negedge clk);
+      mon_req   = 1;
+      mon_index = 32'(i);
+      @(negedge clk);
+      mon_req = 0;
+      if (!mon_valid) $fatal(1, "CAM monitor response missing");
+      if (mon_entry[96] && mon_entry[47:0] == address) begin
         found++;
-        expect_eq(mon_entry[95:64],expected_port,"monitor reports learned port");
+        expect_eq(mon_entry[95:64], expected_port, "monitor reports learned port");
       end
     end
-    expect_eq(found,expected?1:0,"monitor enumeration matches learned/expired/flush state");
+    expect_eq(found, expected ? 1 : 0, "monitor enumeration matches learned/expired/flush state");
   endtask
 
   initial begin
@@ -185,20 +190,23 @@ module sw_mac_table_tb #(
     errors     = 0;
     checks     = 0;
 
-    rst_n = 1'b0;
+    rst_n      = 1'b0;
     repeat (4) @(posedge clk);
     rst_n = 1'b1;
     repeat (2) @(posedge clk);
 
     $display("=====================================================================");
-    $display(" sw_mac_table_tb: %0d ports, %0d sets, %0d ways, ageing on",
-             NUM_PORTS, NUM_SETS, NUM_WAYS);
+    $display(" sw_mac_table_tb: %0d ports, %0d sets, %0d ways, ageing on", NUM_PORTS, NUM_SETS,
+             NUM_WAYS);
     $display("=====================================================================");
 
-    @(negedge clk);mon_req=1;mon_index=32'(NUM_SETS*NUM_WAYS);
-    @(negedge clk);mon_req=0;
-    expect_eq(mon_valid,1,"out-of-range management request completes");
-    expect_eq(mon_entry[96],0,"out-of-range management entry is invalid");
+    @(negedge clk);
+    mon_req   = 1;
+    mon_index = 32'(NUM_SETS * NUM_WAYS);
+    @(negedge clk);
+    mon_req = 0;
+    expect_eq(mon_valid, 1, "out-of-range management request completes");
+    expect_eq(mon_entry[96], 0, "out-of-range management entry is invalid");
 
     // ---- miss on an empty table ------------------------------------------
     do_lookup(0, MAC_A);
@@ -207,10 +215,10 @@ module sw_mac_table_tb #(
 
     // ---- learn and hit ----------------------------------------------------
     do_learn(0, MAC_A);
-    repeat (4) @(posedge clk);       // let the learn queue drain
+    repeat (4) @(posedge clk);  // let the learn queue drain
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b1, 0, "lookup after learning on port 0");
-    expect_eq(hits,   1, "hit counter");
+    expect_eq(hits, 1, "hit counter");
     expect_eq(learns, 1, "learn counter");
     expect_eq(entries, 1, "entry counter after one insertion");
 
@@ -225,7 +233,7 @@ module sw_mac_table_tb #(
     do_learn(0, MAC_B);
     do_learn(1, MAC_C);
     repeat (6) @(posedge clk);
-    expect_eq(learns,  3, "learn counter after three learn operations");
+    expect_eq(learns, 3, "learn counter after three learn operations");
     expect_eq(entries, 3, "entry counter after three insertions");
     do_lookup(0, MAC_B);
     expect_hit(0, 1'b1, 0, "MAC_B learned on port 0");
@@ -240,22 +248,22 @@ module sw_mac_table_tb #(
     expect_hit(0, 1'b1, 1, "MAC_A relocated to port 1");
     expect_eq(entries, 3, "relocation does not create a second entry");
 
-    scan_mac(MAC_A,1'b1,1);
-    scan_mac(MAC_B,1'b1,0);
-    scan_mac(MAC_C,1'b1,1);
+    scan_mac(MAC_A, 1'b1, 1);
+    scan_mac(MAC_B, 1'b1, 0);
+    scan_mac(MAC_C, 1'b1, 1);
 
     // ---- flush -------------------------------------------------------------
     // Driven on the falling edge like every other input, for the same reason.
     @(negedge clk);
     flush = 1'b1;
-    @(posedge clk);          // the flush is sampled here
+    @(posedge clk);  // the flush is sampled here
     @(negedge clk);
     flush = 1'b0;
     repeat (2) @(posedge clk);
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b0, 0, "lookup after the flush");
     expect_eq(entries, 0, "entry counter after the flush");
-    scan_mac(MAC_A,1'b0,0);
+    scan_mac(MAC_A, 1'b0, 0);
 
     // ---- ageing -------------------------------------------------------------
     // The table was flushed above, so the entry below is learnt fresh.  The
@@ -270,16 +278,16 @@ module sw_mac_table_tb #(
     expect_hit(0, 1'b1, 0, "entry present right after learning");
 
     // One full sweep is not enough to expire the entry.
-    repeat (NUM_SETS*NUM_WAYS) @(posedge clk);
+    repeat (NUM_SETS * NUM_WAYS) @(posedge clk);
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b1, 0, "entry survives the first ageing sweep");
 
     // AGE_LIMIT+1 further sweeps must expire it.
-    repeat ((AGE_LIMIT+1)*(NUM_SETS*NUM_WAYS) + 4) @(posedge clk);
+    repeat ((AGE_LIMIT + 1) * (NUM_SETS * NUM_WAYS) + 4) @(posedge clk);
     do_lookup(0, MAC_A);
     expect_hit(0, 1'b0, 0, "entry expired by ageing");
     expect_eq(entries, 0, "entry counter after ageing");
-    scan_mac(MAC_A,1'b0,0);
+    scan_mac(MAC_A, 1'b0, 0);
 
     $display("-----------------------------------------------------------------------");
     $display(" hits %0d, misses %0d, learns %0d, entries %0d", hits, misses, learns, entries);

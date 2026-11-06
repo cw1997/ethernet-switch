@@ -46,13 +46,13 @@
 // The shared CRC constants arrive through the include above and are visible at
 // compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
 module es_switch_crc32 (
-  input  var logic        clk_i,      ///< core clock
-  input  var logic        rst_ni,     ///< active-low synchronous reset
-  input  var logic        en_i,       ///< absorb `din_i` this clock
-  input  var logic [7:0]  din_i,      ///< octet to absorb
-  input  var logic        clr_i,      ///< re-seed the LFSR (start of frame)
-  output logic [31:0] crc_fin_o,  ///< LFSR ^ 0xFFFFFFFF - the value to transmit
-  output logic        resid_ok_o  ///< LFSR == 0xC704DD1B - receive check
+  input var logic        clk_i,      ///< core clock
+  input var logic        rst_ni,     ///< active-low synchronous reset
+  input var logic        en_i,       ///< absorb `din_i` this clock
+  input var logic [ 7:0] din_i,      ///< octet to absorb
+  input var logic        clr_i,      ///< re-seed the LFSR (start of frame)
+  output    logic [31:0] crc_fin_o,  ///< LFSR ^ 0xFFFFFFFF - the value to transmit
+  output    logic        resid_ok_o  ///< LFSR == 0xC704DD1B - receive check
 );
 
   // --------------------------------------------------------------------------
@@ -63,7 +63,7 @@ module es_switch_crc32 (
   // table in an `initial` block, which synthesised to a constant ROM in every
   // tool except Quartus: its constant evaluator needs tens of CPU-minutes
   // *per instance* to push an initial-block-initialised memory through
-  // synthesis (27 CPU-minutes without completing on Quartus Prime 25.1std,
+  // the elaboration (27 CPU-minutes without completing on Quartus Prime 25.1std,
   // against 35 wall-clock seconds for this form).  The function computes the
   // identical value - the same eight reflected shift steps - so the hardware
   // is bit-exact with what the table produced, at the cost of a few hundred
@@ -91,8 +91,8 @@ module es_switch_crc32 (
   // incoming octet.  It is hoisted out of the process below because some
   // simulators over-approximate the sensitivity of an inline constant
   // part-select inside an always_* block.
-  logic [7:0]  crc_lsb;
-  logic [7:0]  tbl_idx;
+  logic [ 7:0] crc_lsb;
+  logic [ 7:0] tbl_idx;
   assign crc_lsb = crc[7:0];
   assign tbl_idx = crc_lsb ^ din_i;
 
@@ -121,4 +121,4 @@ endmodule : es_switch_crc32
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_CRC32_SV
+`endif  // ES_SWITCH_CRC32_SV

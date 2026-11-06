@@ -35,7 +35,9 @@
 // required here rather than cosmetic: the frame and record types used in the
 // task and function argument lists come from `sw_tb_pkg`, and a transitive
 // import is not visible to a subroutine argument type in Icarus Verilog.
-module sw_mii_if import sw_tb_pkg::*; #(
+module sw_mii_if
+  import sw_tb_pkg::*;
+#(
   /// Port index, used only in diagnostic messages.
   parameter int unsigned PORT_ID     = 0,
   /// `clk_i` cycles per octet time; must be even (two nibble windows).
@@ -45,9 +47,9 @@ module sw_mii_if import sw_tb_pkg::*; #(
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
-  input  logic       clk_i,
-  input  logic       rst_ni,
-  input  logic       enable_i,   ///< 0 = link down: the pins stay idle
+  input logic clk_i,
+  input logic rst_ni,
+  input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
   output logic       mii_rx_dv,
@@ -55,8 +57,8 @@ module sw_mii_if import sw_tb_pkg::*; #(
   output logic [3:0] mii_rxd,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
-  input  logic       mii_tx_en,
-  input  logic [3:0] mii_txd
+  input logic       mii_tx_en,
+  input logic [3:0] mii_txd
 );
 
   localparam int unsigned NPK = BYTE_PERIOD / 2;
@@ -71,7 +73,7 @@ module sw_mii_if import sw_tb_pkg::*; #(
   logic       rx_dv_r;
   logic [3:0] rx_d_r;
   assign mii_rx_dv = enable_i && rx_dv_r;
-  assign mii_rx_er = 1'b0;              // the unit testbench covers RX_ER
+  assign mii_rx_er = 1'b0;  // the unit testbench covers RX_ER
   assign mii_rxd   = rx_d_r;
 
   /// Present one frame on the receive pins.
@@ -79,14 +81,9 @@ module sw_mii_if import sw_tb_pkg::*; #(
   /// The task blocks for the whole frame plus its inter-frame gap, so a test
   /// calls it and carries on.  Concurrent traffic from several ports is
   /// obtained by forking the task.
-  task automatic send(
-      input sw_mac_t     dst,
-      input sw_mac_t     src,
-      input logic [15:0] l2type,
-      input int unsigned total_len,
-      input bit          vlan_en     = 1'b0,
-      input bit          corrupt_fcs = 1'b0,
-      input bit          drop_fcs    = 1'b0);
+  task automatic send(input sw_mac_t dst, input sw_mac_t src, input logic [15:0] l2type,
+                      input int unsigned total_len, input bit vlan_en = 1'b0,
+                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0);
     tb_frame_buf_t frame;
     int unsigned   n;
     int unsigned   i;
@@ -98,14 +95,14 @@ module sw_mii_if import sw_tb_pkg::*; #(
 
     for (i = SW_PREAMBLE_LEN; i < n; i++) begin
       o = tb_get_octet(frame, i);
-      @(posedge clk_i);                 // the low-nibble window opens here
+      @(posedge clk_i);  // the low-nibble window opens here
       rx_dv_r <= 1'b1;
       rx_d_r  <= o[3:0];
-      repeat (NPK) @(posedge clk_i);    // the high-nibble window opens here
-      rx_d_r  <= o[7:4];
+      repeat (NPK) @(posedge clk_i);  // the high-nibble window opens here
+      rx_d_r <= o[7:4];
       repeat (NPK - 1) @(posedge clk_i);
     end
-    @(posedge clk_i);                   // the enable drops for the gap
+    @(posedge clk_i);  // the enable drops for the gap
     rx_dv_r <= 1'b0;
     rx_d_r  <= 4'h0;
     repeat (IFG_OCTETS * BYTE_PERIOD) @(posedge clk_i);
@@ -140,41 +137,43 @@ module sw_mii_if import sw_tb_pkg::*; #(
   always_ff @(posedge clk_i) begin
     if (!rst_ni || !mii_tx_en) mon_cnt <= '0;
     else if (mon_cnt == MPHASE_LAST) mon_cnt <= '0;
-    else                             mon_cnt <= mon_cnt + MPW'(1);
+    else mon_cnt <= mon_cnt + MPW'(1);
   end
 
   assign mon_s_lo = mii_tx_en && (mon_cnt == MS_LO);
   assign mon_s_hi = mii_tx_en && (mon_cnt == MS_HI);
 
   // Assembly state of the frame currently on the wire.
-  tb_frame_buf_t mon_buf;
-  int unsigned   mon_n;
-  logic [3:0]    mon_lo_q;
-  bit            mon_active;
+  tb_frame_buf_t       mon_buf;
+  int unsigned         mon_n;
+  logic          [3:0] mon_lo_q;
+  bit                  mon_active;
 
-  int unsigned mon_dropped;
-  int unsigned mon_short;        ///< frames shorter than the 802.3 minimum
+  int unsigned         mon_dropped;
+  int unsigned         mon_short;  ///< frames shorter than the 802.3 minimum
 
   // Strobe pair that hands the frame which has just ended to the queue.  Both
   // are driven from the reassembly process below, so the queue is written from
   // a plain process rather than from a function - Icarus Verilog cannot push
   // into a queue from one.
-  logic          mon_push_q;
-  tb_rec_t       mon_push_rec;
+  logic                mon_push_q;
+  tb_rec_t             mon_push_rec;
 
   // Shadow copy of the most recently reassembled frame, kept after the working
   // buffer has been cleared (see sw_gmii_if for the rationale).
-  tb_frame_buf_t mon_last;
-  int unsigned   mon_last_n;
+  tb_frame_buf_t       mon_last;
+  int unsigned         mon_last_n;
 
   // ==========================================================================
   // Received-frame queue
   // ==========================================================================
-  sw_rec_q #(.DEPTH(MON_DEPTH)) u_mon (
-      .clk_i      (clk_i),
-      .rst_ni     (rst_ni),
-      .push_i     (mon_push_q),
-      .push_data_i(mon_push_rec)
+  sw_rec_q #(
+    .DEPTH(MON_DEPTH)
+  ) u_mon (
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .push_i     (mon_push_q),
+    .push_data_i(mon_push_rec)
   );
 
   // The reassembly, in a single process.  One process owns every signal it
@@ -201,7 +200,7 @@ module sw_mii_if import sw_tb_pkg::*; #(
         mon_active = 1'b0;
         mon_last_n = 0;
       end else if (en && mon_s_lo) begin
-        mon_lo_q   = d;
+        mon_lo_q = d;
       end else if (en && mon_s_hi) begin
         mon_buf    = tb_put_octet(mon_buf, mon_n, {d, mon_lo_q});
         mon_n      = mon_n + 1;
@@ -227,13 +226,11 @@ module sw_mii_if import sw_tb_pkg::*; #(
   /// Check the preamble and the FCS of a received frame and build its record
   /// (identical to the sw_gmii_if check: the FCS covers the MAC client data
   /// only, starting after the eight preamble octets).
-  function automatic tb_rec_t mon_check(
-      input tb_frame_buf_t b,
-      input int unsigned   n);
-    int unsigned i;
-    logic [31:0] fcs_calc;
-    logic [31:0] fcs_rx;
-    bit          preamble_ok;
+  function automatic tb_rec_t mon_check(input tb_frame_buf_t b, input int unsigned n);
+    int unsigned        i;
+    logic        [31:0] fcs_calc;
+    logic        [31:0] fcs_rx;
+    bit                 preamble_ok;
 
     preamble_ok = 1'b1;
     for (i = 0; i < 7; i++) begin
@@ -242,8 +239,9 @@ module sw_mii_if import sw_tb_pkg::*; #(
     if (tb_get_octet(b, 7) != 8'hD5) preamble_ok = 1'b0;
 
     fcs_calc = tb_crc32(b, n - 4 - SW_PREAMBLE_LEN, SW_PREAMBLE_LEN);
-    fcs_rx   = {tb_get_octet(b, n-1), tb_get_octet(b, n-2),
-                tb_get_octet(b, n-3), tb_get_octet(b, n-4)};
+    fcs_rx = {
+      tb_get_octet(b, n - 1), tb_get_octet(b, n - 2), tb_get_octet(b, n - 3), tb_get_octet(b, n - 4)
+    };
 
     return tb_rec_from_wire(b, n, (fcs_calc == fcs_rx), preamble_ok);
   endfunction
@@ -253,9 +251,7 @@ module sw_mii_if import sw_tb_pkg::*; #(
   // ==========================================================================
   /// Remove and return the oldest monitored frame.  A record whose length
   /// field is zero is returned when nothing arrives within `timeout` clocks.
-  task automatic pop_frame(
-      output tb_rec_t       r,
-      input  int unsigned   timeout = 200000);
+  task automatic pop_frame(output tb_rec_t r, input int unsigned timeout = 200000);
     int unsigned waited;
     waited = 0;
     while ((u_mon.size_o == 0) && (waited < timeout)) begin
@@ -263,7 +259,7 @@ module sw_mii_if import sw_tb_pkg::*; #(
       waited++;
     end
     if (u_mon.size_o == 0) r = '0;
-    else                    u_mon.pop(r);
+    else u_mon.pop(r);
   endtask
 
   /// Number of frames received but not yet consumed by the scoreboard.
@@ -303,4 +299,4 @@ module sw_mii_if import sw_tb_pkg::*; #(
 
 endmodule : sw_mii_if
 
-`endif // SW_MII_IF_SV
+`endif  // SW_MII_IF_SV

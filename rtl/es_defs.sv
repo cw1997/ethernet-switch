@@ -51,10 +51,10 @@ function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
   begin
     baud = 1;
     case (speed)
-      SW_SPEED_10M  : baud = 10000000;
-      SW_SPEED_100M : baud = 100000000;
+      SW_SPEED_10M:   baud = 10000000;
+      SW_SPEED_100M:  baud = 100000000;
       SW_SPEED_1000M: baud = 1000000000;
-      default       : baud = 1;
+      default:        baud = 1;
     endcase
     sw_speed_baud = baud;
   end
@@ -68,9 +68,8 @@ endfunction
 /// rate), 10 (100BASE-TX) and 100 (10BASE-T).  A slower core clock simply
 /// stretches the period - the datapath itself never changes, because it is
 /// driven exclusively by the resulting clock enable.
-function automatic int unsigned sw_byte_period(
-    input int unsigned clk_freq_hz,
-    input sw_speed_e  speed);
+function automatic int unsigned sw_byte_period(input int unsigned clk_freq_hz,
+                                               input sw_speed_e speed);
   int unsigned baud;
   int unsigned period;
   begin
@@ -90,28 +89,27 @@ endfunction
 // 8.  Statistics register map exported on the read-only `stat_o` bus
 // ============================================================================
 typedef enum int unsigned {
-  SW_STAT_RX_FRAMES   = 0,  ///< frames accepted by the receive filter
-  SW_STAT_RX_OCTETS   = 1,  ///< octets forwarded into the switching fabric
-  SW_STAT_RX_FILTERED = 2,  ///< frames dropped by the ingress filter
-  SW_STAT_RX_CRC_ERR  = 3,  ///< frames failing the FCS check
-  SW_STAT_RX_RUNT     = 4,  ///< frames shorter than 64 octets
-  SW_STAT_RX_OVERSIZE = 5,  ///< frames longer than the configured maximum
-  SW_STAT_RX_OVERFLOW = 6,  ///< frames dropped: ingress buffer exhausted
-  SW_STAT_TX_FRAMES   = 7,  ///< frame copies injected into a transmit port
-  SW_STAT_TX_OCTETS   = 8,  ///< octets injected into a transmit port
-  SW_STAT_TX_STALLED  = 9,  ///< frames discarded because egress was blocked
-  SW_STAT_CAM_HIT     = 10, ///< CAM lookups that resolved to a port
-  SW_STAT_CAM_MISS    = 11, ///< CAM lookups that fell through to flooding
-  SW_STAT_CAM_LEARN   = 12, ///< address insertions written into the CAM
-  SW_STAT_CAM_FLUSH   = 13  ///< CAM flush operations performed
+  SW_STAT_RX_FRAMES   = 0,   ///< frames accepted by the receive filter
+  SW_STAT_RX_OCTETS   = 1,   ///< octets forwarded into the switching fabric
+  SW_STAT_RX_FILTERED = 2,   ///< frames dropped by the ingress filter
+  SW_STAT_RX_CRC_ERR  = 3,   ///< frames failing the FCS check
+  SW_STAT_RX_RUNT     = 4,   ///< frames shorter than 64 octets
+  SW_STAT_RX_OVERSIZE = 5,   ///< frames longer than the configured maximum
+  SW_STAT_RX_OVERFLOW = 6,   ///< frames dropped: ingress buffer exhausted
+  SW_STAT_TX_FRAMES   = 7,   ///< frame copies injected into a transmit port
+  SW_STAT_TX_OCTETS   = 8,   ///< octets injected into a transmit port
+  SW_STAT_TX_STALLED  = 9,   ///< frames discarded because egress was blocked
+  SW_STAT_CAM_HIT     = 10,  ///< CAM lookups that resolved to a port
+  SW_STAT_CAM_MISS    = 11,  ///< CAM lookups that fell through to flooding
+  SW_STAT_CAM_LEARN   = 12,  ///< address insertions written into the CAM
+  SW_STAT_CAM_FLUSH   = 13   ///< CAM flush operations performed
 } sw_stat_id_e;
 
 /// Number of statistics registers.
 localparam int unsigned SW_STAT_COUNT = 14;
 
-
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 `include "switch/es_switch_defs.sv"
 `default_nettype wire
-`endif // ES_DEFS_SV
+`endif  // ES_DEFS_SV

@@ -69,25 +69,25 @@ module es_switch_gmii_tx #(
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
   parameter int unsigned IFG_OCTETS  = SW_IFG_OCTETS
 ) (
-  input  var logic        clk_i,
-  input  var logic        rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- frame request -------------------------------------------------------
-  input  var logic        fr_start_i,   ///< pulse: begin transmitting a new frame
-  input  var logic [SW_LEN_W-1:0] fr_len_i, ///< MAC client data length, FCS excluded
+  input var logic                fr_start_i,  ///< pulse: begin transmitting a new frame
+  input var logic [SW_LEN_W-1:0] fr_len_i,    ///< MAC client data length, FCS excluded
   // Completion is sampled on the final FCS window, before entering IFG.
-  output logic done_o,
-  output logic [SW_LEN_W-1:0] done_len_o,
-  output logic        tx_busy_o,    ///< high from fr_start_i until the IFG ends
+  output    logic                done_o,
+  output    logic [SW_LEN_W-1:0] done_len_o,
+  output    logic                tx_busy_o,   ///< high from fr_start_i until the IFG ends
 
   // ---- frame data source (first-word-fall-through) -------------------------
-  input  var logic        beat_valid_i, ///< a beat is available
-  input  var logic [63:0] beat_data_i,
-  output logic        beat_rd_o,    ///< the current beat was consumed
+  input var logic        beat_valid_i,  ///< a beat is available
+  input var logic [63:0] beat_data_i,
+  output    logic        beat_rd_o,     ///< the current beat was consumed
 
   // ---- canonical octet transmit interface ----------------------------------
-  output logic        oct_en_o,    ///< octet-stream enable towards the front-end
-  output logic [7:0]  oct_d_o      ///< octet towards the front-end
+  output logic       oct_en_o,  ///< octet-stream enable towards the front-end
+  output logic [7:0] oct_d_o    ///< octet towards the front-end
 );
 
   // --------------------------------------------------------------------------
@@ -99,9 +99,9 @@ module es_switch_gmii_tx #(
 
   logic [BPW-1:0] phase;
   always_ff @(posedge clk_i) begin
-    if (!rst_ni)                  phase <= '0;
+    if (!rst_ni) phase <= '0;
     else if (phase == PHASE_LAST) phase <= '0;
-    else                          phase <= phase + BPW'(1);
+    else phase <= phase + BPW'(1);
   end
 
   logic tick;
@@ -123,29 +123,28 @@ module es_switch_gmii_tx #(
   } state_e;
 
   state_e                state;
-  logic [63:0]           cur_beat;   ///< beat currently being serialised
-  logic [3:0]            beat_left;  ///< octets of `cur_beat` still to drive
-  logic [3:0]            pre_cnt;    ///< preamble octets still to emit (8..1)
-  logic [SW_LEN_W-1:0]   sent;       ///< client octets driven so far
-  logic [SW_LEN_W-1:0]   len_q;      ///< declared MAC client data length
-  logic [SW_LEN_W-1:0]   total;      ///< `len_q` raised to the 802.3 minimum
+  logic   [        63:0] cur_beat;  ///< beat currently being serialised
+  logic   [         3:0] beat_left;  ///< octets of `cur_beat` still to drive
+  logic   [         3:0] pre_cnt;  ///< preamble octets still to emit (8..1)
+  logic   [SW_LEN_W-1:0] sent;  ///< client octets driven so far
+  logic   [SW_LEN_W-1:0] len_q;  ///< declared MAC client data length
+  logic   [SW_LEN_W-1:0] total;  ///< `len_q` raised to the 802.3 minimum
   /// Index of the next FCS octet to drive.  Counts 1..4: octet 0 is delivered by
   /// the S_FRAME -> S_FCS hand-over, and the counter reaching 4 is the signal to
   /// start the inter-frame gap.  It is deliberately one bit wider than the four
   /// octets so that "all delivered" is a distinct, representable value.
-  logic [2:0]            fcs_idx;
+  logic   [         2:0] fcs_idx;
   assign done_o = (state == S_FCS) && tick && (fcs_idx == 3'd4);
   assign done_len_o = len_q;
-
 
   /// A frame request arrived while the current octet window was still open.
   /// The MAC does not start the preamble until the next octet boundary, so that
   /// every octet window of a frame is exactly BYTE_PERIOD long - see the note on
   /// `S_IDLE` below.
-  logic                  fr_pending;
+  logic       fr_pending;
 
-  logic [7:0]            ifg_cnt;    ///< inter-frame gap countdown
-  logic [7:0]            octet;      ///< octet currently on the wire
+  logic [7:0] ifg_cnt;  ///< inter-frame gap countdown
+  logic [7:0] octet;  ///< octet currently on the wire
 
   // Busy from the moment a request is *accepted*, not from the moment the
   // sequencer actually starts: the fabric must not be offered a second frame while
@@ -153,7 +152,7 @@ module es_switch_gmii_tx #(
   // register, so this does not close the combinational loop through
   // `fr_start = !len_empty && !tx_busy` in the transmit port.
   assign tx_busy_o = (state != S_IDLE) || fr_pending;
-  assign oct_d_o  = octet;
+  assign oct_d_o = octet;
   // The enable follows the state combinationally, so it is asserted for exactly
   // the octet windows in which `octet` holds data.  Registering it instead would
   // delay it by one clock relative to the octet register and cost the first
@@ -164,8 +163,7 @@ module es_switch_gmii_tx #(
   // loads an octet: the enable would drop before that octet was ever presented.
   // The sequencer below is written to avoid it - in particular the last FCS octet
   // is loaded one full octet time before the inter-frame gap starts.
-  assign oct_en_o = (state == S_PRE)  || (state == S_LOAD) ||
-                     (state == S_FRAME) || (state == S_FCS);
+  assign oct_en_o = (state == S_PRE) || (state == S_LOAD) || (state == S_FRAME) || (state == S_FCS);
 
   // --------------------------------------------------------------------------
   // Octet selection inside the current beat.
@@ -197,7 +195,7 @@ module es_switch_gmii_tx #(
   logic [2:0] cur_idx;
   logic [7:0] cur_octet;
   assign cur_idx   = (beat_left == 4'd0) ? 3'd0 : 3'(BEAT_OCTETS - beat_left);
-  assign cur_octet = cur_beat[63 - {cur_idx, 3'b000} -: 8];
+  assign cur_octet = cur_beat[63-{cur_idx, 3'b000} -: 8];
 
   // Octet 0 of the beat offered by the source.  Selected outside the sequencer
   // process for the same reason as `cur_octet` / `fcs_octet`.
@@ -221,16 +219,16 @@ module es_switch_gmii_tx #(
   //   load_first - the first (or next) frame beat is taken at that tick
   //   done_fcs   - the last client octet leaves the MAC at that tick
   // --------------------------------------------------------------------------
-  logic [7:0] oct_next;
-  logic       crc_en_n;
-  logic [7:0] crc_din_n;
-  logic [7:0] crc_din;
-  logic       crc_en;
-  logic       load_first;
-  logic       done_fcs;
+  logic [ 7:0] oct_next;
+  logic        crc_en_n;
+  logic [ 7:0] crc_din_n;
+  logic [ 7:0] crc_din;
+  logic        crc_en;
+  logic        load_first;
+  logic        done_fcs;
   logic [31:0] crc_fin;
-  logic       crc_resid_ok;
-  logic       crc_clr;
+  logic        crc_resid_ok;
+  logic        crc_clr;
 
   // --------------------------------------------------------------------------
   // FCS generation.
@@ -249,20 +247,20 @@ module es_switch_gmii_tx #(
   // per octet, and every transmitted frame would carry a wrong FCS.  The clear
   // strobe needs no such treatment, because a repeated clear is idempotent.
   // --------------------------------------------------------------------------
-  assign crc_en   = crc_en_n && tick;
-  assign crc_din  = crc_din_n;
+  assign crc_en  = crc_en_n && tick;
+  assign crc_din = crc_din_n;
   // Re-seed the LFSR once, at the frame request, well before the first client
   // octet is absorbed.
-  assign crc_clr  = fr_start_i;
+  assign crc_clr = fr_start_i;
 
   es_switch_crc32 u_crc (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .en_i      (crc_en),
-      .din_i     (crc_din),
-      .clr_i     (crc_clr),
-      .crc_fin_o (crc_fin),
-      .resid_ok_o(crc_resid_ok)  // unused: the receive path performs the check
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .en_i      (crc_en),
+    .din_i     (crc_din),
+    .clr_i     (crc_clr),
+    .crc_fin_o (crc_fin),
+    .resid_ok_o(crc_resid_ok)  // unused: the receive path performs the check
   );
 
   logic unused_crc_ok;
@@ -284,10 +282,8 @@ module es_switch_gmii_tx #(
   logic [7:0] fcs_octet;
   logic [7:0] fcs_first;
 
-  assign fcs_octet = (fcs_idx == 3'd0) ? crc_fin[ 7: 0] :
-                     (fcs_idx == 3'd1) ? crc_fin[15: 8] :
-                     (fcs_idx == 3'd2) ? crc_fin[23:16] :
-                                         crc_fin[31:24];
+  assign fcs_octet = (fcs_idx == 3'd0) ? crc_fin[7:0] : (fcs_idx == 3'd1) ?
+      crc_fin[15:8] : (fcs_idx == 3'd2) ? crc_fin[23:16] : crc_fin[31:24];
 
   // The first FCS octet on the wire is always the low octet of the generator.
   assign fcs_first = crc_fin[7:0];
@@ -364,15 +360,15 @@ module es_switch_gmii_tx #(
       state      <= S_IDLE;
       fr_pending <= 1'b0;
       cur_beat   <= 64'd0;
-      beat_left <= 4'd0;
-      pre_cnt   <= 4'd0;
-      sent      <= '0;
-      len_q     <= '0;
-      total     <= '0;
-      fcs_idx   <= 3'd0;
-      ifg_cnt   <= 8'd0;
-      octet     <= 8'h00;
-      beat_rd_o <= 1'b0;
+      beat_left  <= 4'd0;
+      pre_cnt    <= 4'd0;
+      sent       <= '0;
+      len_q      <= '0;
+      total      <= '0;
+      fcs_idx    <= 3'd0;
+      ifg_cnt    <= 8'd0;
+      octet      <= 8'h00;
+      beat_rd_o  <= 1'b0;
     end else begin
       beat_rd_o <= 1'b0;
 
@@ -390,9 +386,8 @@ module es_switch_gmii_tx #(
         S_IDLE: begin
           if (fr_start_i && !fr_pending) begin
             fr_pending <= 1'b1;
-            len_q      <= fr_len_i;
-            total      <= (fr_len_i < SW_LEN_W'(SW_MIN_PAYLOAD))
-                            ? SW_LEN_W'(SW_MIN_PAYLOAD) : fr_len_i;
+            len_q <= fr_len_i;
+            total <= (fr_len_i < SW_LEN_W'(SW_MIN_PAYLOAD)) ? SW_LEN_W'(SW_MIN_PAYLOAD) : fr_len_i;
           end else if (fr_pending && tick) begin
             fr_pending <= 1'b0;
             pre_cnt    <= 4'd8;
@@ -410,11 +405,11 @@ module es_switch_gmii_tx #(
               if (load_first) begin
                 cur_beat  <= beat_data_i;
                 beat_rd_o <= 1'b1;
-                beat_left <= 4'd7;   // octets 1..7 are still to be driven
+                beat_left <= 4'd7;  // octets 1..7 are still to be driven
                 sent      <= SW_LEN_W'(1);
                 state     <= S_FRAME;
               end else begin
-                state <= S_LOAD;    // safety net, see the module header
+                state <= S_LOAD;  // safety net, see the module header
               end
             end else begin
               pre_cnt <= pre_cnt - 4'd1;
@@ -439,7 +434,7 @@ module es_switch_gmii_tx #(
             octet <= oct_next;
             if (done_fcs) begin
               state   <= S_FCS;
-              fcs_idx <= 3'd1;      // FCS octet 0 was delivered with `oct_next`
+              fcs_idx <= 3'd1;  // FCS octet 0 was delivered with `oct_next`
             end else if (load_first) begin
               cur_beat  <= beat_data_i;
               beat_rd_o <= 1'b1;
@@ -479,8 +474,8 @@ module es_switch_gmii_tx #(
         // Inter-frame gap: `oct_en_o` is low, which is how GMII encodes idle.
         S_IFG: begin
           if (tick) begin
-            if (ifg_cnt == 8'd1) state   <= S_IDLE;
-            else                ifg_cnt <= ifg_cnt - 8'd1;
+            if (ifg_cnt == 8'd1) state <= S_IDLE;
+            else ifg_cnt <= ifg_cnt - 8'd1;
           end
         end
 
@@ -497,4 +492,4 @@ endmodule : es_switch_gmii_tx
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_GMII_TX_SV
+`endif  // ES_SWITCH_GMII_TX_SV

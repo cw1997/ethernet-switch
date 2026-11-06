@@ -24,12 +24,14 @@
 
 `include "sw_tb_pkg.sv"
 
-module sw_rec_q import sw_tb_pkg::*; #(
+module sw_rec_q
+  import sw_tb_pkg::*;
+#(
   /// Number of records the queue can hold.
   parameter int unsigned DEPTH = 512
 ) (
-  input  logic       clk_i,
-  input  logic       rst_ni,
+  input logic clk_i,
+  input logic rst_ni,
 
   // ---- push ----------------------------------------------------------------
   // The port-side strobes exist for the case where the queue is driven by
@@ -38,25 +40,25 @@ module sw_rec_q import sw_tb_pkg::*; #(
   // task-driven strobes below could not contribute, and the queue would appear
   // permanently idle.  A `Z` port reads as high impedance and is resolved out of
   // the equation by the internal strobe, which is the behaviour wanted here.
-  input  wire           push_i,
-  input  tb_rec_t       push_data_i,
+  input wire     push_i,
+  input tb_rec_t push_data_i,
 
   // ---- pop -----------------------------------------------------------------
-  input  wire           pop_i,
-  output tb_rec_t       pop_data_o,   ///< head record; only valid when !empty_o
-  output logic          empty_o,
-  output logic          full_o,
-  output int unsigned   size_o
+  input  wire         pop_i,
+  output tb_rec_t     pop_data_o,  ///< head record; only valid when !empty_o
+  output logic        empty_o,
+  output logic        full_o,
+  output int unsigned size_o
 );
 
   // ==========================================================================
   // Storage
   // ==========================================================================
-  tb_rec_t mem [0:DEPTH-1];
+  tb_rec_t      mem                                                [0:DEPTH-1];
 
-  int unsigned rd_p;
-  int unsigned wr_p;
-  int unsigned cnt;
+  int unsigned  rd_p;
+  int unsigned  wr_p;
+  int unsigned  cnt;
 
   // Occupancy after this clock edge.  A push is ignored while the queue is
   // full and a pop while it is empty; the testbench sizes the queue so that
@@ -64,17 +66,17 @@ module sw_rec_q import sw_tb_pkg::*; #(
   // The task-local strobes are OR-ed with the input ports.  Driving a port net
   // from inside a task is a simulation-only construct, which is exactly what a
   // testbench component wants; the RTL never uses this pattern.
-  logic       push_strobe;
-  tb_rec_t    push_word;
-  logic       pop_strobe;
+  logic         push_strobe;
+  tb_rec_t      push_word;
+  logic         pop_strobe;
 
   // A tri-stated port read as `1'bx`; treating it as "no request" is what makes
   // an undriven port equivalent to a deasserted one.
-  wire port_push = (push_i === 1'b1);
-  wire port_pop  = (pop_i  === 1'b1);
+  wire          port_push = (push_i === 1'b1);
+  wire          port_pop = (pop_i === 1'b1);
 
-  wire do_push = port_push | push_strobe;
-  wire do_pop  = port_pop  | pop_strobe;
+  wire          do_push = port_push | push_strobe;
+  wire          do_pop = port_pop | pop_strobe;
 
   // The record that is stored: from the input port for a port-driven push, from
   // the task-local register for a task-driven one.  The task register wins when
@@ -82,11 +84,11 @@ module sw_rec_q import sw_tb_pkg::*; #(
   // different parts of the testbench.
   wire tb_rec_t push_value = push_strobe ? push_word : push_data_i;
 
-  int unsigned cnt_d;
+  int unsigned  cnt_d;
   always_comb begin
     cnt_d = cnt;
-    if      (do_push && (cnt < DEPTH) && !(do_pop && (cnt > 0))) cnt_d = cnt + 1;
-    else if (do_pop  && (cnt > 0))                               cnt_d = cnt - 1;
+    if (do_push && (cnt < DEPTH) && !(do_pop && (cnt > 0))) cnt_d = cnt + 1;
+    else if (do_pop && (cnt > 0)) cnt_d = cnt - 1;
   end
 
   // Head and tail advance by one whenever their side of the queue moves.
@@ -97,7 +99,7 @@ module sw_rec_q import sw_tb_pkg::*; #(
       cnt  <= 0;
     end else begin
       if (do_push && (cnt < DEPTH)) wr_p <= wr_p + 1;
-      if (do_pop  && (cnt > 0))     rd_p <= rd_p + 1;
+      if (do_pop && (cnt > 0)) rd_p <= rd_p + 1;
       cnt <= cnt_d;
     end
   end
@@ -168,7 +170,7 @@ module sw_rec_q import sw_tb_pkg::*; #(
   /// that was at the head on entry.  As in `push`, the task waits a further clock
   /// so that `size_o` is already updated when it returns.
   task automatic pop(output tb_rec_t r);
-    r          = head;
+    r = head;
     pop_strobe <= 1'b1;
     @(posedge clk_i);
     pop_strobe <= 1'b0;
@@ -177,4 +179,4 @@ module sw_rec_q import sw_tb_pkg::*; #(
 
 endmodule : sw_rec_q
 
-`endif // SW_REC_Q_SV
+`endif  // SW_REC_Q_SV

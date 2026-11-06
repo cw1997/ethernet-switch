@@ -41,37 +41,37 @@ module es_switch_sync_fifo #(
   /// Occupancy / free-space counter width: one extra bit for the DEPTH+1 state.
   parameter int unsigned CNT_W  = ADDR_W + 1
 ) (
-  input  var logic            clk_i,
-  input  var logic            rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- abort (rewind) ------------------------------------------------------
-  input  var logic            undo_i,        ///< rewind the write pointer
-  input  var logic [CNT_W-1:0] undo_cnt_i,   ///< number of entries to discard
+  input var logic             undo_i,     ///< rewind the write pointer
+  input var logic [CNT_W-1:0] undo_cnt_i, ///< number of entries to discard
 
   // ---- hard flush ----------------------------------------------------------
-  input  var logic            flush_i,       ///< drop every buffered entry
+  input var logic flush_i,  ///< drop every buffered entry
 
   // ---- write port ----------------------------------------------------------
-  input  var logic            wr_en_i,
-  input  var logic [WIDTH-1:0] wr_data_i,
-  output logic            full_o,
-  output logic [CNT_W-1:0] free_o,       ///< entries that can still be written
+  input var logic             wr_en_i,
+  input var logic [WIDTH-1:0] wr_data_i,
+  output    logic             full_o,
+  output    logic [CNT_W-1:0] free_o,     ///< entries that can still be written
 
   // ---- read port (FWFT) ----------------------------------------------------
-  input  var logic            rd_en_i,
-  output logic [WIDTH-1:0] rd_data_o,    ///< head entry, valid while !empty_o
-  output logic            empty_o
+  input var logic             rd_en_i,
+  output    logic [WIDTH-1:0] rd_data_o,  ///< head entry, valid while !empty_o
+  output    logic             empty_o
 );
 
   // --------------------------------------------------------------------------
   // Storage.  Inferred as a block or distributed RAM by the common FPGA vendors
   // because it is written from a single clocked process.
   // --------------------------------------------------------------------------
-  logic [WIDTH-1:0] mem [0:DEPTH-1];
+  logic [WIDTH-1:0] mem[0:DEPTH-1];
 
   logic [ADDR_W-1:0] wr_ptr;
   logic [ADDR_W-1:0] rd_ptr;
-  logic [CNT_W-1:0]  count;
+  logic [CNT_W-1:0] count;
 
   // A rewind or a flush suppresses the write in the same clock, so the two
   // operations can never fight over the write pointer.
@@ -97,19 +97,19 @@ module es_switch_sync_fifo #(
   // The rewind is applied after the read/write pair and wins over it, so a
   // combined "discard the head frame" action can never underflow.
   // --------------------------------------------------------------------------
-  logic [CNT_W-1:0] count_rw;   ///< occupancy after read and write
-  logic            do_read;
-  logic            undo_fire;
+  logic [CNT_W-1:0] count_rw;  ///< occupancy after read and write
+  logic             do_read;
+  logic             undo_fire;
   logic [CNT_W-1:0] count_d;
 
   assign do_read = rd_en_i && !empty_o;
 
   always_comb begin
-    if (flush_i)                   count_rw = '0;
-    else if (do_write && do_read)  count_rw = count;
-    else if (do_write)             count_rw = count + CNT_W'(1);
-    else if (do_read)              count_rw = count - CNT_W'(1);
-    else                           count_rw = count;
+    if (flush_i) count_rw = '0;
+    else if (do_write && do_read) count_rw = count;
+    else if (do_write) count_rw = count + CNT_W'(1);
+    else if (do_read) count_rw = count - CNT_W'(1);
+    else count_rw = count;
   end
 
   // The rewind only fires when the requested number of entries really is in the
@@ -132,7 +132,7 @@ module es_switch_sync_fifo #(
       count  <= '0;
     end else begin
       if (do_write) wr_ptr <= next_slot(wr_ptr);
-      if (do_read)  rd_ptr <= next_slot(rd_ptr);
+      if (do_read) rd_ptr <= next_slot(rd_ptr);
       // The rewind moves the write pointer only.  A frame is always the newest
       // data in the buffer, so nothing the consumer has already read can be
       // affected by it.
@@ -153,4 +153,4 @@ endmodule : es_switch_sync_fifo
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_SYNC_FIFO_SV
+`endif  // ES_SWITCH_SYNC_FIFO_SV

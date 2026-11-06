@@ -39,18 +39,17 @@ module sw_flood_tb #(
   // per ingress queue so the fabric really does see a queue.
   // --------------------------------------------------------------------------
   localparam int unsigned NUM_PORTS = 3;
-  localparam int unsigned CLK_FREQ  = 125_000_000;
-  localparam int unsigned RX_DEPTH  = 64;    // 8 beats * 8 frames
-  localparam int unsigned TX_DEPTH  = 64;
+  localparam int unsigned CLK_FREQ = 125_000_000;
+  localparam int unsigned RX_DEPTH = 64;  // 8 beats * 8 frames
+  localparam int unsigned TX_DEPTH = 64;
   localparam int unsigned TAG_DEPTH = 8;
-  localparam int unsigned CAM_SETS  = 16;
-  localparam int unsigned CAM_WAYS  = 2;
-  localparam int unsigned PAYLOAD   = 128;   // 16 beats
+  localparam int unsigned CAM_SETS = 16;
+  localparam int unsigned CAM_WAYS = 2;
+  localparam int unsigned PAYLOAD = 128;  // 16 beats
 
   localparam logic [NUM_PORTS*48-1:0] PORT_MAC = {
-      48'h02_00_00_00_00_02,
-      48'h02_00_00_00_00_01,
-      48'h02_00_00_00_00_00};
+    48'h02_00_00_00_00_02, 48'h02_00_00_00_00_01, 48'h02_00_00_00_00_00
+  };
 
   localparam logic [NUM_PORTS*2-1:0] PORT_SPEED = {2'd2, 2'd2, 2'(SPEED0)};
 
@@ -65,102 +64,133 @@ module sw_flood_tb #(
   logic rst_n = 1'b0;
   always #4 clk = ~clk;
 
-  logic [NUM_PORTS-1:0]        link_up;
-  logic [1:0]                  flood_mode;
-  logic                        learning_en, cfg_ovr, cam_flush;
-  logic [NUM_PORTS-1:0]        gmii_rx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_rx_data;
-  logic [NUM_PORTS-1:0]        gmii_tx_en;
-  logic [NUM_PORTS*8-1:0]      gmii_tx_data;
+  logic [NUM_PORTS-1:0] link_up;
+  logic [          1:0] flood_mode;
+  logic learning_en, cfg_ovr, cam_flush;
+  logic [       NUM_PORTS-1:0] gmii_rx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_rx_data;
+  logic [       NUM_PORTS-1:0] gmii_tx_en;
+  logic [     NUM_PORTS*8-1:0] gmii_tx_data;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
   logic mon_ready, mon_valid;
   logic [31:0] mon_data;
-  logic [31:0] scan_q=0;
+  logic [31:0] scan_q = 0;
   logic [31:0] monitor_address;
   logic [NUM_PORTS-1:0] quiet_tx_en;
   logic [NUM_PORTS*8-1:0] quiet_tx_data;
   logic [32*SW_STAT_COUNT-1:0] quiet_stat;
-  int unsigned compared_cycles=0;
-  assign monitor_address = scan_q[8] ? SW_MON_MAC_BASE+{23'd0,scan_q[7:0],1'b0} :
-                           SW_MON_PORT_BASE+{22'd0,scan_q[7:0],2'b00};
-  always @(negedge clk) if(rst_n) begin
-    if(mon_ready) scan_q <= scan_q+32'd1;
-    compared_cycles++;
-    if ({gmii_tx_en,gmii_tx_data,stat} !== {quiet_tx_en,quiet_tx_data,quiet_stat})
-      $fatal(1,"monitor changed output/latency at cycle %0d",compared_cycles);
-  end
+  int unsigned compared_cycles = 0;
+  assign monitor_address = scan_q[8] ? SW_MON_MAC_BASE + {23'd0, scan_q[7:0], 1'b0} :
+      SW_MON_PORT_BASE + {22'd0, scan_q[7:0], 2'b00};
+  always @(negedge clk)
+    if (rst_n) begin
+      if (mon_ready) scan_q <= scan_q + 32'd1;
+      compared_cycles++;
+      if ({gmii_tx_en, gmii_tx_data, stat} !== {quiet_tx_en, quiet_tx_data, quiet_stat})
+        $fatal(1, "monitor changed output/latency at cycle %0d", compared_cycles);
+    end
   es_switch_gmii #(
-      .NUM_PORTS      (NUM_PORTS),
-      .REFRESH_INTERVAL_MS (1),
-      .CLK_FREQ_HZ    (CLK_FREQ),
-      .PORT_MAC       (PORT_MAC),
-      .PORT_SPEED     (PORT_SPEED),
-      .RX_FIFO_DEPTH  (RX_DEPTH),
-      .TX_FIFO_DEPTH  (TX_DEPTH),
-      .TAG_FIFO_DEPTH (TAG_DEPTH),
-      .CAM_SETS       (CAM_SETS),
-      .CAM_WAYS       (CAM_WAYS)
+    .NUM_PORTS          (NUM_PORTS),
+    .REFRESH_INTERVAL_MS(1),
+    .CLK_FREQ_HZ        (CLK_FREQ),
+    .PORT_MAC           (PORT_MAC),
+    .PORT_SPEED         (PORT_SPEED),
+    .RX_FIFO_DEPTH      (RX_DEPTH),
+    .TX_FIFO_DEPTH      (TX_DEPTH),
+    .TAG_FIFO_DEPTH     (TAG_DEPTH),
+    .CAM_SETS           (CAM_SETS),
+    .CAM_WAYS           (CAM_WAYS)
   ) u_dut (
-      .phy_status_i ('0), .mon_req_i (rst_n && mon_ready), .mon_addr_i (monitor_address),
-      .mon_ready_o(mon_ready), .mon_valid_o(mon_valid), .mon_data_o(mon_data),
-      .clk_i           (clk),
-      .rst_ni          (rst_n),
-      .link_up_i       (link_up),
-      .flood_mode_i    (flood_mode),
-      .learning_en_i   (learning_en),
-      .cfg_ovr_i       (cfg_ovr),
-      .cam_flush_i     (cam_flush),
-      .gmii_rx_en_i    (gmii_rx_en),
-      .gmii_rx_data_i  (gmii_rx_data),
-      .gmii_tx_en_o    (gmii_tx_en),
-      .gmii_tx_data_o  (gmii_tx_data),
-      .stat_o          (stat)
+    .phy_status_i  ('0),
+    .mon_req_i     (rst_n && mon_ready),
+    .mon_addr_i    (monitor_address),
+    .mon_ready_o   (mon_ready),
+    .mon_valid_o   (mon_valid),
+    .mon_data_o    (mon_data),
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .flood_mode_i  (flood_mode),
+    .learning_en_i (learning_en),
+    .cfg_ovr_i     (cfg_ovr),
+    .cam_flush_i   (cam_flush),
+    .gmii_rx_en_i  (gmii_rx_en),
+    .gmii_rx_data_i(gmii_rx_data),
+    .gmii_tx_en_o  (gmii_tx_en),
+    .gmii_tx_data_o(gmii_tx_data),
+    .stat_o        (stat)
   );
   es_switch_gmii #(
-      .NUM_PORTS      (NUM_PORTS),
-      .REFRESH_INTERVAL_MS (1),
-      .CLK_FREQ_HZ    (CLK_FREQ),
-      .PORT_MAC       (PORT_MAC),
-      .PORT_SPEED     (PORT_SPEED),
-      .RX_FIFO_DEPTH  (RX_DEPTH),
-      .TX_FIFO_DEPTH  (TX_DEPTH),
-      .TAG_FIFO_DEPTH (TAG_DEPTH),
-      .CAM_SETS       (CAM_SETS),
-      .CAM_WAYS       (CAM_WAYS)
+    .NUM_PORTS          (NUM_PORTS),
+    .REFRESH_INTERVAL_MS(1),
+    .CLK_FREQ_HZ        (CLK_FREQ),
+    .PORT_MAC           (PORT_MAC),
+    .PORT_SPEED         (PORT_SPEED),
+    .RX_FIFO_DEPTH      (RX_DEPTH),
+    .TX_FIFO_DEPTH      (TX_DEPTH),
+    .TAG_FIFO_DEPTH     (TAG_DEPTH),
+    .CAM_SETS           (CAM_SETS),
+    .CAM_WAYS           (CAM_WAYS)
   ) u_quiet (
-      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
-      .clk_i           (clk),
-      .rst_ni          (rst_n),
-      .link_up_i       (link_up),
-      .flood_mode_i    (flood_mode),
-      .learning_en_i   (learning_en),
-      .cfg_ovr_i       (cfg_ovr),
-      .cam_flush_i     (cam_flush),
-      .gmii_rx_en_i    (gmii_rx_en),
-      .gmii_rx_data_i  (gmii_rx_data),
-      .gmii_tx_en_o    (quiet_tx_en),
-      .gmii_tx_data_o  (quiet_tx_data),
-      .stat_o          (quiet_stat)
+    .phy_status_i  ('0),
+    .mon_req_i     (1'b0),
+    .mon_addr_i    (32'd0),
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .flood_mode_i  (flood_mode),
+    .learning_en_i (learning_en),
+    .cfg_ovr_i     (cfg_ovr),
+    .cam_flush_i   (cam_flush),
+    .gmii_rx_en_i  (gmii_rx_en),
+    .gmii_rx_data_i(gmii_rx_data),
+    .gmii_tx_en_o  (quiet_tx_en),
+    .gmii_tx_data_o(quiet_tx_data),
+    .stat_o        (quiet_stat)
   );
 
   // --------------------------------------------------------------------------
   // Per-port models
   // --------------------------------------------------------------------------
-  sw_gmii_if #(.PORT_ID(0), .BYTE_PERIOD(SPEED0 == 0 ? 100 : 1)) i0 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[0]),
-      .gmii_rx_en(gmii_rx_en[0]), .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[0]), .gmii_tx_d(gmii_tx_data[0*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(0),
+    .BYTE_PERIOD(SPEED0 == 0 ? 100 : 1)
+  ) i0 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[0]),
+    .gmii_rx_en(gmii_rx_en[0]),
+    .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[0]),
+    .gmii_tx_d(gmii_tx_data[0*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(1), .BYTE_PERIOD(1)) i1 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[1]),
-      .gmii_rx_en(gmii_rx_en[1]), .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[1]), .gmii_tx_d(gmii_tx_data[1*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(1),
+    .BYTE_PERIOD(1)
+  ) i1 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[1]),
+    .gmii_rx_en(gmii_rx_en[1]),
+    .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[1]),
+    .gmii_tx_d(gmii_tx_data[1*8 +: 8])
+  );
 
-  sw_gmii_if #(.PORT_ID(2), .BYTE_PERIOD(1)) i2 (
-      .clk_i(clk), .rst_ni(rst_n), .enable_i(link_up[2]),
-      .gmii_rx_en(gmii_rx_en[2]), .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
-      .gmii_tx_en(gmii_tx_en[2]), .gmii_tx_d(gmii_tx_data[2*8 +: 8]));
+  sw_gmii_if #(
+    .PORT_ID(2),
+    .BYTE_PERIOD(1)
+  ) i2 (
+    .clk_i(clk),
+    .rst_ni(rst_n),
+    .enable_i(link_up[2]),
+    .gmii_rx_en(gmii_rx_en[2]),
+    .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
+    .gmii_tx_en(gmii_tx_en[2]),
+    .gmii_tx_d(gmii_tx_data[2*8 +: 8])
+  );
 
   // --------------------------------------------------------------------------
   // Bookkeeping
@@ -173,8 +203,7 @@ module sw_flood_tb #(
     $display("[%0t] ERROR %s", $time, msg);
   endtask
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -184,8 +213,8 @@ module sw_flood_tb #(
     end
   endtask
 
-  task automatic send_on(input int unsigned port, input sw_mac_t dst,
-                         input sw_mac_t src, input int unsigned len);
+  task automatic send_on(input int unsigned port, input sw_mac_t dst, input sw_mac_t src,
+                         input int unsigned len);
     case (port)
       0: i0.send(dst, src, TB_ET_IPV4, len);
       1: i1.send(dst, src, TB_ET_IPV4, len);
@@ -210,24 +239,45 @@ module sw_flood_tb #(
     n = 0;
     for (int unsigned guard = 0; guard < 64; guard++) begin
       got_one = 1'b1;
-      if      (p == 0) begin got_one = (i0.pending() != 0); if (got_one) i0.pop_frame(r, 0); end
-      else if (p == 1) begin got_one = (i1.pending() != 0); if (got_one) i1.pop_frame(r, 0); end
-      else if (p == 2) begin got_one = (i2.pending() != 0); if (got_one) i2.pop_frame(r, 0); end
+      if (p == 0) begin
+        got_one = (i0.pending() != 0);
+        if (got_one) i0.pop_frame(r, 0);
+      end else if (p == 1) begin
+        got_one = (i1.pending() != 0);
+        if (got_one) i1.pop_frame(r, 0);
+      end else if (p == 2) begin
+        got_one = (i2.pending() != 0);
+        if (got_one) i2.pop_frame(r, 0);
+      end
       if (!got_one) guard = 64;
       else begin
         n++;
         if (tb_rec_len(r) != PAYLOAD)
-          note_error($sformatf("%s: port %0d frame %0d has length %0d, expected %0d",
-                               what, p, n, tb_rec_len(r), PAYLOAD));
+          note_error($sformatf(
+                     "%s: port %0d frame %0d has length %0d, expected %0d",
+                     what,
+                     p,
+                     n,
+                     tb_rec_len(
+                         r
+                     ),
+                     PAYLOAD
+                     ));
         if (!tb_rec_fcs_ok(r))
           note_error($sformatf("%s: port %0d frame %0d has a bad FCS", what, p, n));
         if (!tb_rec_pre_ok(r))
           note_error($sformatf("%s: port %0d frame %0d has a bad preamble", what, p, n));
         if (exp_cnt[p*QW +: QW] == 0)
-          note_error($sformatf("%s: port %0d produced unexpected frame %0d to %s",
-                               what, p, n, tb_mac_str(tb_rec_dst(r))));
-        else
-          exp_cnt[p*QW +: QW] = exp_cnt[p*QW +: QW] - 1;
+          note_error($sformatf(
+                     "%s: port %0d produced unexpected frame %0d to %s",
+                     what,
+                     p,
+                     n,
+                     tb_mac_str(
+                         tb_rec_dst(r)
+                     )
+                     ));
+        else exp_cnt[p*QW +: QW] = exp_cnt[p*QW +: QW] - 1;
       end
     end
   endtask
@@ -249,9 +299,8 @@ module sw_flood_tb #(
   localparam int unsigned FRAME_OCTETS = 8 + PAYLOAD + 4 + 12;
 
   task automatic settle(input int unsigned frames);
-    for (int unsigned w = 0; w < frames*FRAME_OCTETS*SLOW_BP + 20000; w++) begin
-      if ((exp_cnt[0*QW +: QW] == 0) && (exp_cnt[1*QW +: QW] == 0) &&
-          (exp_cnt[2*QW +: QW] == 0)) w = 0;
+    for (int unsigned w = 0; w < frames * FRAME_OCTETS * SLOW_BP + 20000; w++) begin
+      if ((exp_cnt[0*QW +: QW] == 0) && (exp_cnt[1*QW +: QW] == 0) && (exp_cnt[2*QW +: QW] == 0)) w = 0;
       @(posedge clk);
     end
   endtask
@@ -267,23 +316,23 @@ module sw_flood_tb #(
   int unsigned t;
 
   initial begin
-    link_up    = '1;
-    flood_mode = SW_FLOOD_BCAST_UKN;
+    link_up     = '1;
+    flood_mode  = SW_FLOOD_BCAST_UKN;
     learning_en = 1'b1;
-    cfg_ovr    = 1'b0;
-    cam_flush  = 1'b0;
-    errors     = 0;
-    checks     = 0;
-    exp_cnt    = '0;
+    cfg_ovr     = 1'b0;
+    cam_flush   = 1'b0;
+    errors      = 0;
+    checks      = 0;
+    exp_cnt     = '0;
 
-    rst_n = 1'b0;
+    rst_n       = 1'b0;
     repeat (16) @(posedge clk);
     rst_n = 1'b1;
     repeat (16) @(posedge clk);
 
     $display("=====================================================================");
-    $display(" sw_flood_tb: %0d ports, %0d beat ingress/egress, %0d sets x %0d ways",
-             NUM_PORTS, RX_DEPTH, CAM_SETS, CAM_WAYS);
+    $display(" sw_flood_tb: %0d ports, %0d beat ingress/egress, %0d sets x %0d ways", NUM_PORTS,
+             RX_DEPTH, CAM_SETS, CAM_WAYS);
     $display("   port 0 link speed: %0d Mbit/s (%0d core clocks per octet)",
              (SPEED0 == 0) ? 10 : ((SPEED0 == 1) ? 100 : 1000),
              (SPEED0 == 0) ? 100 : ((SPEED0 == 1) ? 10 : 1));
@@ -315,8 +364,7 @@ module sw_flood_tb #(
     repeat (500) @(posedge clk);
     drain_all("flood");
     for (int unsigned p = 0; p < NUM_PORTS; p++) begin
-      expect_eq(exp_cnt[p*QW +: QW], 0,
-                $sformatf("flood: port %0d delivered all four copies", p));
+      expect_eq(exp_cnt[p*QW +: QW], 0, $sformatf("flood: port %0d delivered all four copies", p));
     end
 
     // ---- the same, but unicast, so each frame has a single destination ----
@@ -331,8 +379,7 @@ module sw_flood_tb #(
     repeat (500) @(posedge clk);
     drain_all("unicast");
     for (int unsigned p = 0; p < NUM_PORTS; p++) begin
-      expect_eq(exp_cnt[p*QW +: QW], 0,
-                $sformatf("unicast: port %0d owes nothing", p));
+      expect_eq(exp_cnt[p*QW +: QW], 0, $sformatf("unicast: port %0d owes nothing", p));
     end
 
     // ---- a deep queue on one egress ----------------------------------------
@@ -343,7 +390,7 @@ module sw_flood_tb #(
     // to buffer.  This is the situation the mixed-speed four-port regression
     // runs into, at a size that runs in seconds.
     $display("---- eight frames queued onto one slow egress ----");
-    send_on(0, SW_MAC_BROADCAST, HOST_D, PAYLOAD);   // learn HOST_D behind port 0
+    send_on(0, SW_MAC_BROADCAST, HOST_D, PAYLOAD);  // learn HOST_D behind port 0
     exp_add(1, 1);
     exp_add(2, 1);
     settle(2);
@@ -367,21 +414,19 @@ module sw_flood_tb #(
 
     $display("-----------------------------------------------------------------------");
     $display("   switch statistics: rx frames %0d, tx frames %0d, tx octets %0d",
-             stat[32*int'(SW_STAT_RX_FRAMES) +: 32],
-             stat[32*int'(SW_STAT_TX_FRAMES)  +: 32],
-             stat[32*int'(SW_STAT_TX_OCTETS)  +: 32]);
+             stat[32*int'(SW_STAT_RX_FRAMES) +: 32], stat[32*int'(SW_STAT_TX_FRAMES) +: 32],
+             stat[32*int'(SW_STAT_TX_OCTETS) +: 32]);
     $display("                     rx overflow %0d, stalled %0d, cam learn %0d",
-             stat[32*int'(SW_STAT_RX_OVERFLOW) +: 32],
-             stat[32*int'(SW_STAT_TX_STALLED)  +: 32],
-             stat[32*int'(SW_STAT_CAM_LEARN)   +: 32]);
-    $display("   per port: i0 %0d dropped / %0d short, i1 %0d / %0d, i2 %0d / %0d",
-             i0.dropped(), i0.short_frames(),
-             i1.dropped(), i1.short_frames(),
-             i2.dropped(), i2.short_frames());
+             stat[32*int'(SW_STAT_RX_OVERFLOW) +: 32], stat[32*int'(SW_STAT_TX_STALLED) +: 32],
+             stat[32*int'(SW_STAT_CAM_LEARN) +: 32]);
+    $display("   per port: i0 %0d dropped / %0d short, i1 %0d / %0d, i2 %0d / %0d", i0.dropped(),
+             i0.short_frames(), i1.dropped(), i1.short_frames(), i2.dropped(), i2.short_frames());
     $display("-----------------------------------------------------------------------");
 
     if (errors == 0) begin
-      $display(" sw_flood_tb: PASSED (%0d checks), cycle-exact active/quiet monitor comparison passed", checks);
+      $display(
+          " sw_flood_tb: PASSED (%0d checks), cycle-exact active/quiet monitor comparison passed",
+          checks);
       $finish;
     end else begin
       $fatal(1, " sw_flood_tb: FAILED (%0d of %0d checks failed)", errors, checks);

@@ -35,7 +35,7 @@ module sw_mii_tb;
   // a negedge so that the first posedge with rst_n high - grid cycle 0 for the
   // DUTs' free-running transmit counters - is unambiguous.
   // ---------------------------------------------------------------------------
-  logic clk   = 1'b0;
+  logic clk = 1'b0;
   logic rst_n = 1'b0;
 
   always #4 clk = ~clk;
@@ -68,20 +68,20 @@ module sw_mii_tb;
   logic [7:0] oct_d_i;
 
   es_switch_mii_adapter #(
-      .BYTE_PERIOD (BP)
+    .BYTE_PERIOD(BP)
   ) u_mii (
-      .clk_i      (clk),
-      .rst_ni     (rst_n),
-      .mii_rx_dv_i(rx_dv),
-      .mii_rx_er_i(rx_er),
-      .mii_rxd_i  (rxd),
-      .mii_tx_en_o(tx_en),
-      .mii_tx_er_o(tx_er_o),
-      .mii_txd_o  (txd),
-      .oct_en_o   (oct_en_o),
-      .oct_d_o    (oct_d_o),
-      .oct_en_i   (oct_en_i),
-      .oct_d_i    (oct_d_i)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .mii_rx_dv_i(rx_dv),
+    .mii_rx_er_i(rx_er),
+    .mii_rxd_i  (rxd),
+    .mii_tx_en_o(tx_en),
+    .mii_tx_er_o(tx_er_o),
+    .mii_txd_o  (txd),
+    .oct_en_o   (oct_en_o),
+    .oct_d_o    (oct_d_o),
+    .oct_en_i   (oct_en_i),
+    .oct_d_i    (oct_d_i)
   );
 
   // ---------------------------------------------------------------------------
@@ -102,20 +102,20 @@ module sw_mii_tb;
   logic [7:0] f_oct_d_i;
 
   es_switch_mii_adapter #(
-      .BYTE_PERIOD (BP2)
+    .BYTE_PERIOD(BP2)
   ) u_fast (
-      .clk_i      (clk),
-      .rst_ni     (rst_n),
-      .mii_rx_dv_i(f_rx_dv),
-      .mii_rx_er_i(f_rx_er),
-      .mii_rxd_i  (f_rxd),
-      .mii_tx_en_o(f_tx_en),
-      .mii_tx_er_o(f_tx_er_o),
-      .mii_txd_o  (f_txd),
-      .oct_en_o   (f_oct_en_o),
-      .oct_d_o    (f_oct_d_o),
-      .oct_en_i   (f_oct_en_i),
-      .oct_d_i    (f_oct_d_i)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .mii_rx_dv_i(f_rx_dv),
+    .mii_rx_er_i(f_rx_er),
+    .mii_rxd_i  (f_rxd),
+    .mii_tx_en_o(f_tx_en),
+    .mii_tx_er_o(f_tx_er_o),
+    .mii_txd_o  (f_txd),
+    .oct_en_o   (f_oct_en_o),
+    .oct_d_o    (f_oct_d_o),
+    .oct_en_i   (f_oct_en_i),
+    .oct_d_i    (f_oct_d_i)
   );
 
   // ---------------------------------------------------------------------------
@@ -124,8 +124,7 @@ module sw_mii_tb;
   int unsigned errors;
   int unsigned checks;
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -135,8 +134,7 @@ module sw_mii_tb;
     end
   endtask
 
-  task automatic expect_data(input logic [7:0] got,
-                             input logic [7:0] exp, input string what);
+  task automatic expect_data(input logic [7:0] got, input logic [7:0] exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -146,8 +144,7 @@ module sw_mii_tb;
     end
   endtask
 
-  task automatic expect_1bit(input logic got, input logic exp,
-                             input string what);
+  task automatic expect_1bit(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -158,22 +155,19 @@ module sw_mii_tb;
   endtask
 
   /// Octet k (0..7) of a packed MSB-first octet vector.
-  function automatic logic [7:0] get_oct(input logic [63:0] v,
-                                         input int unsigned k);
-    get_oct = v[63 - k*8 -: 8];
+  function automatic logic [7:0] get_oct(input logic [63:0] v, input int unsigned k);
+    get_oct = v[63-k*8 -: 8];
   endfunction
 
   // Icarus Verilog cannot take a part-select of a function call result, so the
   // nibble selectors below stage the octet through a local first.
-  function automatic logic [3:0] get_lo(input logic [63:0] v,
-                                        input int unsigned k);
+  function automatic logic [3:0] get_lo(input logic [63:0] v, input int unsigned k);
     logic [7:0] o;
     o = get_oct(v, k);
     get_lo = o[3:0];
   endfunction
 
-  function automatic logic [3:0] get_hi(input logic [63:0] v,
-                                        input int unsigned k);
+  function automatic logic [3:0] get_hi(input logic [63:0] v, input int unsigned k);
     logic [7:0] o;
     o = get_oct(v, k);
     get_hi = o[7:4];
@@ -214,22 +208,20 @@ module sw_mii_tb;
   // grid alignment.  `er_oct` is the octet index during whose windows RX_ER is
   // asserted (>= n means "never").  The task returns after the DV has dropped.
   // ---------------------------------------------------------------------------
-  task automatic mii_drive(input logic [63:0] octs,
-                           input int unsigned n,
-                           input int unsigned start_off,
-                           input int unsigned er_oct);
+  task automatic mii_drive(input logic [63:0] octs, input int unsigned n,
+                           input int unsigned start_off, input int unsigned er_oct);
     repeat (start_off) @(posedge clk);
-    @(posedge clk);                       // edge E0: the first lo window opens
+    @(posedge clk);  // edge E0: the first lo window opens
     for (int unsigned k = 0; k < n; k++) begin
       rx_dv <= 1'b1;
       rx_er <= (k == er_oct);
-      rxd   <= get_lo(octs, k);           // lo window: NPK cycles from now
-      repeat (NPK) @(posedge clk);        // the hi window opens here
+      rxd   <= get_lo(octs, k);  // lo window: NPK cycles from now
+      repeat (NPK) @(posedge clk);  // the hi window opens here
       rx_er <= (k == er_oct);
       rxd   <= get_hi(octs, k);
-      repeat (NPK) @(posedge clk);        // the next lo window opens here
+      repeat (NPK) @(posedge clk);  // the next lo window opens here
     end
-    rx_dv <= 1'b0;                        // idle from the cycle after the frame
+    rx_dv <= 1'b0;  // idle from the cycle after the frame
     rx_er <= 1'b0;
     rxd   <= 4'h0;
   endtask
@@ -239,9 +231,8 @@ module sw_mii_tb;
   // Each window must be BYTE_PERIOD long with a stable octet; after the last
   // one the enable must drop.
   // ---------------------------------------------------------------------------
-  task automatic check_presentation(input logic [63:0] octs,
-                                    input int unsigned n,
-                                    input string       tag);
+  task automatic check_presentation(input logic [63:0] octs, input int unsigned n,
+                                    input string tag);
     int unsigned waited;
     waited = 0;
     while (oct_en_o !== 1'b1 && waited < 5000) begin
@@ -292,26 +283,24 @@ module sw_mii_tb;
   // later, which must not change anything: the adapter's transmit counter
   // free-runs from reset and every whole octet time is on the grid.
   // ---------------------------------------------------------------------------
-  task automatic tx_frame_and_check(input logic [63:0] octs,
-                                    input int unsigned n,
-                                    input int unsigned octets_skew,
-                                    input string       tag);
+  task automatic tx_frame_and_check(input logic [63:0] octs, input int unsigned n,
+                                    input int unsigned octets_skew, input string tag);
     repeat (octets_skew * BP) @(posedge clk);
     align_to_grid(BP);
     for (int unsigned k = 0; k < n; k++) begin
-      oct_en_i <= 1'b1;                     // the octet window opens at this edge
+      oct_en_i <= 1'b1;  // the octet window opens at this edge
       oct_d_i  <= get_oct(octs, k);
       @(negedge clk);
       expect_1bit(tx_en, 1'b1, $sformatf("%s: tx en (octet %0d low window)", tag, k));
-      expect_data({4'h0, txd}, {4'h0, get_lo(octs, k)},
-                  $sformatf("%s: tx low nibble (octet %0d)", tag, k));
+      expect_data({4'h0, txd}, {4'h0, get_lo(octs, k)}, $sformatf(
+                  "%s: tx low nibble (octet %0d)", tag, k));
       repeat (NPK) step1();
       expect_1bit(tx_en, 1'b1, $sformatf("%s: tx en (octet %0d high window)", tag, k));
-      expect_data({4'h0, txd}, {4'h0, get_hi(octs, k)},
-                  $sformatf("%s: tx high nibble (octet %0d)", tag, k));
-      repeat (NPK) @(posedge clk);          // back to the next window's edge
+      expect_data({4'h0, txd}, {4'h0, get_hi(octs, k)}, $sformatf(
+                  "%s: tx high nibble (octet %0d)", tag, k));
+      repeat (NPK) @(posedge clk);  // back to the next window's edge
     end
-    oct_en_i <= 1'b0;                       // the enable drops at this boundary
+    oct_en_i <= 1'b0;  // the enable drops at this boundary
     oct_d_i  <= 8'h00;
     @(negedge clk);
     expect_1bit(tx_en, 1'b0, {tag, ": tx en dropped after the frame"});
@@ -324,9 +313,9 @@ module sw_mii_tb;
     for (int unsigned k = 0; k < n; k++) begin
       @(posedge clk);
       f_rx_dv <= 1'b1;
-      f_rxd   <= get_lo(octs, k);     // low nibble window: one clock
+      f_rxd   <= get_lo(octs, k);  // low nibble window: one clock
       @(posedge clk);
-      f_rxd   <= get_hi(octs, k);     // high nibble window: one clock
+      f_rxd <= get_hi(octs, k);  // high nibble window: one clock
     end
     @(posedge clk);
     f_rx_dv <= 1'b0;
@@ -350,7 +339,7 @@ module sw_mii_tb;
     f_oct_en_i = 1'b0;
     f_oct_d_i  = 8'h00;
 
-    rst_n = 1'b0;
+    rst_n      = 1'b0;
     repeat (4) @(posedge clk);
     @(negedge clk);
     rst_n = 1'b1;
@@ -363,10 +352,10 @@ module sw_mii_tb;
     // start_off = 2*BP-1 puts the first DV-high cycle on a grid boundary,
     // which is what a synchronous outer shell would produce.
     fork
-      mii_drive(64'hA5_3C_00_FF_11_22_33_44, 4, 2*BP - 1, 99);
+      mii_drive(64'hA5_3C_00_FF_11_22_33_44, 4, 2 * BP - 1, 99);
       check_presentation(64'hA5_3C_00_FF_11_22_33_44, 4, "aligned");
     join
-    check_stays_idle(2*BP, "aligned: idle after the frame");
+    check_stays_idle(2 * BP, "aligned: idle after the frame");
 
     // ---- 2. unaligned frame: self-synchronisation ------------------------
     // The frame starts 3 clocks into an octet time - no grid boundary.  The
@@ -375,17 +364,17 @@ module sw_mii_tb;
       mii_drive(64'h12_34_56_78_9A_BC_DE_F0, 4, 3, 99);
       check_presentation(64'h12_34_56_78_9A_BC_DE_F0, 4, "unaligned");
     join
-    check_stays_idle(2*BP, "unaligned: idle after the frame");
+    check_stays_idle(2 * BP, "unaligned: idle after the frame");
 
     // ---- 3. RX_ER during the first octet: nothing is presented -----------
     fork
-      mii_drive(64'hAA_BB_CC_DD_11_22_33_44, 3, 2*BP, 0);
-      check_stays_idle(6*BP, "ER in octet 0");
+      mii_drive(64'hAA_BB_CC_DD_11_22_33_44, 3, 2 * BP, 0);
+      check_stays_idle(6 * BP, "ER in octet 0");
     join
 
     // ---- 4. RX_ER during the second octet: truncated after octet 0 ------
     fork
-      mii_drive(64'h55_D5_AA_BB_11_22_33_44, 3, 2*BP, 1);
+      mii_drive(64'h55_D5_AA_BB_11_22_33_44, 3, 2 * BP, 1);
       begin
         int unsigned waited;
         waited = 0;
@@ -411,7 +400,7 @@ module sw_mii_tb;
     join
     // the sticky error flag must have cleared on the idle link
     fork
-      mii_drive(64'h77_88_11_22_33_44_55_66, 2, 2*BP, 99);
+      mii_drive(64'h77_88_11_22_33_44_55_66, 2, 2 * BP, 99);
       check_presentation(64'h77_88_11_22_33_44_55_66, 2, "after ER");
     join
 
@@ -453,12 +442,12 @@ module sw_mii_tb;
       f_oct_d_i  <= get_oct(64'h9C_4E_00_00_00_00_00_00, k);
       @(negedge clk);
       expect_1bit(f_tx_en, 1'b1, $sformatf("fast tx: en (octet %0d low window)", k));
-      expect_data({4'h0, f_txd}, {4'h0, get_lo(64'h9C_4E_00_00_00_00_00_00, k)},
-                  $sformatf("fast tx: low nibble (octet %0d)", k));
+      expect_data({4'h0, f_txd}, {4'h0, get_lo(64'h9C_4E_00_00_00_00_00_00, k)}, $sformatf(
+                  "fast tx: low nibble (octet %0d)", k));
       step1();
-      expect_data({4'h0, f_txd}, {4'h0, get_hi(64'h9C_4E_00_00_00_00_00_00, k)},
-                  $sformatf("fast tx: high nibble (octet %0d)", k));
-      @(posedge clk);                        // next window opens at this edge
+      expect_data({4'h0, f_txd}, {4'h0, get_hi(64'h9C_4E_00_00_00_00_00_00, k)}, $sformatf(
+                  "fast tx: high nibble (octet %0d)", k));
+      @(posedge clk);  // next window opens at this edge
     end
     f_oct_en_i <= 1'b0;
     @(negedge clk);

@@ -106,26 +106,26 @@ module es_switch_mii_adapter #(
   /// even number >= 2: every octet time carries exactly two nibble windows.
   parameter int unsigned BYTE_PERIOD = 2
 ) (
-  input  var logic       clk_i,
-  input  var logic       rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- MII receive pins (synchronous to clk_i) -----------------------------
-  input  var logic       mii_rx_dv_i,
-  input  var logic       mii_rx_er_i,
-  input  var logic [3:0] mii_rxd_i,
+  input var logic       mii_rx_dv_i,
+  input var logic       mii_rx_er_i,
+  input var logic [3:0] mii_rxd_i,
 
   // ---- MII transmit pins ---------------------------------------------------
   output logic       mii_tx_en_o,
-  output logic       mii_tx_er_o,   ///< never asserted: no transmit error source
+  output logic       mii_tx_er_o,  ///< never asserted: no transmit error source
   output logic [3:0] mii_txd_o,
 
   // ---- canonical octet stream (see the module header) ----------------------
   // receive direction: towards sw_rx_port
-  output logic       oct_en_o,
-  output logic [7:0] oct_d_o,
+  output    logic       oct_en_o,
+  output    logic [7:0] oct_d_o,
   // transmit direction: from sw_tx_port
-  input  var logic       oct_en_i,
-  input  var logic [7:0] oct_d_i
+  input var logic       oct_en_i,
+  input var logic [7:0] oct_d_i
 );
 
   // Nibble window length.  The elaboration check below rejects anything that
@@ -140,8 +140,9 @@ module es_switch_mii_adapter #(
 `ifndef SYNTHESIS
   initial begin
     if ((BYTE_PERIOD < 2) || (BYTE_PERIOD % 2 != 0)) begin
-      $error("es_switch_mii_adapter: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
-             BYTE_PERIOD);
+      $error(
+          "es_switch_mii_adapter: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
+          BYTE_PERIOD);
     end
   end
 `endif
@@ -156,8 +157,8 @@ module es_switch_mii_adapter #(
   // frame starts from, so no reload edge is needed: the clock that first sees
   // DV high is already the first clock of the first low-nibble window.
   // --------------------------------------------------------------------------
-  logic [NPW-1:0] rx_phase;   ///< clock within the current nibble window
-  logic           rx_half;    ///< 0 = low-nibble window, 1 = high-nibble window
+  logic [NPW-1:0] rx_phase;  ///< clock within the current nibble window
+  logic           rx_half;  ///< 0 = low-nibble window, 1 = high-nibble window
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -187,14 +188,14 @@ module es_switch_mii_adapter #(
   // --------------------------------------------------------------------------
   // Receive: octet assembly and presentation.
   // --------------------------------------------------------------------------
-  logic [3:0] rx_lo_q;    ///< low nibble captured in the first half
-  logic       rx_err;     ///< sticky: RX_ER seen while the link was enabled
-  logic       rx_en_q;    ///< enable presented on the canonical stream
-  logic [7:0] rx_d_q;     ///< octet presented on the canonical stream
+  logic [3:0] rx_lo_q;  ///< low nibble captured in the first half
+  logic       rx_err;  ///< sticky: RX_ER seen while the link was enabled
+  logic       rx_en_q;  ///< enable presented on the canonical stream
+  logic [7:0] rx_d_q;  ///< octet presented on the canonical stream
 
   /// Effective receive error: the sticky flag from an earlier window, or RX_ER
   /// on the pins in the window that is just ending.
-  logic rx_err_eff;
+  logic       rx_err_eff;
   assign rx_err_eff = rx_err || mii_rx_er_i;
 
   /// Presentation window countdown.  Reloaded at every octet end that presents
@@ -273,4 +274,4 @@ endmodule : es_switch_mii_adapter
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_MII_ADAPTER_SV
+`endif  // ES_SWITCH_MII_ADAPTER_SV

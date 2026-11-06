@@ -59,12 +59,12 @@ module es_switch_gmii_rx #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
-  input  var logic        clk_i,
-  input  var logic        rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
-  input  var logic        oct_en_i,   ///< octet-stream enable from the front-end
-  input  var logic [7:0]  oct_d_i,    ///< octet from the front-end
+  input var logic       oct_en_i,  ///< octet-stream enable from the front-end
+  input var logic [7:0] oct_d_i,   ///< octet from the front-end
 
   // ---- core beat interface -------------------------------------------------
   output logic        beat_valid_o,   ///< a 64-bit beat is available
@@ -72,7 +72,7 @@ module es_switch_gmii_rx #(
   output logic        beat_sof_o,     ///< beat carries the first octet of a frame
   output logic        beat_eof_o,     ///< beat carries the last octet of a frame
   output logic        beat_crc_ok_o,  ///< FCS verdict, valid together with eof
-  output logic [3:0]  beat_octets_o   ///< valid octets in this beat (1..8)
+  output logic [ 3:0] beat_octets_o   ///< valid octets in this beat (1..8)
 );
 
   // --------------------------------------------------------------------------
@@ -86,9 +86,9 @@ module es_switch_gmii_rx #(
 
   logic [BPW-1:0] phase;
   always_ff @(posedge clk_i) begin
-    if (!rst_ni)                  phase <= '0;
+    if (!rst_ni) phase <= '0;
     else if (phase == PHASE_LAST) phase <= '0;
-    else                          phase <= phase + BPW'(1);
+    else phase <= phase + BPW'(1);
   end
 
   // Sample on the final cycle of the octet time for maximum hold margin.
@@ -123,14 +123,14 @@ module es_switch_gmii_rx #(
   // clocks.  Clearing it on `!sample` instead would destroy the beat
   // accumulation for every port slower than 1000 Mbit/s.
   // --------------------------------------------------------------------------
-  logic       in_frame;   ///< an octet has been seen since the last idle gap
-  logic [3:0] bcnt;
+  logic        in_frame;  ///< an octet has been seen since the last idle gap
+  logic [ 3:0] bcnt;
   logic [63:0] acc;
-  logic       acc_sof;
+  logic        acc_sof;
 
   // The PHY de-asserts `oct_en_i` for at least one clock between frames; the
   // first such clock after an octet is the end-of-frame indication.
-  logic       fend;
+  logic        fend;
   assign fend = !oct_en_i && in_frame;
 
   // --------------------------------------------------------------------------
@@ -142,20 +142,20 @@ module es_switch_gmii_rx #(
   // still carries the value produced by the last octet of the frame, which is
   // exactly what the closing beat needs.
   // --------------------------------------------------------------------------
-  logic        crc_en, crc_clr, crc_resid_ok;
+  logic crc_en, crc_clr, crc_resid_ok;
 
   assign crc_en  = sample;
   assign crc_clr = !oct_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_crc32 u_crc (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .en_i      (crc_en),
-      .din_i     (oct_d_i),
-      .clr_i     (crc_clr),
-      .crc_fin_o (),      // unused: the receive side checks instead of generating
-      .resid_ok_o(crc_resid_ok)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .en_i      (crc_en),
+    .din_i     (oct_d_i),
+    .clr_i     (crc_clr),
+    .crc_fin_o (),             // unused: the receive side checks instead of generating
+    .resid_ok_o(crc_resid_ok)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -171,19 +171,19 @@ module es_switch_gmii_rx #(
   logic        emit_sof;
   logic        emit_eof;
   logic        emit_crc_ok;
-  logic [3:0]  emit_octets;
+  logic [ 3:0] emit_octets;
   logic [63:0] emit_data;
 
   // The beat in `acc` is full (bcnt == 8) and a ninth octet has been sampled, so
   // it is provably *not* the closing beat of the frame.
-  logic full_and_more;
+  logic        full_and_more;
   assign full_and_more = sample && (bcnt == 4'd8);
 
   // The frame has ended with either a full (bcnt == 8) or a partial
   // (0 < bcnt < 8) beat still sitting in `acc`; that beat is the closing one.
   logic close_full, close_part;
-  assign close_full = fend && (bcnt == 4'd8);
-  assign close_part = fend && (bcnt != 4'd0) && (bcnt != 4'd8);
+  assign close_full  = fend && (bcnt == 4'd8);
+  assign close_part  = fend && (bcnt != 4'd0) && (bcnt != 4'd8);
 
   assign emit        = full_and_more || close_full || close_part;
   assign emit_sof    = acc_sof;
@@ -207,13 +207,13 @@ module es_switch_gmii_rx #(
   // port in front of it always drains its beat FIFO, so a beat can never be
   // dropped, which is what allows the adapter to sustain full line rate.
   // --------------------------------------------------------------------------
-  logic        s0_valid, s0_sof, s0_eof, s0_crc_ok;
+  logic s0_valid, s0_sof, s0_eof, s0_crc_ok;
   logic [63:0] s0_data;
-  logic [3:0]  s0_octets;
+  logic [ 3:0] s0_octets;
 
-  logic        s1_valid, s1_sof, s1_eof, s1_crc_ok;
+  logic s1_valid, s1_sof, s1_eof, s1_crc_ok;
   logic [63:0] s1_data;
-  logic [3:0]  s1_octets;
+  logic [ 3:0] s1_octets;
 
   assign beat_valid_o  = s1_valid;
   assign beat_data_o   = s1_data;
@@ -305,4 +305,4 @@ endmodule : es_switch_gmii_rx
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_GMII_RX_SV
+`endif  // ES_SWITCH_GMII_RX_SV

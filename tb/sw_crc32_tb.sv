@@ -25,37 +25,37 @@ module sw_crc32_tb;
   // compilation-unit scope (`rtl/es_defs.sv`) and so need no import.
   import sw_tb_pkg::*;
 
-  logic        clk   = 1'b0;
-  logic        rst_n = 1'b0;
-  logic        en;
-  logic [7:0]  din;
-  logic        clr;
-  logic [31:0] crc_fin;
-  logic        resid_ok;
+  logic               clk = 1'b0;
+  logic               rst_n = 1'b0;
+  logic               en;
+  logic        [ 7:0] din;
+  logic               clr;
+  logic        [31:0] crc_fin;
+  logic               resid_ok;
 
-  int unsigned errors;
-  int unsigned checks;
+  int unsigned        errors;
+  int unsigned        checks;
 
-  always #5 clk = ~clk;   // 100 MHz - the block is clock enabled, not clock bound
+  always #5 clk = ~clk;  // 100 MHz - the block is clock enabled, not clock bound
 
   es_switch_crc32 u_dut (
-      .clk_i     (clk),
-      .rst_ni    (rst_n),
-      .en_i      (en),
-      .din_i     (din),
-      .clr_i     (clr),
-      .crc_fin_o (crc_fin),
-      .resid_ok_o(resid_ok)
+    .clk_i     (clk),
+    .rst_ni    (rst_n),
+    .en_i      (en),
+    .din_i     (din),
+    .clr_i     (clr),
+    .crc_fin_o (crc_fin),
+    .resid_ok_o(resid_ok)
   );
 
   // --------------------------------------------------------------------------
   // Message buffers, standard testbench width so that the helpers in
   // `sw_tb_pkg` can be used unchanged.  Octet 0 is the first one on the wire.
   // --------------------------------------------------------------------------
-  tb_frame_buf_t msg9;         // "123456789"
-  tb_frame_buf_t msg64;        // 64 octet counting pattern
-  tb_frame_buf_t msg68;        // the same 64 octets with the correct FCS appended
-  logic [31:0]    fcs;
+  tb_frame_buf_t        msg9;  // "123456789"
+  tb_frame_buf_t        msg64;  // 64 octet counting pattern
+  tb_frame_buf_t        msg68;  // the same 64 octets with the correct FCS appended
+  logic          [31:0] fcs;
 
   // --------------------------------------------------------------------------
   // Local helpers
@@ -67,28 +67,25 @@ module sw_crc32_tb;
   // --------------------------------------------------------------------------
   /// The FCS of the first `n` octets of `msg`, transmitted least significant
   /// octet first, appended at image offset `off`.
-  function automatic tb_frame_buf_t append_fcs(
-      input tb_frame_buf_t msg, input int unsigned n, input int unsigned off);
+  function automatic tb_frame_buf_t append_fcs(input tb_frame_buf_t msg, input int unsigned n,
+                                               input int unsigned off);
     tb_frame_buf_t b;
     logic [31:0]    c;
     c = tb_crc32(msg, n, 0);
-    b = tb_put_octet(msg, off + 0, c[ 7: 0]);
-    b = tb_put_octet(b,   off + 1, c[15: 8]);
-    b = tb_put_octet(b,   off + 2, c[23:16]);
-    b = tb_put_octet(b,   off + 3, c[31:24]);
+    b = tb_put_octet(msg, off + 0, c[7:0]);
+    b = tb_put_octet(b, off + 1, c[15:8]);
+    b = tb_put_octet(b, off + 2, c[23:16]);
+    b = tb_put_octet(b, off + 3, c[31:24]);
     return b;
   endfunction
 
   /// Flip one bit of the FCS octet at image offset `off`, i.e. corrupt the frame
   /// check sequence the way a transmission error would.
-  function automatic tb_frame_buf_t corrupt_fcs_at(
-      input tb_frame_buf_t msg, input int unsigned off);
+  function automatic tb_frame_buf_t corrupt_fcs_at(input tb_frame_buf_t msg,
+                                                   input int unsigned off);
     return tb_put_octet(msg, off, tb_get_octet(msg, off) ^ 8'h01);
   endfunction
 
-  // --------------------------------------------------------------------------
-  // Stimulus / check helpers
-  // --------------------------------------------------------------------------
   // --------------------------------------------------------------------------
   // Stimulus / check helpers
   //
@@ -102,8 +99,7 @@ module sw_crc32_tb;
   /// Absorb `n` octets of `msg` and return the resulting FCS in `result`.
   /// A task, not a function: the engine is clocked, so the result is only valid
   /// one clock after the last octet was presented.
-  task automatic run_tx(input tb_frame_buf_t msg, input int unsigned n,
-                        output logic [31:0] result);
+  task automatic run_tx(input tb_frame_buf_t msg, input int unsigned n, output logic [31:0] result);
     int unsigned k;
     begin
       // Re-seed the LFSR for exactly one clock.
@@ -127,8 +123,7 @@ module sw_crc32_tb;
   endtask
 
   /// Absorb `n` octets (FCS included) and report the residue verdict.
-  task automatic run_rx(input tb_frame_buf_t msg, input int unsigned n,
-                        output logic result);
+  task automatic run_rx(input tb_frame_buf_t msg, input int unsigned n, output logic result);
     int unsigned k;
     begin
       @(negedge clk);
@@ -141,15 +136,14 @@ module sw_crc32_tb;
         en  = 1'b1;
         @(negedge clk);
       end
-      en     = 1'b0;
-      din    = 8'h00;
+      en  = 1'b0;
+      din = 8'h00;
       @(posedge clk);
       result = resid_ok;
     end
   endtask
 
-  task automatic expect_eq32(input logic [31:0] got, input logic [31:0] exp,
-                             input string what);
+  task automatic expect_eq32(input logic [31:0] got, input logic [31:0] exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -181,18 +175,18 @@ module sw_crc32_tb;
 
     // ASCII "123456789", octet 0 = '1'.  Verilator cannot index a string
     // literal, so the characters are written out explicitly.
-    msg9 = '0;
-    msg9 = tb_put_octet(msg9, 0, 8'h31);   // '1'
-    msg9 = tb_put_octet(msg9, 1, 8'h32);   // '2'
-    msg9 = tb_put_octet(msg9, 2, 8'h33);   // '3'
-    msg9 = tb_put_octet(msg9, 3, 8'h34);   // '4'
-    msg9 = tb_put_octet(msg9, 4, 8'h35);   // '5'
-    msg9 = tb_put_octet(msg9, 5, 8'h36);   // '6'
-    msg9 = tb_put_octet(msg9, 6, 8'h37);   // '7'
-    msg9 = tb_put_octet(msg9, 7, 8'h38);   // '8'
-    msg9 = tb_put_octet(msg9, 8, 8'h39);   // '9'
+    msg9   = '0;
+    msg9   = tb_put_octet(msg9, 0, 8'h31);  // '1'
+    msg9   = tb_put_octet(msg9, 1, 8'h32);  // '2'
+    msg9   = tb_put_octet(msg9, 2, 8'h33);  // '3'
+    msg9   = tb_put_octet(msg9, 3, 8'h34);  // '4'
+    msg9   = tb_put_octet(msg9, 4, 8'h35);  // '5'
+    msg9   = tb_put_octet(msg9, 5, 8'h36);  // '6'
+    msg9   = tb_put_octet(msg9, 6, 8'h37);  // '7'
+    msg9   = tb_put_octet(msg9, 7, 8'h38);  // '8'
+    msg9   = tb_put_octet(msg9, 8, 8'h39);  // '9'
 
-    rst_n = 1'b0;
+    rst_n  = 1'b0;
     repeat (4) @(posedge clk);
     rst_n = 1'b1;
     @(posedge clk);

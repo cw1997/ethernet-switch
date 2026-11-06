@@ -11,12 +11,17 @@
 `define ES_CONSOLE_DEFS_SV
 `default_nettype none
 // Included by es_defs.sv after common declarations.
+// --------------------------------------------------------------------------
+// UART framing encodings
+//
+// Parity and flow-control values are shared by the UART, console and board
+// parameters.
+// --------------------------------------------------------------------------
 localparam int unsigned SW_UART_PARITY_NONE = 0;
 localparam int unsigned SW_UART_PARITY_ODD = 1;
 localparam int unsigned SW_UART_PARITY_EVEN = 2;
 localparam int unsigned SW_UART_FLOW_NONE = 0;
 localparam int unsigned SW_UART_FLOW_RTS_CTS = 1;
 
-
 `default_nettype wire
-`endif // ES_CONSOLE_DEFS_SV
+`endif  // ES_CONSOLE_DEFS_SV

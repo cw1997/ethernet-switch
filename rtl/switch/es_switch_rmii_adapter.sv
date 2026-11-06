@@ -112,12 +112,12 @@ module es_switch_rmii_adapter #(
   /// multiple of 4: every octet time carries exactly four 2-bit chunk windows.
   parameter int unsigned BYTE_PERIOD = 4
 ) (
-  input  var logic       clk_i,
-  input  var logic       rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- RMII receive pins (synchronous to clk_i) ----------------------------
-  input  var logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
-  input  var logic [1:0] rmii_rxd_i,
+  input var logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
+  input var logic [1:0] rmii_rxd_i,
 
   // ---- RMII transmit pins --------------------------------------------------
   output logic       rmii_tx_en_o,
@@ -125,11 +125,11 @@ module es_switch_rmii_adapter #(
 
   // ---- canonical octet stream (see the module header) ----------------------
   // receive direction: towards sw_rx_port
-  output logic       oct_en_o,
-  output logic [7:0] oct_d_o,
+  output    logic       oct_en_o,
+  output    logic [7:0] oct_d_o,
   // transmit direction: from sw_tx_port
-  input  var logic       oct_en_i,
-  input  var logic [7:0] oct_d_i
+  input var logic       oct_en_i,
+  input var logic [7:0] oct_d_i
 );
 
   // Chunk window length.  The elaboration check below rejects anything that
@@ -144,8 +144,9 @@ module es_switch_rmii_adapter #(
 `ifndef SYNTHESIS
   initial begin
     if ((BYTE_PERIOD < 4) || (BYTE_PERIOD % 4 != 0)) begin
-      $error("es_switch_rmii_adapter: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
-             BYTE_PERIOD);
+      $error(
+          "es_switch_rmii_adapter: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
+          BYTE_PERIOD);
     end
   end
 `endif
@@ -160,8 +161,8 @@ module es_switch_rmii_adapter #(
   // frame starts from, so no reload edge is needed: the clock that first sees
   // CRS_DV high is already the first clock of the first chunk window.
   // --------------------------------------------------------------------------
-  logic [CPW-1:0] rx_phase;   ///< clock within the current chunk window
-  logic [1:0]     rx_cidx;    ///< chunk index within the octet (0 = bits [1:0])
+  logic [CPW-1:0] rx_phase;  ///< clock within the current chunk window
+  logic [    1:0] rx_cidx;  ///< chunk index within the octet (0 = bits [1:0])
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -188,18 +189,18 @@ module es_switch_rmii_adapter #(
   // --------------------------------------------------------------------------
   // Receive: octet assembly and presentation.
   // --------------------------------------------------------------------------
-  logic [1:0] rx_c0_q;    ///< bits [1:0], captured in the first window
-  logic [1:0] rx_c1_q;    ///< bits [3:2]
-  logic [1:0] rx_c2_q;    ///< bits [5:4]
-  logic       rx_en_q;    ///< enable presented on the canonical stream
-  logic [7:0] rx_d_q;     ///< octet presented on the canonical stream
+  logic [    1:0] rx_c0_q;  ///< bits [1:0], captured in the first window
+  logic [    1:0] rx_c1_q;  ///< bits [3:2]
+  logic [    1:0] rx_c2_q;  ///< bits [5:4]
+  logic           rx_en_q;  ///< enable presented on the canonical stream
+  logic [    7:0] rx_d_q;  ///< octet presented on the canonical stream
 
   /// Presentation window countdown.  Reloaded at every octet end; it is what
   /// closes the *last* octet's window, after the link has gone idle and the
   /// parking counter has stopped producing octet ends.
   logic [PRW-1:0] rx_pres_cnt;
 
-  logic rx_en_nxt;
+  logic           rx_en_nxt;
   assign rx_en_nxt = rx_oct_end || (rx_pres_cnt != '0);
 
   always_ff @(posedge clk_i) begin
@@ -241,7 +242,7 @@ module es_switch_rmii_adapter #(
   // Transmit: free-running chunk windows on the reset grid.
   // --------------------------------------------------------------------------
   logic [CPW-1:0] tx_phase;
-  logic [1:0]     tx_cidx;
+  logic [    1:0] tx_cidx;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -263,10 +264,8 @@ module es_switch_rmii_adapter #(
   // select inside an always_* block makes Icarus over-approximate the
   // sensitivity list (it prints a "sorry" and includes every bit).
   assign rmii_tx_en_o = oct_en_i;
-  assign rmii_txd_o   = (tx_cidx == 2'd0) ? oct_d_i[1:0] :
-                        (tx_cidx == 2'd1) ? oct_d_i[3:2] :
-                        (tx_cidx == 2'd2) ? oct_d_i[5:4] :
-                                            oct_d_i[7:6];   // tx_cidx == 2'd3
+  assign rmii_txd_o = (tx_cidx == 2'd0) ? oct_d_i[1:0] : (tx_cidx == 2'd1) ?
+      oct_d_i[3:2] : (tx_cidx == 2'd2) ? oct_d_i[5:4] : oct_d_i[7:6];  // tx_cidx == 2'd3
 
 endmodule : es_switch_rmii_adapter
 
@@ -275,4 +274,4 @@ endmodule : es_switch_rmii_adapter
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_RMII_ADAPTER_SV
+`endif  // ES_SWITCH_RMII_ADAPTER_SV

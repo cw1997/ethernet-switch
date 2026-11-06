@@ -35,7 +35,9 @@
 // subroutine argument type in Icarus Verilog.  The RTL declarations
 // (`SW_IFG_OCTETS`, `sw_mac_t`, ...) need no import: they arrive at
 // compilation-unit scope through `rtl/es_defs.sv`, which the DUT pulls in.
-module sw_gmii_if import sw_tb_pkg::*; #(
+module sw_gmii_if
+  import sw_tb_pkg::*;
+#(
   /// Port index, used only in diagnostic messages.
   parameter int unsigned PORT_ID    = 0,
   /// `clk_i` cycles per GMII octet time on this port.
@@ -45,19 +47,18 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
-  input  logic       clk_i,
-  input  logic       rst_ni,
-  input  logic       enable_i,   ///< 0 = link down: the pins stay idle
+  input logic clk_i,
+  input logic rst_ni,
+  input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
   output logic       gmii_rx_en,
   output logic [7:0] gmii_rx_d,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
-  input  logic       gmii_tx_en,
-  input  logic [7:0] gmii_tx_d
+  input logic       gmii_tx_en,
+  input logic [7:0] gmii_tx_d
 );
-
 
   // ==========================================================================
   // Receive driver
@@ -81,14 +82,9 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   ///
   /// `drop_fcs` stops the transmission just before the FCS octets, which the
   /// switch has to notice as a truncated frame.
-  task automatic send(
-      input sw_mac_t     dst,
-      input sw_mac_t     src,
-      input logic [15:0] l2type,
-      input int unsigned total_len,
-      input bit          vlan_en     = 1'b0,
-      input bit          corrupt_fcs = 1'b0,
-      input bit          drop_fcs    = 1'b0);
+  task automatic send(input sw_mac_t dst, input sw_mac_t src, input logic [15:0] l2type,
+                      input int unsigned total_len, input bit vlan_en = 1'b0,
+                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0);
     tb_frame_buf_t frame;
     int unsigned   n;
     int unsigned   i;
@@ -161,7 +157,7 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   always_ff @(posedge clk_i) begin
     if (!rst_ni || !gmii_tx_en) mon_cnt <= '0;
     else if (mon_cnt == MPHASE_LAST) mon_cnt <= '0;
-    else                            mon_cnt <= mon_cnt + MPW'(1);
+    else mon_cnt <= mon_cnt + MPW'(1);
   end
 
   assign mon_sample = gmii_tx_en && (mon_cnt == MSAMPLE_CNT);
@@ -171,8 +167,8 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   int unsigned   mon_n;
   bit            mon_active;
 
-  int unsigned mon_dropped;
-  int unsigned mon_short;        ///< frames shorter than the 802.3 minimum
+  int unsigned   mon_dropped;
+  int unsigned   mon_short;  ///< frames shorter than the 802.3 minimum
 
   // Strobe pair that hands the frame which has just ended to the queue.  Both
   // are driven from the reassembly process below, so the queue is written from a
@@ -195,11 +191,13 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   // A sw_rec_q instance rather than a language queue, for the same reason the
   // testbench uses one: Icarus Verilog cannot put a typedef'd struct into a
   // queue, and the record layout has to be shared with the scoreboard.
-  sw_rec_q #(.DEPTH(MON_DEPTH)) u_mon (
-      .clk_i      (clk_i),
-      .rst_ni     (rst_ni),
-      .push_i     (mon_push_q),
-      .push_data_i(mon_push_rec)
+  sw_rec_q #(
+    .DEPTH(MON_DEPTH)
+  ) u_mon (
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .push_i     (mon_push_q),
+    .push_data_i(mon_push_rec)
   );
 
   // The reassembly, in a single process.
@@ -271,13 +269,11 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   /// reported as a data mismatch somewhere else.  The FCS covers the MAC client
   /// data only, so it starts after the eight preamble octets and stops before
   /// the last four octets.
-  function automatic tb_rec_t mon_check(
-      input tb_frame_buf_t b,
-      input int unsigned   n);
-    int unsigned i;
-    logic [31:0] fcs_calc;
-    logic [31:0] fcs_rx;
-    bit          preamble_ok;
+  function automatic tb_rec_t mon_check(input tb_frame_buf_t b, input int unsigned n);
+    int unsigned        i;
+    logic        [31:0] fcs_calc;
+    logic        [31:0] fcs_rx;
+    bit                 preamble_ok;
 
     preamble_ok = 1'b1;
     for (i = 0; i < 7; i++) begin
@@ -286,8 +282,9 @@ module sw_gmii_if import sw_tb_pkg::*; #(
     if (tb_get_octet(b, 7) != 8'hD5) preamble_ok = 1'b0;
 
     fcs_calc = tb_crc32(b, n - 4 - SW_PREAMBLE_LEN, SW_PREAMBLE_LEN);
-    fcs_rx   = {tb_get_octet(b, n-1), tb_get_octet(b, n-2),
-                tb_get_octet(b, n-3), tb_get_octet(b, n-4)};
+    fcs_rx = {
+      tb_get_octet(b, n - 1), tb_get_octet(b, n - 2), tb_get_octet(b, n - 3), tb_get_octet(b, n - 4)
+    };
 
     return tb_rec_from_wire(b, n, (fcs_calc == fcs_rx), preamble_ok);
   endfunction
@@ -297,9 +294,7 @@ module sw_gmii_if import sw_tb_pkg::*; #(
   // ==========================================================================
   /// Remove and return the oldest monitored frame.  A record whose length field
   /// is zero is returned when nothing arrives within `timeout` clocks.
-  task automatic pop_frame(
-      output tb_rec_t       r,
-      input  int unsigned   timeout = 20000);
+  task automatic pop_frame(output tb_rec_t r, input int unsigned timeout = 20000);
     int unsigned waited;
     waited = 0;
     while ((u_mon.size_o == 0) && (waited < timeout)) begin
@@ -307,7 +302,7 @@ module sw_gmii_if import sw_tb_pkg::*; #(
       waited++;
     end
     if (u_mon.size_o == 0) r = '0;
-    else                    u_mon.pop(r);
+    else u_mon.pop(r);
   endtask
 
   /// Number of frames received but not yet consumed by the scoreboard.
@@ -348,4 +343,4 @@ module sw_gmii_if import sw_tb_pkg::*; #(
 
 endmodule : sw_gmii_if
 
-`endif // SW_GMII_IF_SV
+`endif  // SW_GMII_IF_SV

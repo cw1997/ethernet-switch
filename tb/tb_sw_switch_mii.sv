@@ -31,64 +31,72 @@ module tb_sw_switch_mii;
   localparam logic [NUM_PORTS*2-1:0] SPEEDS = {2'b01, 2'b01};
   localparam int unsigned BP = sw_byte_period(CLK_HZ, SW_SPEED_100M);
 
-  logic clk   = 1'b0;
+  logic clk = 1'b0;
   logic rst_n = 1'b0;
   logic [NUM_PORTS-1:0] link_up;
 
   always #4 clk = ~clk;
 
   // ---- DUT pins -------------------------------------------------------------
-  logic [NUM_PORTS-1:0]        mii_rx_dv_i;
-  logic [NUM_PORTS-1:0]        mii_rx_er_i;
-  logic [NUM_PORTS*4-1:0]      mii_rxd_i;
-  logic [NUM_PORTS-1:0]        mii_tx_en_o;
-  logic [NUM_PORTS-1:0]        mii_tx_er_o;
-  logic [NUM_PORTS*4-1:0]      mii_txd_o;
+  logic [       NUM_PORTS-1:0] mii_rx_dv_i;
+  logic [       NUM_PORTS-1:0] mii_rx_er_i;
+  logic [     NUM_PORTS*4-1:0] mii_rxd_i;
+  logic [       NUM_PORTS-1:0] mii_tx_en_o;
+  logic [       NUM_PORTS-1:0] mii_tx_er_o;
+  logic [     NUM_PORTS*4-1:0] mii_txd_o;
   logic [32*SW_STAT_COUNT-1:0] stat_o;
 
   es_switch_mii #(
-      .NUM_PORTS  (NUM_PORTS),
-      .CLK_FREQ_HZ(CLK_HZ),
-      .PORT_SPEED (SPEEDS)
+    .NUM_PORTS  (NUM_PORTS),
+    .CLK_FREQ_HZ(CLK_HZ),
+    .PORT_SPEED (SPEEDS)
   ) u_dut (
-      .phy_status_i ('0), .mon_req_i (1'b0), .mon_addr_i (32'd0),
-      .clk_i        (clk),
-      .rst_ni       (rst_n),
-      .link_up_i    (link_up),
-      .flood_mode_i (2'd1),
-      .learning_en_i(1'b1),
-      .cfg_ovr_i    (1'b0),
-      .cam_flush_i  (1'b0),
-      .mii_rx_dv_i  (mii_rx_dv_i),
-      .mii_rx_er_i  (mii_rx_er_i),
-      .mii_rxd_i    (mii_rxd_i),
-      .mii_tx_en_o  (mii_tx_en_o),
-      .mii_tx_er_o  (mii_tx_er_o),
-      .mii_txd_o    (mii_txd_o),
-      .stat_o       (stat_o)
+    .phy_status_i ('0),
+    .mon_req_i    (1'b0),
+    .mon_addr_i   (32'd0),
+    .clk_i        (clk),
+    .rst_ni       (rst_n),
+    .link_up_i    (link_up),
+    .flood_mode_i (2'd1),
+    .learning_en_i(1'b1),
+    .cfg_ovr_i    (1'b0),
+    .cam_flush_i  (1'b0),
+    .mii_rx_dv_i  (mii_rx_dv_i),
+    .mii_rx_er_i  (mii_rx_er_i),
+    .mii_rxd_i    (mii_rxd_i),
+    .mii_tx_en_o  (mii_tx_en_o),
+    .mii_tx_er_o  (mii_tx_er_o),
+    .mii_txd_o    (mii_txd_o),
+    .stat_o       (stat_o)
   );
 
   // ---- per-port MII PHY models ----------------------------------------------
-  sw_mii_if #(.PORT_ID(0), .BYTE_PERIOD(BP)) u_if0 (
-      .clk_i    (clk),
-      .rst_ni   (rst_n),
-      .enable_i (link_up[0]),
-      .mii_rx_dv(mii_rx_dv_i[0]),
-      .mii_rx_er(mii_rx_er_i[0]),
-      .mii_rxd  (mii_rxd_i[3:0]),
-      .mii_tx_en(mii_tx_en_o[0]),
-      .mii_txd  (mii_txd_o[3:0])
+  sw_mii_if #(
+    .PORT_ID(0),
+    .BYTE_PERIOD(BP)
+  ) u_if0 (
+    .clk_i    (clk),
+    .rst_ni   (rst_n),
+    .enable_i (link_up[0]),
+    .mii_rx_dv(mii_rx_dv_i[0]),
+    .mii_rx_er(mii_rx_er_i[0]),
+    .mii_rxd  (mii_rxd_i[3:0]),
+    .mii_tx_en(mii_tx_en_o[0]),
+    .mii_txd  (mii_txd_o[3:0])
   );
 
-  sw_mii_if #(.PORT_ID(1), .BYTE_PERIOD(BP)) u_if1 (
-      .clk_i    (clk),
-      .rst_ni   (rst_n),
-      .enable_i (link_up[1]),
-      .mii_rx_dv(mii_rx_dv_i[1]),
-      .mii_rx_er(mii_rx_er_i[1]),
-      .mii_rxd  (mii_rxd_i[7:4]),
-      .mii_tx_en(mii_tx_en_o[1]),
-      .mii_txd  (mii_txd_o[7:4])
+  sw_mii_if #(
+    .PORT_ID(1),
+    .BYTE_PERIOD(BP)
+  ) u_if1 (
+    .clk_i    (clk),
+    .rst_ni   (rst_n),
+    .enable_i (link_up[1]),
+    .mii_rx_dv(mii_rx_dv_i[1]),
+    .mii_rx_er(mii_rx_er_i[1]),
+    .mii_rxd  (mii_rxd_i[7:4]),
+    .mii_tx_en(mii_tx_en_o[1]),
+    .mii_txd  (mii_txd_o[7:4])
   );
 
   // ---------------------------------------------------------------------------
@@ -97,8 +105,7 @@ module tb_sw_switch_mii;
   int unsigned errors;
   int unsigned checks;
 
-  task automatic expect_eq(input int unsigned got, input int unsigned exp,
-                           input string what);
+  task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -108,8 +115,7 @@ module tb_sw_switch_mii;
     end
   endtask
 
-  task automatic expect_1bit(input logic got, input logic exp,
-                             input string what);
+  task automatic expect_1bit(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
@@ -119,24 +125,20 @@ module tb_sw_switch_mii;
     end
   endtask
 
-  task automatic expect_mac(input sw_mac_t got, input sw_mac_t exp,
-                            input string what);
+  task automatic expect_mac(input sw_mac_t got, input sw_mac_t exp, input string what);
     checks++;
     if (got !== exp) begin
       errors++;
-      $display("[%0t] ERROR %s: got %s, expected %s", $time, what,
-               tb_mac_str(got), tb_mac_str(exp));
+      $display("[%0t] ERROR %s: got %s, expected %s", $time, what, tb_mac_str(got), tb_mac_str(exp
+               ));
     end else begin
       $display("[%0t] PASS  %s = %s", $time, what, tb_mac_str(got));
     end
   endtask
 
   /// Full verdict on one received frame.
-  task automatic check_rec(input tb_rec_t       r,
-                           input sw_mac_t       dst,
-                           input sw_mac_t       src,
-                           input int unsigned   total_len,
-                           input string         tag);
+  task automatic check_rec(input tb_rec_t r, input sw_mac_t dst, input sw_mac_t src,
+                           input int unsigned total_len, input string tag);
     expect_eq(tb_rec_len(r), total_len, {tag, ": length"});
     expect_1bit(tb_rec_fcs_ok(r), 1'b1, {tag, ": FCS verdict"});
     expect_1bit(tb_rec_pre_ok(r), 1'b1, {tag, ": preamble verdict"});
@@ -148,18 +150,13 @@ module tb_sw_switch_mii;
   /// One-line dump of the fabric statistics, for diagnosing where a frame
   /// was lost on its way through the switch.
   task automatic show_stats(input string tag);
-    $display("     [%s] stats: rx frames %0d (filtered %0d, crc %0d, runt %0d, oversize %0d, overflow %0d), tx frames %0d, cam learn %0d hit %0d miss %0d",
-             tag,
-             stat_o[32*SW_STAT_RX_FRAMES   +: 32],
-             stat_o[32*SW_STAT_RX_FILTERED +: 32],
-             stat_o[32*SW_STAT_RX_CRC_ERR  +: 32],
-             stat_o[32*SW_STAT_RX_RUNT     +: 32],
-             stat_o[32*SW_STAT_RX_OVERSIZE +: 32],
-             stat_o[32*SW_STAT_RX_OVERFLOW +: 32],
-             stat_o[32*SW_STAT_TX_FRAMES   +: 32],
-             stat_o[32*SW_STAT_CAM_LEARN   +: 32],
-             stat_o[32*SW_STAT_CAM_HIT     +: 32],
-             stat_o[32*SW_STAT_CAM_MISS    +: 32]);
+    $display(
+        "     [%s] stats: rx frames %0d (filtered %0d, crc %0d, runt %0d, oversize %0d, overflow %0d), tx frames %0d, cam learn %0d hit %0d miss %0d",
+        tag, stat_o[32*SW_STAT_RX_FRAMES +: 32], stat_o[32*SW_STAT_RX_FILTERED +: 32],
+        stat_o[32*SW_STAT_RX_CRC_ERR +: 32], stat_o[32*SW_STAT_RX_RUNT +: 32],
+        stat_o[32*SW_STAT_RX_OVERSIZE +: 32], stat_o[32*SW_STAT_RX_OVERFLOW +: 32],
+        stat_o[32*SW_STAT_TX_FRAMES +: 32], stat_o[32*SW_STAT_CAM_LEARN +: 32],
+        stat_o[32*SW_STAT_CAM_HIT +: 32], stat_o[32*SW_STAT_CAM_MISS +: 32]);
   endtask
 
   // ---------------------------------------------------------------------------
@@ -185,8 +182,8 @@ module tb_sw_switch_mii;
     rst_n = 1'b1;
 
     $display("=====================================================================");
-    $display(" tb_sw_switch_mii: %0d ports, %0d MHz core, both ports 100 Mbit/s",
-             NUM_PORTS, CLK_HZ / 1_000_000);
+    $display(" tb_sw_switch_mii: %0d ports, %0d MHz core, both ports 100 Mbit/s", NUM_PORTS,
+             CLK_HZ / 1_000_000);
     $display("=====================================================================");
 
     // ---- 1. unknown destination: flooded to the only other port ----------

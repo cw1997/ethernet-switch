@@ -41,22 +41,22 @@
 // them appear in a port range.  See es_defs.sv for why a package cannot be used
 // here.
 module es_switch_tx_port #(
-  parameter int unsigned BYTE_PERIOD    = 1,     ///< clk_i cycles per octet
-  parameter int unsigned TX_FIFO_DEPTH  = 256,   ///< egress beats buffered
-  parameter int unsigned LEN_FIFO_DEPTH = 8      ///< frame length descriptors
+  parameter int unsigned BYTE_PERIOD    = 1,    ///< clk_i cycles per octet
+  parameter int unsigned TX_FIFO_DEPTH  = 256,  ///< egress beats buffered
+  parameter int unsigned LEN_FIFO_DEPTH = 8     ///< frame length descriptors
 ) (
-  input  var logic                    clk_i,
-  input  var logic                    rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- fabric write side ---------------------------------------------------
-  input  var logic                    wr_en_i,     ///< a payload beat is offered
-  input  var logic [63:0]             wr_data_i,
-  input  var logic [SW_LEN_W-1:0]     wr_len_i,    ///< valid together with `wr_fr_i`
-  input  var logic                    wr_fr_i,     ///< this beat starts a new frame
+  input var logic                wr_en_i,    ///< a payload beat is offered
+  input var logic [        63:0] wr_data_i,
+  input var logic [SW_LEN_W-1:0] wr_len_i,   ///< valid together with `wr_fr_i`
+  input var logic                wr_fr_i,    ///< this beat starts a new frame
 
   // ---- canonical octet transmit interface ----------------------------------
-  output logic                    oct_en_o,
-  output logic [7:0]              oct_d_o,
+  output logic       oct_en_o,
+  output logic [7:0] oct_d_o,
 
   // ---- egress capacity (consumed by the arbiter) ---------------------------
   // Two separate limits, because there are two separate buffers, and reporting
@@ -79,7 +79,7 @@ module es_switch_tx_port #(
   // port as a destination fails the admission check.  On a switch whose ports
   // flood to one another, that is a single frame wedging the whole fabric.
   output logic [sw_tx_free_width(TX_FIFO_DEPTH):0] free_o,
-  output logic                                slot_o,   ///< a whole frame still fits
+  output logic                                     slot_o,  ///< a whole frame still fits
 
   // ---- status / statistics -------------------------------------------------
   output logic done_o,
@@ -87,12 +87,12 @@ module es_switch_tx_port #(
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
-  logic        tx_busy;
-  logic        len_empty;
-  logic [SW_LEN_W-1:0] len_data;
-  logic        data_empty;
-  logic [63:0] data_rd_data;   ///< FWFT head of the egress beat FIFO
-  logic        beat_rd;
+  logic                                      tx_busy;
+  logic                                      len_empty;
+  logic [                      SW_LEN_W-1:0] len_data;
+  logic                                      data_empty;
+  logic [                              63:0] data_rd_data;  ///< FWFT head of the egress beat FIFO
+  logic                                      beat_rd;
 
   // Free space in the length-descriptor FIFO.  Its width is whatever that FIFO
   // needs; only "is it non-zero" is used, so it is reduced to one bit here.
@@ -106,40 +106,40 @@ module es_switch_tx_port #(
   assign fr_start = !len_empty && !tx_busy;
 
   es_switch_gmii_tx #(
-      .BYTE_PERIOD (BYTE_PERIOD)
+    .BYTE_PERIOD(BYTE_PERIOD)
   ) u_gmii_tx (
-      .clk_i      (clk_i),
-      .rst_ni     (rst_ni),
-      .fr_start_i (fr_start),
-      .fr_len_i   (len_data),
-      .tx_busy_o  (tx_busy),
-      .done_o (done_o),
-      .done_len_o (done_len_o),
-      .beat_valid_i(!data_empty),
-      .beat_data_i (data_rd_data),
-      .beat_rd_o  (beat_rd),
-      .oct_en_o  (oct_en_o),
-      .oct_d_o   (oct_d_o)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .fr_start_i  (fr_start),
+    .fr_len_i    (len_data),
+    .tx_busy_o   (tx_busy),
+    .done_o      (done_o),
+    .done_len_o  (done_len_o),
+    .beat_valid_i(!data_empty),
+    .beat_data_i (data_rd_data),
+    .beat_rd_o   (beat_rd),
+    .oct_en_o    (oct_en_o),
+    .oct_d_o     (oct_d_o)
   );
 
   // ---- egress beat FIFO -----------------------------------------------------
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_sync_fifo #(
-      .WIDTH (64),
-      .DEPTH (TX_FIFO_DEPTH)
+    .WIDTH(64),
+    .DEPTH(TX_FIFO_DEPTH)
   ) u_data_fifo (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .undo_i    (1'b0),
-      .undo_cnt_i('0),
-      .flush_i   (1'b0),
-      .wr_en_i   (wr_en_i),
-      .wr_data_i (wr_data_i),
-      .full_o    (),      // the fabric guarantees the whole frame fits
-      .free_o    (free_o),
-      .rd_en_i   (beat_rd),
-      .rd_data_o (data_rd_data),
-      .empty_o   (data_empty)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .undo_i    (1'b0),
+    .undo_cnt_i('0),
+    .flush_i   (1'b0),
+    .wr_en_i   (wr_en_i),
+    .wr_data_i (wr_data_i),
+    .full_o    (),              // the fabric guarantees the whole frame fits
+    .free_o    (free_o),
+    .rd_en_i   (beat_rd),
+    .rd_data_o (data_rd_data),
+    .empty_o   (data_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -148,21 +148,21 @@ module es_switch_tx_port #(
   // the first one.
   /* verilator lint_off PINCONNECTEMPTY */
   es_switch_sync_fifo #(
-      .WIDTH (SW_LEN_W),
-      .DEPTH (LEN_FIFO_DEPTH)
+    .WIDTH(SW_LEN_W),
+    .DEPTH(LEN_FIFO_DEPTH)
   ) u_len_fifo (
-      .clk_i     (clk_i),
-      .rst_ni    (rst_ni),
-      .undo_i    (1'b0),
-      .undo_cnt_i('0),
-      .flush_i   (1'b0),
-      .wr_en_i   (wr_en_i & wr_fr_i),
-      .wr_data_i (wr_len_i),
-      .full_o    (),      // one descriptor per frame; `slot_o` gates the fabric
-      .free_o    (len_free),
-      .rd_en_i   (fr_start),
-      .rd_data_o (len_data),
-      .empty_o   (len_empty)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .undo_i    (1'b0),
+    .undo_cnt_i('0),
+    .flush_i   (1'b0),
+    .wr_en_i   (wr_en_i & wr_fr_i),
+    .wr_data_i (wr_len_i),
+    .full_o    (),                   // one descriptor per frame; `slot_o` gates the fabric
+    .free_o    (len_free),
+    .rd_en_i   (fr_start),
+    .rd_data_o (len_data),
+    .empty_o   (len_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -178,11 +178,12 @@ module es_switch_tx_port #(
   // all forms (see es_switch_arbiter.sv for the full note).
   genvar gk;
   generate
-  for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
-    if ((gk != int'(SW_STAT_TX_FRAMES)) && (gk != int'(SW_STAT_TX_OCTETS))) begin : g_stat_zero_other
-      assign stat_o[32*gk +: 32] = 32'd0;
+    for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+      if ((gk != int'(SW_STAT_TX_FRAMES)) &&
+          (gk != int'(SW_STAT_TX_OCTETS))) begin : g_stat_zero_other
+        assign stat_o[32*gk +: 32] = 32'd0;
+      end
     end
-  end
   endgenerate
 
   always_ff @(posedge clk_i) begin
@@ -202,4 +203,4 @@ endmodule : es_switch_tx_port
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif // ES_SWITCH_TX_PORT_SV
+`endif  // ES_SWITCH_TX_PORT_SV
