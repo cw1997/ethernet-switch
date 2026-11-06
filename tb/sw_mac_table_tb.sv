@@ -96,6 +96,48 @@ module sw_mac_table_tb #(
     .misses_o    (misses),
     .learns_o    (learns)
   );
+  // Frozen pre-extraction implementation checks every observable clock.
+  logic [$bits(hit)-1:0] ref_hit;
+  logic [$bits(port)-1:0] ref_port;
+  logic [$bits(entries)-1:0] ref_entries;
+  logic [$bits(hits)-1:0] ref_hits;
+  logic [$bits(misses)-1:0] ref_misses;
+  logic [$bits(learns)-1:0] ref_learns;
+  logic [$bits(mon_valid)-1:0] ref_mon_valid;
+  logic [$bits(mon_entry)-1:0] ref_mon_entry;
+  sw_mac_table_reference #(
+    .NUM_PORTS      (NUM_PORTS),
+    .NUM_SETS       (NUM_SETS),
+    .NUM_WAYS       (NUM_WAYS),
+    .AGE_EN         (1'b1),
+    .AGE_TICK_CYCLES(AGE_TICK),
+    .AGE_LIMIT      (AGE_LIMIT)
+  ) u_reference (
+    .mon_req_i   (mon_req),
+    .mon_index_i (mon_index),
+    .mon_valid_o (ref_mon_valid),
+    .mon_entry_o (ref_mon_entry),
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .flush_i     (flush),
+    .req_i       (req),
+    .mac_i       (mac),
+    .hit_o       (ref_hit),
+    .port_o      (ref_port),
+    .learn_i     (learn),
+    .learn_mac_i (learn_mac),
+    .learn_port_i(learn_port),
+    .entries_o   (ref_entries),
+    .hits_o      (ref_hits),
+    .misses_o    (ref_misses),
+    .learns_o    (ref_learns)
+  );
+  always @(negedge clk) begin
+    #1;
+    if (rst_n && (({hit, port, entries, hits, misses, learns, mon_valid, mon_entry} !== {ref_hit, ref_port, ref_entries, ref_hits, ref_misses, ref_learns, ref_mon_valid, ref_mon_entry})))
+      $fatal(1, "mac_table differs from pre-extraction cycle reference");
+  end
+
 
   // Two test addresses and one that is never learned.
   localparam logic [47:0] MAC_A = 48'h02_00_00_00_00_0A;

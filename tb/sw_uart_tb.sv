@@ -25,7 +25,7 @@ module sw_uart_case #(
   int errors = 0, received = 0;
   localparam int PERIOD = (HZ + BAUD / 2) / BAUD;
   localparam logic [7:0] MASK = 8'(255 >> (8 - BITS));
-  es_console_uart #(
+  es_perips_uart #(
     .CLK_FREQ_HZ(HZ),
     .BAUD_RATE(BAUD),
     .DATA_BITS(BITS),

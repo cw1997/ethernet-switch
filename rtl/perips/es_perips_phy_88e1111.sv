@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_monitor_phy.sv
+//  File        : es_perips_phy_88e1111.sv
 //  Description : Marvell 88E1111 Clause-22 discovery and status polling.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -11,14 +11,14 @@
 //                duplex, speed and management-error bits; enabled_o gates traffic.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_MONITOR_PHY_SV
-`define ES_MONITOR_PHY_SV
+`ifndef ES_PERIPS_PHY_88E1111_SV
+`define ES_PERIPS_PHY_88E1111_SV
 `default_nettype none
 
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_monitor_phy #(
+module es_perips_phy_88e1111 #(
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   /// Delay between PHY status polls, in milliseconds.
@@ -84,7 +84,7 @@ module es_monitor_phy #(
       default: reg_addr = 5'd17;
     endcase
   end
-  es_monitor_mdio #(
+  es_perips_mdio #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_mdio (
     .clk_i(clk_i),

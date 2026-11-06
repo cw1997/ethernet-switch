@@ -118,3 +118,12 @@ make vivado
 
 Vivado 在 `default_nettype none` 下要求显式声明输入端口种类。因此 RTL 模块输入
 采用 `input var logic`，MDIO 采用显式 `tri logic` 网络；这些声明保留核心行为和隐式网络检查。
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

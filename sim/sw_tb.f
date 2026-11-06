@@ -33,7 +33,9 @@ tb/sw_mii_if.sv
 tb/sw_rmii_if.sv
 tb/sw_if_array.sv
 tb/sw_crc32_tb.sv
+tb/sw_sync_fifo_reference.sv
 tb/sw_sync_fifo_tb.sv
+tb/sw_mac_table_reference.sv
 tb/sw_mac_table_tb.sv
 tb/sw_mii_tb.sv
 tb/sw_rmii_tb.sv
@@ -42,3 +44,6 @@ tb/sw_switch_param_tb.sv
 tb/tb_sw_switch.sv
 tb/tb_sw_switch_mii.sv
 tb/tb_sw_switch_rmii.sv
+
+tb/sw_page_reference.sv
+tb/sw_shared_tb.sv

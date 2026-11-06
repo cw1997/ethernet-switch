@@ -30,7 +30,7 @@ status=0
 echo "======================================================================"
 echo " Linting the RTL with Verilator -Wall (expect: no output at all)"
 echo "======================================================================"
-for top in es_switch_crc32 es_switch_sync_fifo es_switch_gmii_rx es_switch_gmii_tx es_switch_mac_table \
+for top in es_common_crc32 es_mems_sync_fifo es_switch_gmii_rx es_switch_gmii_tx es_switch_mac_table \
            es_switch_rx_port es_switch_tx_port es_switch_arbiter es_switch_mii es_switch_rmii \
            es_switch_core es_switch_gmii es_switch_mii es_switch_rmii; do
   printf '%-14s : ' "$top"

@@ -44,3 +44,12 @@ UART 模式及 17 项 Console 端到端检查；CTS 暂停不会冻结显示刷�
 增加约 62.4%（包含新增串口、LCD、PHY 管理和显示逻辑）。这些不是 FPGA LUT 数，
 也不能证明最高频率。Quartus 因 Remote Desktop 许可证限制报错 292032，尚未完成
 Fitter、资源占用、时序、GDS 和实板验证。详细资源数值与验证记录见[完整说明](monitor.md)。
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

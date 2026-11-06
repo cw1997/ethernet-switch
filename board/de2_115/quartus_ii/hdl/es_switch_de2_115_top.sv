@@ -113,7 +113,7 @@ module es_switch_de2_115_top #(
   // Isolate bidirectional pads from variable input-port collapsing in Icarus.
   logic [1:0] mdio_sample;
   assign mdio_sample = {ENET1_MDIO, ENET0_MDIO};
-  es_monitor_phy #(
+  es_perips_phy_88e1111 #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_phy0 (
     .clk_i(CLOCK_50),
@@ -126,7 +126,7 @@ module es_switch_de2_115_top #(
     .enabled_o(enabled[0])
   );
   assign ENET0_MDIO = mdio_oe[0] ? mdio_out[0] : 1'bz;
-  es_monitor_phy #(
+  es_perips_phy_88e1111 #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_phy1 (
     .clk_i(CLOCK_50),
@@ -241,7 +241,7 @@ module es_switch_de2_115_top #(
     .text_o(lcd_text)
   );
   assign {HEX7, HEX6, HEX5, HEX4, HEX3, HEX2, HEX1, HEX0} = hex;
-  es_monitor_lcd #(
+  es_perips_lcd #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_lcd (
     .clk_i (CLOCK_50),

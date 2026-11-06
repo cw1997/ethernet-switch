@@ -100,7 +100,7 @@ module es_console_core #(
   logic text_empty, unused_rts;
   assign rts_no = (UART_FLOW_CONTROL == SW_UART_FLOW_NONE) ? 1'b0 : (state_q != S_RX);
   assign text_empty = text_left_q == 7'd0;
-  es_console_uart #(
+  es_perips_uart #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ),
     .BAUD_RATE(UART_BAUD_RATE),
     .DATA_BITS(UART_DATA_BITS),
@@ -168,13 +168,11 @@ module es_console_core #(
     parse = {kind, number};
   endfunction
   assign parsed = parse(command_q, length_q);
-  function automatic logic [7:0] hexchar(input var logic [3:0] x);
-    hexchar = (x < 4'd10) ? 8'd48 + {4'd0, x} : 8'd55 + {4'd0, x};
-  endfunction
+
   function automatic logic [511:0] value_line(input var logic [191:0] label,
                                               input var logic [63:0] value);
     logic [127:0] hextext;
-    for (int unsigned h = 0; h < 16; h++) hextext[127-h*8 -: 8] = hexchar(value[63-h*4 -: 4]);
+    for (int unsigned h = 0; h < 16; h++) hextext[127-h*8 -: 8] = sw_hexchar(value[63-h*4 -: 4]);
     value_line = {label, "=0x", hextext, 16'h0d0a, 152'd0};
   endfunction
   function automatic logic [191:0] label_for(input var logic [5:0] line);

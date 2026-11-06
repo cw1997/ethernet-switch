@@ -840,7 +840,7 @@ module es_switch_rx_port #(
   assign data_rd_en = rd_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(64),
     .DEPTH(RX_FIFO_DEPTH)
   ) u_data_fifo (
@@ -862,7 +862,7 @@ module es_switch_rx_port #(
   assign rd_data_o = data_rd_data;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(WF_W),
     .DEPTH(WF_DEPTH)
   ) u_wf (
@@ -882,7 +882,7 @@ module es_switch_rx_port #(
   /* verilator lint_on PINCONNECTEMPTY */
 
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(TAGW),
     .DEPTH(TAG_FIFO_DEPTH)
   ) u_tag_fifo (

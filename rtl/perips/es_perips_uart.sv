@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_console_uart.sv
+//  File        : es_perips_uart.sv
 //  Description : Parameterized UART transmitter and receiver.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -11,8 +11,8 @@
 //                rx_ready_i; error outputs diagnose framing, parity and overflow.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_CONSOLE_UART_SV
-`define ES_CONSOLE_UART_SV
+`ifndef ES_PERIPS_UART_SV
+`define ES_PERIPS_UART_SV
 `default_nettype none
 `include "es_defs.sv"
 `include "console/es_console_defs.sv"
@@ -21,7 +21,7 @@
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_console_uart #(
+module es_perips_uart #(
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   /// UART bit rate in bits per second.
@@ -64,24 +64,11 @@ module es_console_uart #(
   // control uses them. CTS gates acceptance of a new character; it must not
   // truncate a character already in flight.
   // --------------------------------------------------------------------------
-  logic rx_meta_q, rx_sync_q, cts_meta_q, cts_sync_q;
-
-  // --------------------------------------------------------------------------
-  // Synchronous state and datapath
-  // --------------------------------------------------------------------------
-  always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
-      rx_meta_q  <= 1'b1;
-      rx_sync_q  <= 1'b1;
-      cts_meta_q <= 1'b1;
-      cts_sync_q <= 1'b1;
-    end else begin
-      rx_meta_q  <= rx_i;
-      rx_sync_q  <= rx_meta_q;
-      cts_meta_q <= cts_ni;
-      cts_sync_q <= cts_meta_q;
-    end
-  end
+  logic rx_sync_q, cts_sync_q;
+  es_common_sync_2ff #(.WIDTH(2)) u_sync (
+    .clk_i(clk_i), .rst_ni(rst_ni), .async_i({rx_i, cts_ni}),
+    .sync_o({rx_sync_q, cts_sync_q})
+  );
   // --------------------------------------------------------------------------
   // UART frame construction
   //

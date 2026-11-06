@@ -46,21 +46,21 @@ set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-ST
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_uart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_uart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_cache.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_decimal.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_bin_to_bcd.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_display.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_lcd.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_mdio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_lcd.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_mdio.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_page.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_phy.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_ratio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_phy_88e1111.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_ratio.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_arbiter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_crc32.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_crc32.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii_rx.sv
@@ -71,7 +71,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii_adapter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rx_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_sync_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_sync_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_tx_port.sv
 set_global_assignment -name SYSTEMVERILOG_FILE hdl/es_switch_de2_115_top.sv
 
@@ -171,3 +171,10 @@ set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_sync_2ff.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_ram_1r1w.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_reg_bank.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_key_debounce.sv
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_defs.sv

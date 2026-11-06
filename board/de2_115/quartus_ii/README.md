@@ -110,3 +110,12 @@ make lint rtl unit param mii rmii sim synth
 `Error (292032): You cannot use the specified license with Remote Desktop`。
 本次新增逻辑尚无 Fitter/TimeQuest 及实板验证结果。需在可用许可会话执行
 `build.bat`，确认 50 MHz 和 MII 输出约束，再下载 SOF 检查实际外设。
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

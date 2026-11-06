@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_monitor_mdio.sv
+//  File        : es_perips_mdio.sv
 //  Description : Clause-22 MDIO transaction controller.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -11,14 +11,14 @@
 //                mdio_oe_o is deasserted for turnaround and read-data sampling.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_MONITOR_MDIO_SV
-`define ES_MONITOR_MDIO_SV
+`ifndef ES_PERIPS_MDIO_SV
+`define ES_PERIPS_MDIO_SV
 `default_nettype none
 
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_monitor_mdio #(
+module es_perips_mdio #(
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
   /// Requested management clock frequency in hertz.

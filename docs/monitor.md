@@ -102,7 +102,7 @@ The board shell and `es_console_core` accept compile-time parameters:
 `UART_BAUD_RATE=115200`, `UART_DATA_BITS=8`, `UART_PARITY=SW_UART_PARITY_NONE`,
 `UART_STOP_BITS=1`, `UART_FLOW_CONTROL=SW_UART_FLOW_NONE`.
 
-`es_console_uart` supports 5..8 bits, None/Odd/Even parity, 1/2 stop bits, and None or
+`es_perips_uart` supports 5..8 bits, None/Odd/Even parity, 1/2 stop bits, and None or
 RTS/CTS. The ASCII console requires 7/8 bits. Unsupported values fail elaboration;
 the rounded integer baud period must be at least four clocks and within 2 percent
 of the requested rate. RTS/CTS are active-low permissions. CTS is checked between
@@ -164,3 +164,12 @@ flow retains Yosys's two expected warnings about native MDIO tri-state pins.
 Quartus II 13.1 rejected the local Remote Desktop license before synthesis
 (error 292032). FPGA fitting, resource utilization and timing, actual peripheral
 IO timing, GDS timing and board operation remain unverified for this revision.
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

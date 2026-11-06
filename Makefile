@@ -58,8 +58,12 @@ BUILD    := build
 RTL_HEADERS := $(wildcard $(RTL_DIR)/*defs.sv $(RTL_DIR)/*/*defs.sv)
 
 RTL_SRCS := \
-  $(RTL_DIR)/switch/es_switch_crc32.sv \
-  $(RTL_DIR)/switch/es_switch_sync_fifo.sv \
+  $(RTL_DIR)/common/es_common_sync_2ff.sv \
+  $(RTL_DIR)/mems/es_mems_ram_1r1w.sv \
+  $(RTL_DIR)/mems/es_mems_reg_bank.sv \
+  $(RTL_DIR)/perips/es_perips_key_debounce.sv \
+  $(RTL_DIR)/common/es_common_crc32.sv \
+  $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
   $(RTL_DIR)/switch/es_switch_gmii_rx.sv \
   $(RTL_DIR)/switch/es_switch_mii_adapter.sv \
   $(RTL_DIR)/switch/es_switch_rmii_adapter.sv \
@@ -68,16 +72,16 @@ RTL_SRCS := \
   $(RTL_DIR)/switch/es_switch_mac_table.sv \
   $(RTL_DIR)/switch/es_switch_gmii_tx.sv \
   $(RTL_DIR)/switch/es_switch_tx_port.sv \
-  $(RTL_DIR)/console/es_console_uart.sv \
-  $(RTL_DIR)/monitor/es_monitor_mdio.sv \
-  $(RTL_DIR)/monitor/es_monitor_phy.sv \
+  $(RTL_DIR)/perips/es_perips_uart.sv \
+  $(RTL_DIR)/perips/es_perips_mdio.sv \
+  $(RTL_DIR)/perips/es_perips_phy_88e1111.sv \
   $(RTL_DIR)/monitor/es_monitor_cache.sv \
   $(RTL_DIR)/monitor/es_monitor_page.sv \
-  $(RTL_DIR)/monitor/es_monitor_decimal.sv \
-  $(RTL_DIR)/monitor/es_monitor_lcd.sv \
+  $(RTL_DIR)/common/es_common_bin_to_bcd.sv \
+  $(RTL_DIR)/perips/es_perips_lcd.sv \
   $(RTL_DIR)/monitor/es_monitor_display.sv \
   $(RTL_DIR)/console/es_console_core.sv \
-  $(RTL_DIR)/monitor/es_monitor_ratio.sv \
+  $(RTL_DIR)/common/es_common_ratio.sv \
   $(RTL_DIR)/monitor/es_monitor_core.sv \
   $(RTL_DIR)/switch/es_switch_core.sv \
   $(RTL_DIR)/switch/es_switch_gmii.sv \
@@ -221,19 +225,19 @@ $(BUILD)/tb_sw_switch_rmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
 
 $(BUILD)/sw_crc32_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_crc32_tb \
-	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_crc32.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/common/es_common_crc32.sv \
 	  $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_crc32_tb.sv
 
 $(BUILD)/sw_sync_fifo_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_sync_fifo_tb \
-	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_sync_fifo.sv \
-	  $(TB_DIR)/sw_sync_fifo_tb.sv
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mems/es_mems_ram_1r1w.sv $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
+	  $(TB_DIR)/sw_sync_fifo_reference.sv $(TB_DIR)/sw_sync_fifo_tb.sv
 
-$(BUILD)/sw_mac_table_tb.vvp: $(RTL_HEADERS) $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
-                            $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv | $(BUILD)
+$(BUILD)/sw_mac_table_tb.vvp: $(RTL_HEADERS) $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mems/es_mems_reg_bank.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
+                            $(TB_COMMON) $(TB_DIR)/sw_mac_table_reference.sv $(TB_DIR)/sw_mac_table_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mac_table_tb \
-	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
-	  $(TB_COMMON) $(TB_DIR)/sw_mac_table_tb.sv
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mems/es_mems_reg_bank.sv $(RTL_DIR)/switch/es_switch_mac_table.sv \
+	  $(TB_COMMON) $(TB_DIR)/sw_mac_table_reference.sv $(TB_DIR)/sw_mac_table_tb.sv
 
 $(BUILD)/sw_mii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mii_tb \
@@ -361,3 +365,12 @@ $(BUILD)/sw_console_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_console_tb.s
 
 $(BUILD)/sw_tx_completion_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -s sw_tx_completion_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv
+
+.PHONY: shared-unit monitor-params
+unit: shared-unit monitor-params
+shared-unit: $(BUILD)/sw_shared_tb.vvp
+	$(VVP) $<
+$(BUILD)/sw_shared_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_shared_tb.sv $(TB_DIR)/sw_page_reference.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_shared_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_page_reference.sv $(TB_DIR)/sw_shared_tb.sv
+monitor-params: | $(BUILD)
+	bash $(TB_DIR)/check_monitor_params.sh $(IVERILOG) $(BUILD) $(RTL_DIR)

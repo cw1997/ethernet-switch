@@ -132,7 +132,7 @@ module sw_monitor_ui_tb;
     .tx_kpps_o(tk),
     .text_o(text)
   );
-  es_monitor_lcd #(
+  es_perips_lcd #(
     .CLK_FREQ_HZ(1_000_000)
   ) lcd_dut (
     .clk_i (clk),

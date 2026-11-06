@@ -81,10 +81,7 @@ function automatic int unsigned sw_byte_period(input int unsigned clk_freq_hz,
   end
 endfunction
 
-/// Bits needed to encode a port index in [0, NUM_PORTS).
-function automatic int sw_port_w(input int unsigned n);
-  sw_port_w = (n > 2) ? $clog2(n) : 1;
-endfunction
+
 // ============================================================================
 // 8.  Statistics register map exported on the read-only `stat_o` bus
 // ============================================================================
@@ -108,6 +105,10 @@ typedef enum int unsigned {
 /// Number of statistics registers.
 localparam int unsigned SW_STAT_COUNT = 14;
 
+`include "common/es_common_defs.sv"
+`include "perips/es_perips_defs.sv"
+`include "common/es_common_defs.sv"
+`include "perips/es_perips_defs.sv"
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 `include "switch/es_switch_defs.sv"

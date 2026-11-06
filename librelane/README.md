@@ -5,7 +5,7 @@ to a GDSII, with LibreLane 3.0 and the open-source `sky130A` PDK.
 
 ## Telemetry source additions
 
-`VERILOG_FILES` also includes `rtl/monitor/es_monitor_ratio.sv` and `rtl/monitor/es_monitor_core.sv` for the
+`VERILOG_FILES` also includes `rtl/common/es_common_ratio.sv` and `rtl/monitor/es_monitor_core.sv` for the
 core telemetry ABI. No flow variable was added or renamed; the pinned LibreLane
 configuration keys are unchanged. UART/LCD/MDIO peripherals are outside the ASIC
 source set. The new CSR and PHY-metadata pins increase interface and monitoring
@@ -259,7 +259,7 @@ The frontend is the whole of the problem, and it is a single fast command.  To
 confirm the RTL is flow-readable without downloading the image:
 
     yosys -p 'read_verilog -defer -noautowire -sv -I rtl \
-              rtl/es_defs.sv rtl/switch/es_switch_crc32.sv rtl/switch/es_switch_sync_fifo.sv \
+              rtl/es_defs.sv rtl/common/es_common_crc32.sv rtl/mems/es_mems_sync_fifo.sv \
               rtl/switch/es_switch_gmii_rx.sv rtl/switch/es_switch_mii.sv rtl/switch/es_switch_rmii.sv \
               rtl/switch/es_switch_rx_port.sv rtl/switch/es_switch_arbiter.sv \
               rtl/switch/es_switch_mac_table.sv rtl/switch/es_switch_gmii_tx.sv rtl/switch/es_switch_tx_port.sv \
@@ -366,3 +366,12 @@ CI GDS collection use these new paths/names, including the distinct
 remains four ports. No physical-flow variable keys or sizing settings change.
 Earlier area/timing/GDS measurements describe the old `sw_switch_gmii`
 revision and are not measurements of this refactor.
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

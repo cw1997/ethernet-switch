@@ -253,7 +253,7 @@ module es_switch_gmii_tx #(
   // octet is absorbed.
   assign crc_clr = fr_start_i;
 
-  es_switch_crc32 u_crc (
+  es_common_crc32 u_crc (
     .clk_i     (clk_i),
     .rst_ni    (rst_ni),
     .en_i      (crc_en),

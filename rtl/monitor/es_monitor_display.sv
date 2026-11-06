@@ -59,24 +59,7 @@ module es_monitor_display #(
   // Formatting uses the held record; placeholders represent unavailable
   // samples rather than zero traffic.
   // --------------------------------------------------------------------------
-  function automatic logic [6:0] segment(input var logic [3:0] d);
-    case (d)
-      4'd0: segment = 7'b1000000;
-      4'd1: segment = 7'b1111001;
-      4'd2: segment = 7'b0100100;
-      4'd3: segment = 7'b0110000;
-      4'd4: segment = 7'b0011001;
-      4'd5: segment = 7'b0010010;
-      4'd6: segment = 7'b0000010;
-      4'd7: segment = 7'b1111000;
-      4'd8: segment = 7'b0000000;
-      4'd9: segment = 7'b0010000;
-      default: segment = 7'b0111111;
-    endcase
-  endfunction
-  function automatic logic [7:0] hexchar(input var logic [3:0] d);
-    hexchar = (d < 4'd10) ? 8'd48 + {4'd0, d} : 8'd55 + {4'd0, d};
-  endfunction
+
   function automatic logic [255:0] screen(input var logic [31:0] page,
                                           input var logic valid,
                                           input var logic [319:0] digits);
@@ -87,7 +70,7 @@ module es_monitor_display #(
     for (int unsigned row = 0; row < 2; row++) begin
       if (page != 32'd0)
         for (int unsigned h = 0; h < 8; h++)
-          t[255-(row*16+h)*8 -: 8] = hexchar(port_index[31-h*4 -: 4]);
+          t[255-(row*16+h)*8 -: 8] = sw_hexchar(port_index[31-h*4 -: 4]);
       if (!valid) begin
         for (int unsigned d = 0; d < 6; d++) t[255-(row*16+9+d)*8 -: 8] = "-";
       end else begin
@@ -97,7 +80,7 @@ module es_monitor_display #(
     end
     screen = t;
   endfunction
-  es_monitor_ratio u_scale (
+  es_common_ratio u_scale (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .start_i(state_q == S_SCALE),
@@ -108,7 +91,7 @@ module es_monitor_display #(
     .valid_o(ratio_valid),
     .result_o(ratio_result)
   );
-  es_monitor_decimal u_decimal (
+  es_common_bin_to_bcd u_decimal (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .start_i(state_q == S_DEC),
@@ -178,8 +161,8 @@ module es_monitor_display #(
       rx_kpps_o <= rx_k_q;
       tx_kpps_o <= tx_k_q;
       for (int unsigned d = 0; d < 4; d++) begin
-        hex_o[d*7 +: 7] <= valid_q ? segment(digits_q[80+d*4 +: 4]) : 7'b0111111;
-        hex_o[(d+4)*7 +: 7] <= valid_q ? segment(digits_q[d*4 +: 4]) : 7'b0111111;
+        hex_o[d*7 +: 7] <= valid_q ? sw_sevenseg_digit(digits_q[80+d*4 +: 4]) : 7'b0111111;
+        hex_o[(d+4)*7 +: 7] <= valid_q ? sw_sevenseg_digit(digits_q[d*4 +: 4]) : 7'b0111111;
       end
     end
   end

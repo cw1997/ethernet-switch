@@ -214,7 +214,7 @@ module es_monitor_core #(
     end
   end
   assign ratio_start = state_q == S_START;
-  es_monitor_ratio u_ratio (
+  es_common_ratio u_ratio (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .start_i(ratio_start),

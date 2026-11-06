@@ -20,7 +20,7 @@ module sw_phy_monitor_tb;
   int bit_index = 0, errors = 0, checks = 0;
   logic read_cmd = 0, selected = 0;
   logic [4:0] reg_addr = 0;
-  es_monitor_phy #(
+  es_perips_phy_88e1111 #(
     .CLK_FREQ_HZ(10_000_000),
     .POLL_INTERVAL_MS(1),
     .RESET_WAIT_MS(0)

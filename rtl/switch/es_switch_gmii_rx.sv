@@ -148,7 +148,7 @@ module es_switch_gmii_rx #(
   assign crc_clr = !oct_en_i;
 
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_crc32 u_crc (
+  es_common_crc32 u_crc (
     .clk_i     (clk_i),
     .rst_ni    (rst_ni),
     .en_i      (crc_en),

@@ -17,7 +17,7 @@ this design in a way a testbench could not see.
 ## 1. Repository map
 
 ```
-rtl/           the design.  switch/, monitor/, console/; es_<domain>_<block>.sv / matching module
+rtl/           the design.  switch/, monitor/, console/, perips/, mems/, common/; es_<domain>_<block>.sv / matching module
 tb/            self-checking testbenches.  Never synthesised, never linted by CI
 board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
                project (board top, pins, constraints, build.bat); its top
@@ -282,7 +282,7 @@ includes `initial`: there is none left in `rtl/`.
 
 Two narrow, documented exceptions exist:
 
-- `es_switch_crc32.sv` computes its byte-wise CRC lookup in a function rather than an
+- `es_common_crc32.sv` computes its byte-wise CRC lookup in a function rather than an
   `initial`-initialised table. The table form was the one sanctioned `initial`
   block until it met Quartus, whose constant evaluator needs tens of
   CPU-minutes *per instance* on an initial-block-initialised memory (§2.4);
@@ -305,7 +305,7 @@ Two narrow, documented exceptions exist:
 | `<name>_q` | registered value | `len_q`, `cam_hit_q` |
 | `<name>_d`, `<name>_n` | combinational *next value* | `count_d`, `crc_en_n` |
 | `S_XXX` | FSM state, in a `typedef enum logic [n:0]` | `S_PRE`, `S_TAIL` |
-| `es_<domain>_*` / `sw_*` | design module / shared declaration | `es_switch_sync_fifo`, `sw_is_unicast` |
+| `es_<domain>_*` / `sw_*` | design module / shared declaration | `es_mems_sync_fifo`, `sw_is_unicast` |
 | `cnt_*`, `stat_o` | statistics | `cnt_tx_octets` |
 | `unused_*` | a deliberate dummy consumer for a signal nothing reads | `unused_crc_ok` |
 
@@ -468,3 +468,12 @@ this is the short list.
 | `32 * 32` for two counts | a real multiplier array in the netlist | §3.2 |
 | Comment that contradicts the code | worse than no comment — see `tx_octets_inc` | §3.6 |
 | Assuming a non-2**n octet period works | 1000BASE-T on a 50 MHz core runs at 400 Mbit/s | `sw_byte_period` |
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

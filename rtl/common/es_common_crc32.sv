@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_crc32.sv
+//  File        : es_common_crc32.sv
 //  Description : Byte-serial Ethernet CRC-32 (IEEE 802.3 clause 4.1).
 //
 //                The module is deliberately *octet* serial: it consumes at most
@@ -30,8 +30,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_CRC32_SV
-`define ES_SWITCH_CRC32_SV
+`ifndef ES_COMMON_CRC32_SV
+`define ES_COMMON_CRC32_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -45,7 +45,7 @@
 
 // The shared CRC constants arrive through the include above and are visible at
 // compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
-module es_switch_crc32 (
+module es_common_crc32 (
   input var logic        clk_i,      ///< core clock
   input var logic        rst_ni,     ///< active-low synchronous reset
   input var logic        en_i,       ///< absorb `din_i` this clock
@@ -114,11 +114,11 @@ module es_switch_crc32 (
   assign crc_fin_o  = crc ^ SW_CRC32_XOROUT;
   assign resid_ok_o = (crc == SW_CRC32_RESIDUE);
 
-endmodule : es_switch_crc32
+endmodule : es_common_crc32
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_CRC32_SV
+`endif  // ES_COMMON_CRC32_SV

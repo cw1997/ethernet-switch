@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_monitor_lcd.sv
+//  File        : es_perips_lcd.sv
 //  Description : Character LCD write sequencer.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -10,14 +10,14 @@
 //                LCD access timing is counted in clk_i cycles, not delayed RTL.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_MONITOR_LCD_SV
-`define ES_MONITOR_LCD_SV
+`ifndef ES_PERIPS_LCD_SV
+`define ES_PERIPS_LCD_SV
 `default_nettype none
 
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_monitor_lcd #(
+module es_perips_lcd #(
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000
 ) (

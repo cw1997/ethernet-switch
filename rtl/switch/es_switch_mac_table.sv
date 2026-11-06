@@ -800,32 +800,39 @@ module es_switch_mac_table #(
   //     is also what an FPGA tool wants to see when it infers the table.
   //
   // The result is the same set of registers with the same enable conditions.
+  // Storage owns only registers. Learning, ageing and replacement remain above.
+  logic [NUM_SETS*NUM_WAYS*ENT_W-1:0] entry_data, entry_next;
+  logic [NUM_SETS*NUM_WAYS*AGE_W-1:0] age_data, age_next;
+  logic [NUM_SETS*NUM_WAYS-1:0] age_enable;
+  logic [NUM_SETS*WAY_W-1:0] rr_data, rr_next;
+  logic [NUM_SETS-1:0] rr_enable;
   generate
-    for (gm = 0; gm < NUM_SETS * NUM_WAYS; gm++) begin : g_mem_wr
-      always_ff @(posedge clk_i) begin
-        if (!rst_ni || flush_i) begin
-          mem[gm] <= '0;
-          age[gm] <= '0;
-        end else if (wr_en[gm]) begin
-          mem[gm] <= wr_dat[gm];
-          age[gm] <= wr_age[gm];
-        end else if (age_touch[gm]) begin
-          // Ageing decrements the countdown; the entry itself is left alone
-          // unless `wr_en` fired above, which is where the expiry happens.
-          age[gm] <= age_flat[gm] - AGE_W'(1);
-        end
-      end
+    for (gm = 0; gm < NUM_SETS*NUM_WAYS; gm++) begin : g_storage_words
+      assign mem[gm] = entry_data[gm*ENT_W +: ENT_W];
+      assign age[gm] = age_data[gm*AGE_W +: AGE_W];
+      assign entry_next[gm*ENT_W +: ENT_W] = wr_dat[gm];
+      assign age_enable[gm] = wr_en[gm] || age_touch[gm];
+      assign age_next[gm*AGE_W +: AGE_W] = wr_en[gm] ? wr_age[gm] :
+                                                        age_flat[gm] - AGE_W'(1);
+    end
+    for (gr = 0; gr < NUM_SETS; gr++) begin : g_pointer_words
+      assign rr_ptr[gr] = rr_data[gr*WAY_W +: WAY_W];
+      assign rr_next[gr*WAY_W +: WAY_W] = rr_nxt[gr];
+      assign rr_enable[gr] = rr_adv[gr];
     end
   endgenerate
-
-  generate
-    for (gr = 0; gr < NUM_SETS; gr++) begin : g_rr_wr
-      always_ff @(posedge clk_i) begin
-        if (!rst_ni || flush_i) rr_ptr[gr] <= '0;
-        else if (rr_adv[gr]) rr_ptr[gr] <= rr_nxt[gr];
-      end
-    end
-  endgenerate
+  es_mems_reg_bank #(.WIDTH(ENT_W), .DEPTH(NUM_SETS*NUM_WAYS)) u_entries (
+    .clk_i(clk_i), .rst_ni(rst_ni), .clear_i(flush_i),
+    .wr_en_i(wr_en), .wr_data_i(entry_next), .data_o(entry_data)
+  );
+  es_mems_reg_bank #(.WIDTH(AGE_W), .DEPTH(NUM_SETS*NUM_WAYS)) u_ages (
+    .clk_i(clk_i), .rst_ni(rst_ni), .clear_i(flush_i),
+    .wr_en_i(age_enable), .wr_data_i(age_next), .data_o(age_data)
+  );
+  es_mems_reg_bank #(.WIDTH(WAY_W), .DEPTH(NUM_SETS)) u_replacement (
+    .clk_i(clk_i), .rst_ni(rst_ni), .clear_i(flush_i),
+    .wr_en_i(rr_enable), .wr_data_i(rr_next), .data_o(rr_data)
+  );
 
   // The occupancy counter is owned by the same clock that writes the table, so
   // it can never drift away from what the table actually holds.  It has to move

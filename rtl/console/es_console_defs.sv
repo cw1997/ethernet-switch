@@ -17,11 +17,6 @@
 // Parity and flow-control values are shared by the UART, console and board
 // parameters.
 // --------------------------------------------------------------------------
-localparam int unsigned SW_UART_PARITY_NONE = 0;
-localparam int unsigned SW_UART_PARITY_ODD = 1;
-localparam int unsigned SW_UART_PARITY_EVEN = 2;
-localparam int unsigned SW_UART_FLOW_NONE = 0;
-localparam int unsigned SW_UART_FLOW_RTS_CTS = 1;
-
+// UART framing encodings are owned by perips/es_perips_defs.sv.
 `default_nettype wire
 `endif  // ES_CONSOLE_DEFS_SV

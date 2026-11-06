@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_sync_fifo.sv
+//  File        : es_mems_sync_fifo.sv
 //  Description : Parameterised synchronous FIFO with a first-word-fall-through
 //                (FWFT) read port and a *frame-granular abort* capability.
 //
@@ -23,8 +23,8 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_SYNC_FIFO_SV
-`define ES_SWITCH_SYNC_FIFO_SV
+`ifndef ES_MEMS_SYNC_FIFO_SV
+`define ES_MEMS_SYNC_FIFO_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -32,7 +32,7 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-module es_switch_sync_fifo #(
+module es_mems_sync_fifo #(
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
   /// Number of entries; any value >= 2, not necessarily a power of two.
@@ -67,7 +67,10 @@ module es_switch_sync_fifo #(
   // Storage.  Inferred as a block or distributed RAM by the common FPGA vendors
   // because it is written from a single clocked process.
   // --------------------------------------------------------------------------
-  logic [WIDTH-1:0] mem[0:DEPTH-1];
+  es_mems_ram_1r1w #(.WIDTH(WIDTH), .DEPTH(DEPTH), .ADDR_W(ADDR_W)) u_ram (
+    .clk_i(clk_i), .wr_en_i(do_write), .wr_addr_i(wr_ptr),
+    .rd_addr_i(rd_ptr), .wr_data_i(wr_data_i), .rd_data_o(rd_data_o)
+  );
 
   logic [ADDR_W-1:0] wr_ptr;
   logic [ADDR_W-1:0] rd_ptr;
@@ -117,9 +120,6 @@ module es_switch_sync_fifo #(
   assign undo_fire = undo_i && !flush_i && (undo_cnt_i <= count_rw);
   assign count_d   = undo_fire ? (count_rw - undo_cnt_i) : count_rw;
 
-  always_ff @(posedge clk_i) begin
-    if (do_write) mem[wr_ptr] <= wr_data_i;
-  end
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -144,13 +144,12 @@ module es_switch_sync_fifo #(
   assign full_o    = (count == CNT_W'(DEPTH));
   assign free_o    = CNT_W'(DEPTH) - count;
   assign empty_o   = (count == '0);
-  assign rd_data_o = mem[rd_ptr];   // FWFT: valid while `empty_o` is low
 
-endmodule : es_switch_sync_fifo
+endmodule : es_mems_sync_fifo
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_SYNC_FIFO_SV
+`endif  // ES_MEMS_SYNC_FIFO_SV

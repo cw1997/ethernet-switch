@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb/sw_crc32_tb.sv
-//  Description : Unit testbench of the Ethernet CRC-32 engine (`es_switch_crc32`).
+//  Description : Unit testbench of the Ethernet CRC-32 engine (`es_common_crc32`).
 //
 //                The block is verified in both of its roles:
 //
@@ -38,7 +38,7 @@ module sw_crc32_tb;
 
   always #5 clk = ~clk;  // 100 MHz - the block is clock enabled, not clock bound
 
-  es_switch_crc32 u_dut (
+  es_common_crc32 u_dut (
     .clk_i     (clk),
     .rst_ni    (rst_n),
     .en_i      (en),

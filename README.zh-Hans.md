@@ -89,7 +89,7 @@ RTL 按 `switch/`、`monitor/`、`console/` 分层，`rtl/es_defs.sv` 统一导�
             GMII TX 八位组
 ```
 
-每个端口的入口侧产生两条**绝不允许相互漂移**的数据流：一条是进入 `es_switch_sync_fifo`（`RX_FIFO_DEPTH` 项）的**载荷节拍**，另一条是**帧描述符**（即下文的标签字）进入第二个 FIFO。交换矩阵（`es_switch_arbiter`）先弹出描述符，确认掩码内每个出口都能完整接收这一帧，然后才把载荷节拍复制到出口缓冲——同一拍写入掩码内所有端口。出口侧同样以节拍方式缓冲，由每帧一份的长度描述符描述，最后由 `es_switch_gmii_tx` 重新串行化。
+每个端口的入口侧产生两条**绝不允许相互漂移**的数据流：一条是进入 `es_mems_sync_fifo`（`RX_FIFO_DEPTH` 项）的**载荷节拍**，另一条是**帧描述符**（即下文的标签字）进入第二个 FIFO。交换矩阵（`es_switch_arbiter`）先弹出描述符，确认掩码内每个出口都能完整接收这一帧，然后才把载荷节拍复制到出口缓冲——同一拍写入掩码内所有端口。出口侧同样以节拍方式缓冲，由每帧一份的长度描述符描述，最后由 `es_switch_gmii_tx` 重新串行化。
 
 ### 一个时钟，用时钟使能代替多时钟
 
@@ -125,7 +125,7 @@ GMII 八位组 -> es_switch_gmii_rx -> 弹性 FIFO -> es_switch_rx_port -> 载�
 
 **判决在整帧接收完成后才冻结**，绝不提前：存储转发，所以一帧永远不会先进入出口缓冲再被撤回。
 
-**被拒绝的帧只花一次指针移动。** 解析器边解析边把载荷追加进载荷 FIFO，所以后来发现坏掉的帧通过写指针回滚（而非读回）从缓冲中撤掉。标签描述符只为通过校验的帧写入，因此无论接收条件如何，载荷与描述符都不会失去帧同步。这就是 `es_switch_sync_fifo` 的 `undo_*` 端口存在的意义。
+**被拒绝的帧只花一次指针移动。** 解析器边解析边把载荷追加进载荷 FIFO，所以后来发现坏掉的帧通过写指针回滚（而非读回）从缓冲中撤掉。标签描述符只为通过校验的帧写入，因此无论接收条件如何，载荷与描述符都不会失去帧同步。这就是 `es_mems_sync_fifo` 的 `undo_*` 端口存在的意义。
 
 **入口策略**决定目的位掩码，网桥的行为实际就在这里：
 
@@ -190,8 +190,8 @@ GMII 八位组 -> es_switch_gmii_rx -> 弹性 FIFO -> es_switch_rx_port -> 载�
 
 | 模块 | 文件 | 职责 |
 |---|---|---|
-| CRC-32 | `es_switch_crc32.sv` | 八位组串行的 IEEE 802.3 FCS 生成与校验，共享一张查找表 |
-| 弹性缓冲 | `es_switch_sync_fifo.sv` | 先字直通（FWFT）FIFO，带帧粒度回滚与硬冲刷 |
+| CRC-32 | `es_common_crc32.sv` | 八位组串行的 IEEE 802.3 FCS 生成与校验，共享一张查找表 |
+| 弹性缓冲 | `es_mems_sync_fifo.sv` | 先字直通（FWFT）FIFO，带帧粒度回滚与硬冲刷 |
 | GMII 接收 | `es_switch_gmii_rx.sv` | 八位组流转 64 位节拍，附带 FCS 校验 |
 | MII 适配器 | `es_switch_mii.sv` | MII 半字节与规范八位组流互转（`es_switch_mii` 构建） |
 | RMII 适配器 | `es_switch_rmii.sv` | RMII 2 位块与规范八位组流互转（`es_switch_rmii` 构建） |
@@ -218,7 +218,7 @@ GMII 八位组 -> es_switch_gmii_rx -> 弹性 FIFO -> es_switch_rx_port -> 载�
 | `flood` | 1 | `sw_tag_flood_lsb` | `dst_mask` 来自洪泛决定时置位 |
 | `drop` | 1 | `sw_tag_drop_lsb` | 防御性：描述符描述一帧矩阵应丢弃的帧 |
 
-`drop` 在当前设计中恒为零。入口过滤在缓冲**之前**就拒绝帧——这正是 `es_switch_sync_fifo` 的回滚存在的意义——所以描述符只为通过校验的帧写入。矩阵保留了丢弃此类描述符的能力，保留该字段是因为"先缓冲后过滤"的设计会需要它；该字段的提取逻辑在矩阵中是活的，不是意外遗留的死代码。
+`drop` 在当前设计中恒为零。入口过滤在缓冲**之前**就拒绝帧——这正是 `es_mems_sync_fifo` 的回滚存在的意义——所以描述符只为通过校验的帧写入。矩阵保留了丢弃此类描述符的能力，保留该字段是因为"先缓冲后过滤"的设计会需要它；该字段的提取逻辑在矩阵中是活的，不是意外遗留的死代码。
 
 ## 统计计数器
 
@@ -310,3 +310,12 @@ pps/bit/s、队列负载、PHY 状态和独立 MAC 表读取。`REFRESH_INTERVAL
 ## 在本仓库上工作
 
 [`AGENTS.md`](AGENTS.md) 是本仓库的风格与可移植性契约：工具流程及各门的分工、综合前端施加的三条限制、RTL 规范——宽度纪律单独成节，因为"被悄悄扩展的操作数"是各 Verilator 版本中 linter 最不可靠地报告的缺陷——测试台规则，以及各门的运行顺序。修改 `rtl/` 下任何内容之前先读它。
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

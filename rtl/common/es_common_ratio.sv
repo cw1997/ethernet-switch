@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_monitor_ratio.sv
+//  File        : es_common_ratio.sv
 //  Description : Serial multiply/divide engine for telemetry rates.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -10,14 +10,14 @@
 //                The fixed-width result is intended for telemetry, not packet flow.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_MONITOR_RATIO_SV
-`define ES_MONITOR_RATIO_SV
+`ifndef ES_COMMON_RATIO_SV
+`define ES_COMMON_RATIO_SV
 `default_nettype none
 
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_monitor_ratio (
+module es_common_ratio (
   input var logic clk_i, rst_ni, start_i,
   input var logic [63:0] value_i, scale_i, divisor_i,
   output logic busy_o, valid_o,

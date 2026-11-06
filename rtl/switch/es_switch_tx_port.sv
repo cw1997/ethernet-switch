@@ -124,7 +124,7 @@ module es_switch_tx_port #(
 
   // ---- egress beat FIFO -----------------------------------------------------
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(64),
     .DEPTH(TX_FIFO_DEPTH)
   ) u_data_fifo (
@@ -147,7 +147,7 @@ module es_switch_tx_port #(
   // Written once per frame: `wr_en_i` pulses for every beat, `wr_fr_i` marks
   // the first one.
   /* verilator lint_off PINCONNECTEMPTY */
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(SW_LEN_W),
     .DEPTH(LEN_FIFO_DEPTH)
   ) u_len_fifo (

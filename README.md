@@ -112,7 +112,7 @@ clock:
 ```
 
 The ingress side of every port produces two streams that must never drift
-apart: **payload beats** in a `es_switch_sync_fifo` of `RX_FIFO_DEPTH` entries, and
+apart: **payload beats** in a `es_mems_sync_fifo` of `RX_FIFO_DEPTH` entries, and
 **frame descriptors** (the tag word below) in a second FIFO. The fabric
 (`es_switch_arbiter`) reads the descriptor first, checks that every destination egress
 can take the whole frame, then copies the payload beats into the egress
@@ -199,7 +199,7 @@ payload FIFO as it goes, so a frame that turns out to be bad is rewound out of
 the buffer with a write-pointer rollback rather than being read back. The tag
 descriptor is written only for a frame that passed, so payload and descriptor
 cannot lose frame synchronisation whatever the receive conditions are. This is
-what the `undo_*` port of `es_switch_sync_fifo` exists for.
+what the `undo_*` port of `es_mems_sync_fifo` exists for.
 
 **The ingress policy** decides a destination bitmask, and it is where a bridge's
 behaviour actually lives:
@@ -351,8 +351,8 @@ each copy.
 
 | Block | File | What it does |
 |---|---|---|
-| CRC-32 | `es_switch_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one shared table |
-| Elastic buffer | `es_switch_sync_fifo.sv` | first-word-fall-through FIFO with a frame-granular rewind and a hard flush |
+| CRC-32 | `es_common_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one shared table |
+| Elastic buffer | `es_mems_sync_fifo.sv` | first-word-fall-through FIFO with a frame-granular rewind and a hard flush |
 | GMII receive | `es_switch_gmii_rx.sv` | octet stream to 64-bit beats, plus the FCS check |
 | MII adapter | `es_switch_mii.sv` | MII nibbles to and from the canonical octet stream (`es_switch_mii` builds) |
 | RMII adapter | `es_switch_rmii.sv` | RMII 2-bit chunks to and from the canonical octet stream (`es_switch_rmii` builds) |
@@ -383,7 +383,7 @@ cannot drift apart; the total width is `sw_tag_width(NUM_PORTS)`.
 | `drop` | 1 | `sw_tag_drop_lsb` | defensive: the descriptor describes a frame the fabric should discard |
 
 `drop` is always zero in the current design. The ingress filter rejects a frame
-*before* buffering it - that is what the rewind in `es_switch_sync_fifo` is for - so a
+*before* buffering it - that is what the rewind in `es_mems_sync_fifo` is for - so a
 descriptor is only ever written for a frame that passed. The fabric retains the
 ability to discard such a descriptor, and the field is kept because a design
 that buffered first and filtered later would need it; the field extraction is
@@ -535,3 +535,12 @@ synthesis frontend imposes, the RTL conventions - width discipline has its own
 section, because a silently extended operand is the defect the linter catches
 *least* reliably across Verilator versions - the testbench rules, and the order
 to run the gates in. Read it before changing anything under `rtl/`.
+
+
+## Shared RTL domains
+
+`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
+`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
+The monitor and console retain presentation, command, snapshot and page policy.
+Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

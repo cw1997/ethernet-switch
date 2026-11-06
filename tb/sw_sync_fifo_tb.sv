@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_sync_fifo_tb.sv
 //  Description : Unit testbench of the parameterised fall-through FIFO
-//                (`es_switch_sync_fifo`).
+//                (`es_mems_sync_fifo`).
 //
 //                The FIFO has three facilities that the switch datapath depends
 //                on, and each of them is verified here:
@@ -42,7 +42,7 @@ module sw_sync_fifo_tb;
 
   always #5 clk = ~clk;
 
-  es_switch_sync_fifo #(
+  es_mems_sync_fifo #(
     .WIDTH(WIDTH),
     .DEPTH(DEPTH)
   ) u_dut (
@@ -59,6 +59,34 @@ module sw_sync_fifo_tb;
     .rd_data_o (rd_data),
     .empty_o   (empty)
   );
+  // Frozen pre-extraction implementation checks every observable clock.
+  logic [$bits(full)-1:0] ref_full;
+  logic [$bits(free_cnt)-1:0] ref_free_cnt;
+  logic [$bits(rd_data)-1:0] ref_rd_data;
+  logic [$bits(empty)-1:0] ref_empty;
+  sw_sync_fifo_reference #(
+    .WIDTH(WIDTH),
+    .DEPTH(DEPTH)
+  ) u_reference (
+    .clk_i     (clk),
+    .rst_ni    (rst_n),
+    .undo_i    (undo),
+    .undo_cnt_i(undo_cnt),
+    .flush_i   (flush),
+    .wr_en_i   (wr_en),
+    .wr_data_i (wr_data),
+    .full_o    (ref_full),
+    .free_o    (ref_free_cnt),
+    .rd_en_i   (rd_en),
+    .rd_data_o (ref_rd_data),
+    .empty_o   (ref_empty)
+  );
+  always @(negedge clk) begin
+    #1;
+    if (rst_n && (({full, free_cnt, empty} !== {ref_full, ref_free_cnt, ref_empty}) || (!empty && (rd_data !== ref_rd_data))))
+      $fatal(1, "sync_fifo differs from pre-extraction cycle reference");
+  end
+
 
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;

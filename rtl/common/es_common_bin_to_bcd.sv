@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_monitor_decimal.sv
+//  File        : es_common_bin_to_bcd.sv
 //  Description : Serial binary-to-BCD double-dabble converter.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
@@ -10,14 +10,14 @@
 //                output data holds until the next conversion completes.
 // ============================================================================
 `timescale 1ns/1ps
-`ifndef ES_MONITOR_DECIMAL_SV
-`define ES_MONITOR_DECIMAL_SV
+`ifndef ES_COMMON_BIN_TO_BCD_SV
+`define ES_COMMON_BIN_TO_BCD_SV
 `default_nettype none
 
 // --------------------------------------------------------------------------
 // Configuration and public interface
 // --------------------------------------------------------------------------
-module es_monitor_decimal (
+module es_common_bin_to_bcd (
   input var logic clk_i, rst_ni, start_i,
   input var logic [63:0] value_i,
   output logic valid_o,
