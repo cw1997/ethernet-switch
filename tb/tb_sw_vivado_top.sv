@@ -48,19 +48,19 @@ module tb_sw_vivado_top;
   logic [NUM_PORTS*4-1:0] rxd, txd;
   tri [NUM_PORTS-1:0] mdio;
   es_switch_vivado_top u_dut (
-    .clk_i(clk),
-    .rst_button_ni(rst_button_n),
-    .mii_rx_clk_i({NUM_PORTS{rx_clk}}),
-    .mii_tx_clk_i({NUM_PORTS{tx_clk}}),
-    .mii_rx_dv_i(rx_dv),
-    .mii_rx_er_i(rx_er),
-    .mii_rxd_i(rxd),
-    .mii_tx_en_o(tx_en),
-    .mii_tx_er_o(tx_er),
-    .mii_txd_o(txd),
-    .phy_reset_no(phy_reset_n),
-    .phy_mdc_o(mdc),
-    .phy_mdio_io(mdio)
+    .clk_i         (clk),
+    .rst_button_ni (rst_button_n),
+    .mii_rx_clk_i  ({NUM_PORTS{rx_clk}}),
+    .mii_tx_clk_i  ({NUM_PORTS{tx_clk}}),
+    .mii_rx_dv_i   (rx_dv),
+    .mii_rx_er_i   (rx_er),
+    .mii_rxd_i     (rxd),
+    .mii_tx_en_o   (tx_en),
+    .mii_tx_er_o   (tx_er),
+    .mii_txd_o     (txd),
+    .phy_reset_no  (phy_reset_n),
+    .phy_mdc_o     (mdc),
+    .phy_mdio_io   (mdio)
   );
 
   // ---- one independent wire monitor per port -------------------------------
@@ -72,17 +72,17 @@ module tb_sw_vivado_top;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
       sw_mii_if #(
-        .PORT_ID(g),
-        .BYTE_PERIOD(BP)
+        .PORT_ID     (g),
+        .BYTE_PERIOD (BP)
       ) u_if (
-        .clk_i(clk),
-        .rst_ni(phy_reset_n[g]),
-        .enable_i(1'b1),
-        .mii_rx_dv(rx_dv[g]),
-        .mii_rx_er(rx_er[g]),
-        .mii_rxd(rxd[g*4 +: 4]),
-        .mii_tx_en(tx_en[g]),
-        .mii_txd(txd[g*4 +: 4])
+        .clk_i     (clk),
+        .rst_ni    (phy_reset_n[g]),
+        .enable_i  (1'b1),
+        .mii_rx_dv (rx_dv[g]),
+        .mii_rx_er (rx_er[g]),
+        .mii_rxd   (rxd[g*4 +: 4]),
+        .mii_tx_en (tx_en[g]),
+        .mii_txd   (txd[g*4 +: 4])
       );
     end
   endgenerate

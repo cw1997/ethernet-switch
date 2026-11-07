@@ -51,42 +51,46 @@
 // the body below can use them directly and no import is needed.  See es_defs.sv
 // for why a package cannot be used here.
 module es_switch_arbiter #(
+  /// Number of independent ingress and egress ports in the fabric.
   parameter int unsigned NUM_PORTS     = SW_DEFAULT_NUM_PORTS,
+  /// Egress payload FIFO capacity in beats, used for whole-frame admission.
   parameter int unsigned TX_FIFO_DEPTH = 256,
   /// Cycles a blocked head-of-line frame may wait before it is discarded.
   /// 0 disables the drop and stalls instead.
   parameter int unsigned STALL_LIMIT   = 0
 ) (
-  input  var logic                    clk_i,
-  input  var logic                    rst_ni,
+  input var logic clk_i,
+  input var logic rst_ni,
 
   // ---- ingress queues -------------------------------------------------------
-  input  var logic [NUM_PORTS-1:0]    src_empty_i,        ///< ingress payload FIFO empty
-  input  var logic [NUM_PORTS-1:0]    src_tag_empty_i,    ///< ingress tag FIFO empty
-  output logic [NUM_PORTS-1:0]    src_tag_rd_en_o,
-  input  var logic [NUM_PORTS*sw_tag_width(NUM_PORTS)-1:0] src_tag_rd_data_i,
-  output logic [NUM_PORTS-1:0]    src_data_rd_en_o,
-  input  var logic [NUM_PORTS*64-1:0] src_data_rd_data_i,
-  output logic [NUM_PORTS-1:0]    src_flush_o,
+  /// One payload queue and one descriptor queue per port, packed by port index.
+  input var logic [NUM_PORTS-1:0] src_empty_i,  ///< ingress payload FIFO empty
+  input var logic [NUM_PORTS-1:0] src_tag_empty_i,  ///< ingress tag FIFO empty
+  output    logic [NUM_PORTS-1:0] src_tag_rd_en_o,
+  input var logic [NUM_PORTS*sw_tag_width(NUM_PORTS)-1:0] src_tag_rd_data_i,
+  output    logic [NUM_PORTS-1:0] src_data_rd_en_o,
+  input var logic [NUM_PORTS*64-1:0] src_data_rd_data_i,
+  output    logic [NUM_PORTS-1:0] src_flush_o,
 
   // ---- egress queues --------------------------------------------------------
-  output logic [NUM_PORTS-1:0]    dst_wr_en_o,        ///< write one payload beat
-  output logic [NUM_PORTS*64-1:0] dst_wr_data_o,
-  output logic [NUM_PORTS*SW_LEN_W-1:0] dst_wr_len_o,  ///< valid with dst_fr_o
-  output logic [NUM_PORTS-1:0]    dst_fr_o,           ///< first beat of a frame
-  input  var logic [NUM_PORTS*(sw_tx_free_width(TX_FIFO_DEPTH)+1)-1:0] dst_free_i,
+  /// Replicated writes share one frame beat and the selected destination mask.
+  output    logic [NUM_PORTS-1:0] dst_wr_en_o,  ///< write one payload beat
+  output    logic [NUM_PORTS*64-1:0] dst_wr_data_o,
+  output    logic [NUM_PORTS*SW_LEN_W-1:0] dst_wr_len_o,  ///< valid with dst_fr_o
+  output    logic [NUM_PORTS-1:0] dst_fr_o,  ///< first beat of a frame
+  input var logic [NUM_PORTS*(sw_tx_free_width(TX_FIFO_DEPTH)+1)-1:0] dst_free_i,
   /// Per destination: an egress port can still accept one more *complete*
   /// frame.  Separate from `dst_free_i` because a destination has two buffers -
   /// the payload FIFO and the frame length-descriptor FIFO - and a frame with
   /// payload room but no descriptor can never be transmitted.  See the `slot_o`
   /// comment in es_switch_tx_port for what happens without it.
-  input  var logic [NUM_PORTS-1:0]    dst_slot_i,
+  input var logic [NUM_PORTS-1:0] dst_slot_i,
 
   // ---- statistics -----------------------------------------------------------
-  output logic busy_o,
-  output logic [NUM_PORTS-1:0] stalled_o,
-  output logic [32*SW_STAT_COUNT-1:0] stat_o
-);
+  /// Busy marks an active transfer; counters are 32-bit sw_stat_id_e fields.
+  output    logic                        busy_o,
+  output    logic [NUM_PORTS-1:0] stalled_o,
+  output    logic [32*SW_STAT_COUNT-1:0] stat_o);
 
   localparam int unsigned TAGW = sw_tag_width(NUM_PORTS);
   localparam int unsigned FF_W = sw_tx_free_width(TX_FIFO_DEPTH);

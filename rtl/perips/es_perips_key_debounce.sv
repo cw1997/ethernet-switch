@@ -18,10 +18,12 @@ module es_perips_key_debounce #(
   /// Required stable interval in milliseconds, rounded up to whole clocks.
   parameter int unsigned DEBOUNCE_MS = 20
 ) (
+  /// Clock and synchronous active-low reset for the shared debounce timer.
   input var logic clk_i, rst_ni,
+  /// Active-low key vector; every bit must remain stable for the full interval.
   input var logic [WIDTH-1:0] key_ni,
-  output logic [WIDTH-1:0] stable_no, value_no, pressed_o
-);
+  /// Stable key value and active-low press pulses on the commit edge.
+  output    logic [WIDTH-1:0] stable_no, value_no, pressed_o);
   localparam logic [63:0] INTERVAL = (64'(CLK_FREQ_HZ)*64'(DEBOUNCE_MS)+64'd999)/64'd1000;
   // value_no exposes the pending committed vector on the commit edge;
   // pressed_o pulses only for active-low transitions in that vector.

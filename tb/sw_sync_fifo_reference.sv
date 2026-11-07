@@ -34,31 +34,38 @@
 `default_nettype none
 
 module sw_sync_fifo_reference #(
+
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
+
   /// Number of entries; any value >= 2, not necessarily a power of two.
   parameter int unsigned DEPTH  = 16,
   parameter int unsigned ADDR_W = (DEPTH <= 2) ? 1 : $clog2(DEPTH),
+
   /// Occupancy / free-space counter width: one extra bit for the DEPTH+1 state.
   parameter int unsigned CNT_W  = ADDR_W + 1
 ) (
+  /// Clock and synchronous active-low reset for the frozen cycle reference.
   input var logic clk_i,
   input var logic rst_ni,
 
   // ---- abort (rewind) ------------------------------------------------------
-  input var logic             undo_i,     ///< rewind the write pointer
-  input var logic [CNT_W-1:0] undo_cnt_i, ///< number of entries to discard
+  /// Rewind only the newest buffered entries; already-read entries stay consumed.
+  input var logic             undo_i,  ///< rewind the write pointer
+  input var logic [CNT_W-1:0] undo_cnt_i,  ///< number of entries to discard
 
   // ---- hard flush ----------------------------------------------------------
   input var logic flush_i,  ///< drop every buffered entry
 
   // ---- write port ----------------------------------------------------------
+  /// Queue write side and current capacity flags.
   input var logic             wr_en_i,
   input var logic [WIDTH-1:0] wr_data_i,
   output    logic             full_o,
-  output    logic [CNT_W-1:0] free_o,     ///< entries that can still be written
+  output    logic [CNT_W-1:0] free_o,  ///< entries that can still be written
 
   // ---- read port (FWFT) ----------------------------------------------------
+  /// Current head is visible before rd_en_i consumes it.
   input var logic             rd_en_i,
   output    logic [WIDTH-1:0] rd_data_o,  ///< head entry, valid while !empty_o
   output    logic             empty_o

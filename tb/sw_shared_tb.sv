@@ -13,15 +13,15 @@ module sw_shared_tb;
   logic [1:0] wa = 0, ra = 0;
   logic [7:0] wd = 0, rd;
   es_mems_ram_1r1w #(.WIDTH(8), .DEPTH(3)) ram (
-    .clk_i(clk), .wr_en_i(we), .wr_addr_i(wa), .rd_addr_i(ra),
-    .wr_data_i(wd), .rd_data_o(rd)
+    .clk_i     (clk), .wr_en_i(we), .wr_addr_i(wa), .rd_addr_i(ra),
+    .wr_data_i (wd), .rd_data_o(rd)
   );
   logic clear = 0;
   logic [2:0] enables = 0;
   logic [23:0] words = 0, contents;
   es_mems_reg_bank #(.WIDTH(8), .DEPTH(3), .RESET_VALUE(8'ha5)) bank (
-    .clk_i(clk), .rst_ni(rst), .clear_i(clear), .wr_en_i(enables),
-    .wr_data_i(words), .data_o(contents)
+    .clk_i     (clk), .rst_ni(rst), .clear_i(clear), .wr_en_i(enables),
+    .wr_data_i (words), .data_o(contents)
   );
   logic async_bit = 1, sampled;
   es_common_sync_2ff sampler (
@@ -37,23 +37,23 @@ module sw_shared_tb;
         .clk_i(clk), .rst_ni(rst), .key_ni(keys), .page_o(page[g]), .flush_o(flush[g])
       );
       sw_page_reference #(.NUM_PORTS(3), .CLK_FREQ_HZ(1000), .DEBOUNCE_MS(g*2)) reference (
-        .clk_i(clk), .rst_ni(rst), .key_ni(keys),
-        .page_o(reference_page[g]), .flush_o(reference_flush[g])
+        .clk_i  (clk), .rst_ni(rst), .key_ni(keys),
+        .page_o (reference_page[g]), .flush_o(reference_flush[g])
       );
     end
   endgenerate
   logic start = 0, busy, valid;
   logic [63:0] value = 0, scale = 0, divisor = 1, result;
   es_common_ratio ratio (
-    .clk_i(clk), .rst_ni(rst), .start_i(start), .value_i(value),
-    .scale_i(scale), .divisor_i(divisor), .busy_o(busy), .valid_o(valid), .result_o(result)
+    .clk_i   (clk), .rst_ni(rst), .start_i(start), .value_i(value),
+    .scale_i (scale), .divisor_i(divisor), .busy_o(busy), .valid_o(valid), .result_o(result)
   );
   logic decimal_start = 0, decimal_valid;
   logic [63:0] decimal_value = 0;
   logic [79:0] digits;
   es_common_bin_to_bcd decimal_dut (
-    .clk_i(clk), .rst_ni(rst), .start_i(decimal_start), .value_i(decimal_value),
-    .valid_o(decimal_valid), .bcd_o(digits)
+    .clk_i   (clk), .rst_ni(rst), .start_i(decimal_start), .value_i(decimal_value),
+    .valid_o (decimal_valid), .bcd_o(digits)
   );
   task check(input bit ok, input string label);
     checks++;

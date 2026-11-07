@@ -106,27 +106,30 @@ module es_switch_mii_adapter #(
   /// even number >= 2: every octet time carries exactly two nibble windows.
   parameter int unsigned BYTE_PERIOD = 2
 ) (
+  /// Clock/reset; this model has no separate PHY clock inputs.
   input var logic clk_i,
   input var logic rst_ni,
 
   // ---- MII receive pins (synchronous to clk_i) -----------------------------
+  /// Low-nibble-first receive symbols and per-frame receive error indication.
   input var logic       mii_rx_dv_i,
   input var logic       mii_rx_er_i,
   input var logic [3:0] mii_rxd_i,
 
   // ---- MII transmit pins ---------------------------------------------------
-  output logic       mii_tx_en_o,
-  output logic       mii_tx_er_o,  ///< never asserted: no transmit error source
-  output logic [3:0] mii_txd_o,
+  /// Low-nibble-first transmit symbols; error is tied low by this adapter.
+  output    logic       mii_tx_en_o,
+  output    logic       mii_tx_er_o,  ///< never asserted: no transmit error source
+  output    logic [3:0] mii_txd_o,
 
   // ---- canonical octet stream (see the module header) ----------------------
   // receive direction: towards sw_rx_port
+  /// Receive octets are presented for one complete BYTE_PERIOD window.
   output    logic       oct_en_o,
-  output    logic [7:0] oct_d_o,
-  // transmit direction: from sw_tx_port
+  output    logic [7:0] oct_d_o,  // transmit direction: from sw_tx_port
+  /// Transmit octets are consumed on the canonical octet grid.
   input var logic       oct_en_i,
-  input var logic [7:0] oct_d_i
-);
+  input var logic [7:0] oct_d_i);
 
   // Nibble window length.  The elaboration check below rejects anything that
   // does not divide evenly, so this module can rely on whole windows.

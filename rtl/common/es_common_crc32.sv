@@ -46,11 +46,11 @@
 // The shared CRC constants arrive through the include above and are visible at
 // compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
 module es_common_crc32 (
-  input var logic        clk_i,      ///< core clock
-  input var logic        rst_ni,     ///< active-low synchronous reset
-  input var logic        en_i,       ///< absorb `din_i` this clock
-  input var logic [ 7:0] din_i,      ///< octet to absorb
-  input var logic        clr_i,      ///< re-seed the LFSR (start of frame)
+  input var logic        clk_i,  ///< core clock
+  input var logic        rst_ni,  ///< active-low synchronous reset
+  input var logic        en_i,  ///< absorb `din_i` this clock
+  input var logic [7:0] din_i,  ///< octet to absorb
+  input var logic        clr_i,  ///< re-seed the LFSR (start of frame)
   output    logic [31:0] crc_fin_o,  ///< LFSR ^ 0xFFFFFFFF - the value to transmit
   output    logic        resid_ok_o  ///< LFSR == 0xC704DD1B - receive check
 );

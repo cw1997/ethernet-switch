@@ -47,56 +47,56 @@ module tb_sw_switch_mii;
   logic [32*SW_STAT_COUNT-1:0] stat_o;
 
   es_switch_mii #(
-    .NUM_PORTS  (NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_HZ),
-    .PORT_SPEED (SPEEDS)
+    .NUM_PORTS   (NUM_PORTS),
+    .CLK_FREQ_HZ (CLK_HZ),
+    .PORT_SPEED  (SPEEDS)
   ) u_dut (
-    .phy_status_i ('0),
-    .mon_req_i    (1'b0),
-    .mon_addr_i   (32'd0),
-    .clk_i        (clk),
-    .rst_ni       (rst_n),
-    .link_up_i    (link_up),
-    .flood_mode_i (2'd1),
-    .learning_en_i(1'b1),
-    .cfg_ovr_i    (1'b0),
-    .cam_flush_i  (1'b0),
-    .mii_rx_dv_i  (mii_rx_dv_i),
-    .mii_rx_er_i  (mii_rx_er_i),
-    .mii_rxd_i    (mii_rxd_i),
-    .mii_tx_en_o  (mii_tx_en_o),
-    .mii_tx_er_o  (mii_tx_er_o),
-    .mii_txd_o    (mii_txd_o),
-    .stat_o       (stat_o)
+    .phy_status_i  ('0),
+    .mon_req_i     (1'b0),
+    .mon_addr_i    (32'd0),
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .flood_mode_i  (2'd1),
+    .learning_en_i (1'b1),
+    .cfg_ovr_i     (1'b0),
+    .cam_flush_i   (1'b0),
+    .mii_rx_dv_i   (mii_rx_dv_i),
+    .mii_rx_er_i   (mii_rx_er_i),
+    .mii_rxd_i     (mii_rxd_i),
+    .mii_tx_en_o   (mii_tx_en_o),
+    .mii_tx_er_o   (mii_tx_er_o),
+    .mii_txd_o     (mii_txd_o),
+    .stat_o        (stat_o)
   );
 
   // ---- per-port MII PHY models ----------------------------------------------
   sw_mii_if #(
-    .PORT_ID(0),
-    .BYTE_PERIOD(BP)
+    .PORT_ID     (0),
+    .BYTE_PERIOD (BP)
   ) u_if0 (
-    .clk_i    (clk),
-    .rst_ni   (rst_n),
-    .enable_i (link_up[0]),
-    .mii_rx_dv(mii_rx_dv_i[0]),
-    .mii_rx_er(mii_rx_er_i[0]),
-    .mii_rxd  (mii_rxd_i[3:0]),
-    .mii_tx_en(mii_tx_en_o[0]),
-    .mii_txd  (mii_txd_o[3:0])
+    .clk_i     (clk),
+    .rst_ni    (rst_n),
+    .enable_i  (link_up[0]),
+    .mii_rx_dv (mii_rx_dv_i[0]),
+    .mii_rx_er (mii_rx_er_i[0]),
+    .mii_rxd   (mii_rxd_i[3:0]),
+    .mii_tx_en (mii_tx_en_o[0]),
+    .mii_txd   (mii_txd_o[3:0])
   );
 
   sw_mii_if #(
-    .PORT_ID(1),
-    .BYTE_PERIOD(BP)
+    .PORT_ID     (1),
+    .BYTE_PERIOD (BP)
   ) u_if1 (
-    .clk_i    (clk),
-    .rst_ni   (rst_n),
-    .enable_i (link_up[1]),
-    .mii_rx_dv(mii_rx_dv_i[1]),
-    .mii_rx_er(mii_rx_er_i[1]),
-    .mii_rxd  (mii_rxd_i[7:4]),
-    .mii_tx_en(mii_tx_en_o[1]),
-    .mii_txd  (mii_txd_o[7:4])
+    .clk_i     (clk),
+    .rst_ni    (rst_n),
+    .enable_i  (link_up[1]),
+    .mii_rx_dv (mii_rx_dv_i[1]),
+    .mii_rx_er (mii_rx_er_i[1]),
+    .mii_rxd   (mii_rxd_i[7:4]),
+    .mii_tx_en (mii_tx_en_o[1]),
+    .mii_txd   (mii_txd_o[7:4])
   );
 
   // ---------------------------------------------------------------------------

@@ -43,21 +43,21 @@ module sw_sync_fifo_tb;
   always #5 clk = ~clk;
 
   es_mems_sync_fifo #(
-    .WIDTH(WIDTH),
-    .DEPTH(DEPTH)
+    .WIDTH (WIDTH),
+    .DEPTH (DEPTH)
   ) u_dut (
-    .clk_i     (clk),
-    .rst_ni    (rst_n),
-    .undo_i    (undo),
-    .undo_cnt_i(undo_cnt),
-    .flush_i   (flush),
-    .wr_en_i   (wr_en),
-    .wr_data_i (wr_data),
-    .full_o    (full),
-    .free_o    (free_cnt),
-    .rd_en_i   (rd_en),
-    .rd_data_o (rd_data),
-    .empty_o   (empty)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .undo_i     (undo),
+    .undo_cnt_i (undo_cnt),
+    .flush_i    (flush),
+    .wr_en_i    (wr_en),
+    .wr_data_i  (wr_data),
+    .full_o     (full),
+    .free_o     (free_cnt),
+    .rd_en_i    (rd_en),
+    .rd_data_o  (rd_data),
+    .empty_o    (empty)
   );
   // Frozen pre-extraction implementation checks every observable clock.
   logic [$bits(full)-1:0] ref_full;
@@ -65,21 +65,21 @@ module sw_sync_fifo_tb;
   logic [$bits(rd_data)-1:0] ref_rd_data;
   logic [$bits(empty)-1:0] ref_empty;
   sw_sync_fifo_reference #(
-    .WIDTH(WIDTH),
-    .DEPTH(DEPTH)
+    .WIDTH (WIDTH),
+    .DEPTH (DEPTH)
   ) u_reference (
-    .clk_i     (clk),
-    .rst_ni    (rst_n),
-    .undo_i    (undo),
-    .undo_cnt_i(undo_cnt),
-    .flush_i   (flush),
-    .wr_en_i   (wr_en),
-    .wr_data_i (wr_data),
-    .full_o    (ref_full),
-    .free_o    (ref_free_cnt),
-    .rd_en_i   (rd_en),
-    .rd_data_o (ref_rd_data),
-    .empty_o   (ref_empty)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .undo_i     (undo),
+    .undo_cnt_i (undo_cnt),
+    .flush_i    (flush),
+    .wr_en_i    (wr_en),
+    .wr_data_i  (wr_data),
+    .full_o     (ref_full),
+    .free_o     (ref_free_cnt),
+    .rd_en_i    (rd_en),
+    .rd_data_o  (ref_rd_data),
+    .empty_o    (ref_empty)
   );
   always @(negedge clk) begin
     #1;

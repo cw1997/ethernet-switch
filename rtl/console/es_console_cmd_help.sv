@@ -13,12 +13,14 @@
 `default_nettype none
 
 module es_console_cmd_help (
+  /// Dispatcher presents a help request until the response line is accepted.
   input var logic start_i,
   input var logic ready_i,
-  output logic valid_o,
-  output logic done_o,
-  output logic [511:0] text_o
-);
+  /// valid_o marks the line; done_o is its ready/valid acceptance pulse.
+  output    logic valid_o,
+  output    logic done_o,
+  /// Left-aligned, 64-byte ASCII response with CR/LF termination.
+  output    logic [511:0] text_o);
   assign valid_o = start_i;
   assign done_o = valid_o && ready_i;
   assign text_o = {"help | status | port <n> | mac all | mac <n>\015\n", 144'd0};

@@ -27,31 +27,31 @@ module sw_monitor_tb;
   logic [127:0] cam_entry = 0;
   int errors = 0, checks = 0;
   es_monitor_core #(
-    .NUM_PORTS(N),
-    .CLK_FREQ_HZ(1_000_001),
-    .REFRESH_INTERVAL_MS(10),
-    .CAM_CAPACITY(7)
+    .NUM_PORTS           (N),
+    .CLK_FREQ_HZ         (1_000_001),
+    .REFRESH_INTERVAL_MS (10),
+    .CAM_CAPACITY        (7)
   ) dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .port_stat_i(stat),
-    .tx_done_i(done),
-    .tx_len_i(len),
-    .phy_status_i(phy),
-    .rx_used_i(rx_used),
-    .tx_used_i(tx_used),
-    .busy_i(1'b1),
-    .flush_i(1'b0),
-    .cam_entries_i(32'd2),
-    .req_i(req),
-    .addr_i(addr),
-    .ready_o(ready),
-    .valid_o(valid),
-    .data_o(data),
-    .cam_req_o(cam_req),
-    .cam_index_o(cam_index),
-    .cam_valid_i(cam_valid),
-    .cam_entry_i(cam_entry)
+    .clk_i         (clk),
+    .rst_ni        (rst),
+    .port_stat_i   (stat),
+    .tx_done_i     (done),
+    .tx_len_i      (len),
+    .phy_status_i  (phy),
+    .rx_used_i     (rx_used),
+    .tx_used_i     (tx_used),
+    .busy_i        (1'b1),
+    .flush_i       (1'b0),
+    .cam_entries_i (32'd2),
+    .req_i         (req),
+    .addr_i        (addr),
+    .ready_o       (ready),
+    .valid_o       (valid),
+    .data_o        (data),
+    .cam_req_o     (cam_req),
+    .cam_index_o   (cam_index),
+    .cam_valid_i   (cam_valid),
+    .cam_entry_i   (cam_entry)
   );
   // Independent one-cycle CAM responder; payload intentionally changes after capture.
   always @(posedge clk) begin

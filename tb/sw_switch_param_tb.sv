@@ -85,31 +85,31 @@ module sw_switch_param_tb;
   logic [32*SW_STAT_COUNT-1:0] stat_bus;
 
   es_switch_gmii #(
-    .NUM_PORTS     (NUM_PORTS),
-    .CLK_FREQ_HZ   (CLK_FREQ_HZ),
-    .PORT_MAC      (PORT_MAC),
-    .PORT_SPEED    (PORT_SPEED),
-    .RX_FIFO_DEPTH (256),
-    .TX_FIFO_DEPTH (256),
-    .TAG_FIFO_DEPTH(8),
-    .CAM_SETS      (32),
-    .CAM_WAYS      (2)
+    .NUM_PORTS      (NUM_PORTS),
+    .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+    .PORT_MAC       (PORT_MAC),
+    .PORT_SPEED     (PORT_SPEED),
+    .RX_FIFO_DEPTH  (256),
+    .TX_FIFO_DEPTH  (256),
+    .TAG_FIFO_DEPTH (8),
+    .CAM_SETS       (32),
+    .CAM_WAYS       (2)
   ) u_dut (
-    .phy_status_i  ('0),
-    .mon_req_i     (1'b0),
-    .mon_addr_i    (32'd0),
-    .clk_i         (clk),
-    .rst_ni        (rst_n),
-    .link_up_i     (link_up),
-    .flood_mode_i  (flood_mode),
-    .learning_en_i (learning_en),
-    .cfg_ovr_i     (cfg_ovr),
-    .cam_flush_i   (cam_flush),
-    .gmii_rx_en_i  (gmii_rx_en),
-    .gmii_rx_data_i(gmii_rx_data),
-    .gmii_tx_en_o  (gmii_tx_en),
-    .gmii_tx_data_o(gmii_tx_data),
-    .stat_o        (stat_bus)
+    .phy_status_i   ('0),
+    .mon_req_i      (1'b0),
+    .mon_addr_i     (32'd0),
+    .clk_i          (clk),
+    .rst_ni         (rst_n),
+    .link_up_i      (link_up),
+    .flood_mode_i   (flood_mode),
+    .learning_en_i  (learning_en),
+    .cfg_ovr_i      (cfg_ovr),
+    .cam_flush_i    (cam_flush),
+    .gmii_rx_en_i   (gmii_rx_en),
+    .gmii_rx_data_i (gmii_rx_data),
+    .gmii_tx_en_o   (gmii_tx_en),
+    .gmii_tx_data_o (gmii_tx_data),
+    .stat_o         (stat_bus)
   );
 
   // ==========================================================================
@@ -120,42 +120,42 @@ module sw_switch_param_tb;
   // two port count is exactly what the other testbenches already cover.
   // ==========================================================================
   sw_gmii_if #(
-    .PORT_ID(0),
-    .BYTE_PERIOD(BP0)
+    .PORT_ID     (0),
+    .BYTE_PERIOD (BP0)
   ) i0 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[0]),
-    .gmii_rx_en(gmii_rx_en[0]),
-    .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[0]),
-    .gmii_tx_d(gmii_tx_data[0*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[0]),
+    .gmii_rx_en (gmii_rx_en[0]),
+    .gmii_rx_d  (gmii_rx_data[0*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[0]),
+    .gmii_tx_d  (gmii_tx_data[0*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(1),
-    .BYTE_PERIOD(BP1)
+    .PORT_ID     (1),
+    .BYTE_PERIOD (BP1)
   ) i1 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[1]),
-    .gmii_rx_en(gmii_rx_en[1]),
-    .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[1]),
-    .gmii_tx_d(gmii_tx_data[1*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[1]),
+    .gmii_rx_en (gmii_rx_en[1]),
+    .gmii_rx_d  (gmii_rx_data[1*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[1]),
+    .gmii_tx_d  (gmii_tx_data[1*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(2),
-    .BYTE_PERIOD(BP2)
+    .PORT_ID     (2),
+    .BYTE_PERIOD (BP2)
   ) i2 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[2]),
-    .gmii_rx_en(gmii_rx_en[2]),
-    .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[2]),
-    .gmii_tx_d(gmii_tx_data[2*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[2]),
+    .gmii_rx_en (gmii_rx_en[2]),
+    .gmii_rx_d  (gmii_rx_data[2*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[2]),
+    .gmii_tx_d  (gmii_tx_data[2*8 +: 8])
   );
 
   // ==========================================================================

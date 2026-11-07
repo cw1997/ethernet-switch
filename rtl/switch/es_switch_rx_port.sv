@@ -67,59 +67,77 @@
 // what lets them appear in a port range.  See es_defs.sv for why a package cannot
 // be used here.
 module es_switch_rx_port #(
+
   /// Total number of switch ports (the port index must be < NUM_PORTS).
   parameter int unsigned        NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
+
   /// Index of this port; drives the ingress source index and the CAM learn.
   parameter int unsigned        PORT_ID        = 0,
+
   /// MAC address owned by this port; frames sourced from it are not reflected.
   parameter logic        [47:0] PORT_MAC       = 48'h0,
+
   /// `clk_i` cycles per octet time of the canonical octet stream on this port.
   parameter int unsigned        BYTE_PERIOD    = 1,
+
   /// Largest frame accepted, in octets (FCS excluded).
   parameter int unsigned        MAX_FRAME_LEN  = 1518,
+
   /// Payload beats buffered per port.  Must be >= ceil(MAX_FRAME_LEN/8) or
+
   /// maximum-length frames are dropped as ingress overflow.
   parameter int unsigned        RX_FIFO_DEPTH  = 256,
+
   /// Frame descriptors buffered per port.  Bounds how many complete frames
+
   /// may wait for the fabric.
   parameter int unsigned        TAG_FIFO_DEPTH = 16,
+
   /// Elastic beat FIFO between the octet adapter and the parser.
   parameter int unsigned        WF_DEPTH       = 16,
+
   /// Unknown / group address flooding policy (elaboration-time default).
   parameter logic        [ 1:0] FLOOD_MODE     = 2'd1,
+
   /// Source address learning enable (elaboration-time default).
   parameter logic               LEARNING_EN    = 1'b1
 ) (
+  /// Clock/reset and administrative link state for this ingress port.
   input var logic clk_i,
   input var logic rst_ni,
-  input var logic link_up_i, ///< port administratively up
+  input var logic link_up_i,  ///< port administratively up
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
+  /// Octets are synchronous to clk_i and valid for each BYTE_PERIOD window.
   input var logic       oct_en_i,
   input var logic [7:0] oct_d_i,
 
   // ---- CAM lookup interface (answer valid one clock after the request) ------
+  /// Destination-address query and one-clock-later lookup result.
   output    logic                 cam_req_o,
-  output    logic [         47:0] cam_mac_o,
+  output    logic [47:0] cam_mac_o,
   input var logic                 cam_hit_i,
   input var logic [NUM_PORTS-1:0] cam_port_i,
 
   // ---- CAM learn interface -------------------------------------------------
-  output logic        learn_o,
-  output logic [47:0] learn_mac_o,
+  /// Source address learned only after the full frame has passed validation.
+  output    logic        learn_o,
+  output    logic [47:0] learn_mac_o,
 
   // ---- configuration -------------------------------------------------------
   // `cfg_ovr_i` selects the run-time configuration ports over the
   // elaboration-time defaults `FLOOD_MODE` / `LEARNING_EN`.
+  /// Runtime forwarding policy values, selected only when cfg_ovr_i is high.
   input var logic [1:0] flood_mode_i,
   input var logic       learning_en_i,
   input var logic       cfg_ovr_i,
 
   // ---- payload FIFO read side (driven by the arbiter) ---------------------
+  /// FWFT payload head and occupancy controls consumed by the fabric.
   output    logic [63:0] rd_data_o,
   output    logic        empty_o,
-  input var logic        rd_en_i,    ///< pop the next payload beat
-  input var logic        flush_i,    ///< discard everything buffered
+  input var logic        rd_en_i,  ///< pop the next payload beat
+  input var logic        flush_i,  ///< discard everything buffered
 
   // ---- tag FIFO read side (driven by the arbiter) -------------------------
   // The fabric owns the read side of this FIFO: it decides which ingress
@@ -127,13 +145,15 @@ module es_switch_rx_port #(
   // descriptor has to leave the tag FIFO in the same clock the fabric registers
   // it, otherwise the FIFO stalls, the fabric keeps re-reading the head, and the
   // same frame is forwarded over and over.
-  input var logic                               tag_rd_en_i,    ///< pop the head descriptor
+  /// One frame descriptor is removed with the payload selected by the arbiter.
+  input var logic                               tag_rd_en_i,  ///< pop the head descriptor
   output    logic [sw_tag_width(NUM_PORTS)-1:0] tag_rd_data_o,
   output    logic                               tag_empty_o,
 
   // ---- statistics ----------------------------------------------------------
-  output logic [31:0] used_o,
-  output logic [32*SW_STAT_COUNT-1:0] stat_o
+  /// Per-port counters indexed by sw_stat_id_e, plus buffered beat occupancy.
+  output    logic [31:0] used_o,
+  output    logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
   localparam int unsigned PW = sw_port_w(NUM_PORTS);
@@ -172,16 +192,16 @@ module es_switch_rx_port #(
   es_switch_gmii_rx #(
     .BYTE_PERIOD(BYTE_PERIOD)
   ) u_gmii_rx (
-    .clk_i        (clk_i),
-    .rst_ni       (rst_ni),
-    .oct_en_i     (oct_en_i & link_up_i),
-    .oct_d_i      (oct_d_i),
-    .beat_valid_o (beat_valid),
-    .beat_data_o  (beat_data),
-    .beat_sof_o   (beat_sof),
-    .beat_eof_o   (beat_eof),
-    .beat_crc_ok_o(beat_crc_ok),
-    .beat_octets_o(beat_octets)
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .oct_en_i      (oct_en_i & link_up_i),
+    .oct_d_i       (oct_d_i),
+    .beat_valid_o  (beat_valid),
+    .beat_data_o   (beat_data),
+    .beat_sof_o    (beat_sof),
+    .beat_eof_o    (beat_eof),
+    .beat_crc_ok_o (beat_crc_ok),
+    .beat_octets_o (beat_octets)
   );
 
   // Elastic beat FIFO word: { valid octets, FCS verdict, eof, sof, data }
@@ -841,21 +861,21 @@ module es_switch_rx_port #(
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
-    .WIDTH(64),
-    .DEPTH(RX_FIFO_DEPTH)
+    .WIDTH (64),
+    .DEPTH (RX_FIFO_DEPTH)
   ) u_data_fifo (
-    .clk_i     (clk_i),
-    .rst_ni    (rst_ni),
-    .undo_i    (data_undo),
-    .undo_cnt_i(data_undo_cnt),
-    .flush_i   (data_flush),
-    .wr_en_i   (data_wr_en),
-    .wr_data_i (data_wr_data),
-    .full_o    (data_full),
-    .free_o    (data_free),
-    .rd_en_i   (data_rd_en),
-    .rd_data_o (data_rd_data),
-    .empty_o   (empty_o)
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .undo_i     (data_undo),
+    .undo_cnt_i (data_undo_cnt),
+    .flush_i    (data_flush),
+    .wr_en_i    (data_wr_en),
+    .wr_data_i  (data_wr_data),
+    .full_o     (data_full),
+    .free_o     (data_free),
+    .rd_en_i    (data_rd_en),
+    .rd_data_o  (data_rd_data),
+    .empty_o    (empty_o)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -863,41 +883,41 @@ module es_switch_rx_port #(
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
-    .WIDTH(WF_W),
-    .DEPTH(WF_DEPTH)
+    .WIDTH (WF_W),
+    .DEPTH (WF_DEPTH)
   ) u_wf (
-    .clk_i     (clk_i),
-    .rst_ni    (rst_ni),
-    .undo_i    (1'b0),
-    .undo_cnt_i('0),
-    .flush_i   (1'b0),
-    .wr_en_i   (wf_wr_en),
-    .wr_data_i (wf_wr_data),
-    .full_o    (),            // the parser drains this FIFO unconditionally
-    .free_o    (),
-    .rd_en_i   (wf_rd_en),
-    .rd_data_o (wf_rd_data),
-    .empty_o   (wf_empty)
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .undo_i     (1'b0),
+    .undo_cnt_i ('0),
+    .flush_i    (1'b0),
+    .wr_en_i    (wf_wr_en),
+    .wr_data_i  (wf_wr_data),
+    .full_o     (),  // the parser drains this FIFO unconditionally
+    .free_o     (),
+    .rd_en_i    (wf_rd_en),
+    .rd_data_o  (wf_rd_data),
+    .empty_o    (wf_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
-    .WIDTH(TAGW),
-    .DEPTH(TAG_FIFO_DEPTH)
+    .WIDTH (TAGW),
+    .DEPTH (TAG_FIFO_DEPTH)
   ) u_tag_fifo (
-    .clk_i     (clk_i),
-    .rst_ni    (rst_ni),
-    .undo_i    (1'b0),
-    .undo_cnt_i('0),
-    .flush_i   (1'b0),
-    .wr_en_i   (tag_wr_en),
-    .wr_data_i (tag_wr_data),
-    .full_o    (tag_full),
-    .free_o    (),
-    .rd_en_i   (tag_rd_en_i),
-    .rd_data_o (tag_rd_data),
-    .empty_o   (tag_empty)
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .undo_i     (1'b0),
+    .undo_cnt_i ('0),
+    .flush_i    (1'b0),
+    .wr_en_i    (tag_wr_en),
+    .wr_data_i  (tag_wr_data),
+    .full_o     (tag_full),
+    .free_o     (),
+    .rd_en_i    (tag_rd_en_i),
+    .rd_data_o  (tag_rd_data),
+    .empty_o    (tag_empty)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 

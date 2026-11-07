@@ -24,7 +24,11 @@
 `timescale 1ns/1ps
 
 module sw_mac_table_tb #(
+
+  /// Bucket count used to force collisions and exercise relocation.
   parameter int unsigned NUM_SETS = 2,
+
+  /// Entries per bucket in the collision and ageing scenarios.
   parameter int unsigned NUM_WAYS = 2
 );
 
@@ -70,31 +74,31 @@ module sw_mac_table_tb #(
   always #5 clk = ~clk;
 
   es_switch_mac_table #(
-    .NUM_PORTS      (NUM_PORTS),
-    .NUM_SETS       (NUM_SETS),
-    .NUM_WAYS       (NUM_WAYS),
-    .AGE_EN         (1'b1),
-    .AGE_TICK_CYCLES(AGE_TICK),
-    .AGE_LIMIT      (AGE_LIMIT)
+    .NUM_PORTS       (NUM_PORTS),
+    .NUM_SETS        (NUM_SETS),
+    .NUM_WAYS        (NUM_WAYS),
+    .AGE_EN          (1'b1),
+    .AGE_TICK_CYCLES (AGE_TICK),
+    .AGE_LIMIT       (AGE_LIMIT)
   ) u_dut (
-    .mon_req_i   (mon_req),
-    .mon_index_i (mon_index),
-    .mon_valid_o (mon_valid),
-    .mon_entry_o (mon_entry),
-    .clk_i       (clk),
-    .rst_ni      (rst_n),
-    .flush_i     (flush),
-    .req_i       (req),
-    .mac_i       (mac),
-    .hit_o       (hit),
-    .port_o      (port),
-    .learn_i     (learn),
-    .learn_mac_i (learn_mac),
-    .learn_port_i(learn_port),
-    .entries_o   (entries),
-    .hits_o      (hits),
-    .misses_o    (misses),
-    .learns_o    (learns)
+    .mon_req_i    (mon_req),
+    .mon_index_i  (mon_index),
+    .mon_valid_o  (mon_valid),
+    .mon_entry_o  (mon_entry),
+    .clk_i        (clk),
+    .rst_ni       (rst_n),
+    .flush_i      (flush),
+    .req_i        (req),
+    .mac_i        (mac),
+    .hit_o        (hit),
+    .port_o       (port),
+    .learn_i      (learn),
+    .learn_mac_i  (learn_mac),
+    .learn_port_i (learn_port),
+    .entries_o    (entries),
+    .hits_o       (hits),
+    .misses_o     (misses),
+    .learns_o     (learns)
   );
   // Frozen pre-extraction implementation checks every observable clock.
   logic [$bits(hit)-1:0] ref_hit;
@@ -106,31 +110,31 @@ module sw_mac_table_tb #(
   logic [$bits(mon_valid)-1:0] ref_mon_valid;
   logic [$bits(mon_entry)-1:0] ref_mon_entry;
   sw_mac_table_reference #(
-    .NUM_PORTS      (NUM_PORTS),
-    .NUM_SETS       (NUM_SETS),
-    .NUM_WAYS       (NUM_WAYS),
-    .AGE_EN         (1'b1),
-    .AGE_TICK_CYCLES(AGE_TICK),
-    .AGE_LIMIT      (AGE_LIMIT)
+    .NUM_PORTS       (NUM_PORTS),
+    .NUM_SETS        (NUM_SETS),
+    .NUM_WAYS        (NUM_WAYS),
+    .AGE_EN          (1'b1),
+    .AGE_TICK_CYCLES (AGE_TICK),
+    .AGE_LIMIT       (AGE_LIMIT)
   ) u_reference (
-    .mon_req_i   (mon_req),
-    .mon_index_i (mon_index),
-    .mon_valid_o (ref_mon_valid),
-    .mon_entry_o (ref_mon_entry),
-    .clk_i       (clk),
-    .rst_ni      (rst_n),
-    .flush_i     (flush),
-    .req_i       (req),
-    .mac_i       (mac),
-    .hit_o       (ref_hit),
-    .port_o      (ref_port),
-    .learn_i     (learn),
-    .learn_mac_i (learn_mac),
-    .learn_port_i(learn_port),
-    .entries_o   (ref_entries),
-    .hits_o      (ref_hits),
-    .misses_o    (ref_misses),
-    .learns_o    (ref_learns)
+    .mon_req_i    (mon_req),
+    .mon_index_i  (mon_index),
+    .mon_valid_o  (ref_mon_valid),
+    .mon_entry_o  (ref_mon_entry),
+    .clk_i        (clk),
+    .rst_ni       (rst_n),
+    .flush_i      (flush),
+    .req_i        (req),
+    .mac_i        (mac),
+    .hit_o        (ref_hit),
+    .port_o       (ref_port),
+    .learn_i      (learn),
+    .learn_mac_i  (learn_mac),
+    .learn_port_i (learn_port),
+    .entries_o    (ref_entries),
+    .hits_o       (ref_hits),
+    .misses_o     (ref_misses),
+    .learns_o     (ref_learns)
   );
   always @(negedge clk) begin
     #1;

@@ -23,16 +23,21 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_monitor_cache #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
+  /// Clock, synchronous active-low reset, and pause on new read requests.
   input var logic clk_i, rst_ni, pause_i,
-  output logic req_o,
-  output logic [31:0] addr_o,
-  input var logic ready_i, valid_i,
+  /// Byte-addressed CSR read request and selected address.
+  output    logic                                 req_o,
+  output    logic [31:0] addr_o,
+  /// CSR ready/valid response handshake and returned word.
+  input var logic                                 ready_i, valid_i,
   input var logic [31:0] data_i,
-  output logic idle_o,
-  output logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_o
+  /// Safe ownership boundary and coherent aggregate-plus-port image.
+  output    logic                                 idle_o,
+  output    logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_o
 );
   localparam int unsigned TOTAL = (NUM_PORTS + 1) * SW_MON_WORDS;
 

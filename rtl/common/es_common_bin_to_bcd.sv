@@ -19,11 +19,14 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_common_bin_to_bcd (
+  /// Core clock, synchronous active-low reset, and idle-qualified start pulse.
   input var logic clk_i, rst_ni, start_i,
+  /// Unsigned binary value sampled on the clock that accepts start_i.
   input var logic [63:0] value_i,
-  output logic valid_o,
-  output logic [79:0] bcd_o
-);
+  /// Pulses when the packed twenty-digit BCD result is published.
+  output    logic valid_o,
+  /// Twenty decimal nibbles, least-significant digit in bits [3:0].
+  output    logic [79:0] bcd_o);
   // --------------------------------------------------------------------------
   // Conversion registers
   //

@@ -47,16 +47,19 @@ module sw_mii_if
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
+  /// Clock/reset and link enable for this port's wire model.
   input logic clk_i,
   input logic rst_ni,
   input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
+  /// MII receive nibble stream and per-frame receive error pin.
   output logic       mii_rx_dv,
   output logic       mii_rx_er,
   output logic [3:0] mii_rxd,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
+  /// Transmit nibble stream observed at the wire boundary.
   input logic       mii_tx_en,
   input logic [3:0] mii_txd
 );
@@ -170,10 +173,10 @@ module sw_mii_if
   sw_rec_q #(
     .DEPTH(MON_DEPTH)
   ) u_mon (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .push_i     (mon_push_q),
-    .push_data_i(mon_push_rec)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .push_i      (mon_push_q),
+    .push_data_i (mon_push_rec)
   );
 
   // The reassembly, in a single process.  One process owns every signal it

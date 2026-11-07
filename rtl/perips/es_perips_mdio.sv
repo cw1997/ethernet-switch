@@ -20,18 +20,25 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_perips_mdio #(
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// Requested management clock frequency in hertz.
   parameter int unsigned MDC_FREQ_HZ = 1_000_000
 ) (
+  /// Core clock, synchronous active-low reset, and transaction controls.
   input var logic clk_i, rst_ni, start_i, read_i,
+  /// Clause-22 PHY and register addresses plus write data.
   input var logic [4:0] phy_i, reg_i,
   input var logic [15:0] data_i,
+  /// MDIO value sampled from the board-side bidirectional pad.
   input var logic mdio_i,
-  output logic mdc_o, mdio_o, mdio_oe_o,
-  output logic busy_o, valid_o, error_o,
-  output logic [15:0] data_o
+  /// MDC output, MDIO drive value, and active-high pad output enable.
+  output    logic mdc_o, mdio_o, mdio_oe_o,
+  /// Transaction state and completion/error-qualified read data.
+  output    logic        busy_o, valid_o, error_o,
+  output    logic [15:0] data_o
 );
   localparam int unsigned HALF = CLK_FREQ_HZ / (2 * MDC_FREQ_HZ);
   generate

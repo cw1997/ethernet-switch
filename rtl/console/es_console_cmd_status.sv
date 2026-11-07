@@ -11,10 +11,17 @@
 `default_nettype none
 `include "es_defs.sv"
 `default_nettype none
-module es_console_cmd_status #(parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS) (
+module es_console_cmd_status #(
+
+  /// Number of switch ports; status covers aggregate page zero and every port.
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
+) (
+  /// start_i begins a request; selected_i scopes shared-engine status to it.
   input var logic start_i, selected_i, engine_busy_i, engine_done_i,
-  output logic start_o, busy_o, done_o,
-  output logic [31:0] first_page_o, last_page_o
+  /// start_o forwards launch; busy_o and done_o are owner-qualified.
+  output    logic start_o, busy_o, done_o,
+  /// Inclusive monitor page range for aggregate and per-port status.
+  output    logic [31:0] first_page_o, last_page_o
 );
   assign start_o = start_i;
   assign busy_o = selected_i && engine_busy_i;

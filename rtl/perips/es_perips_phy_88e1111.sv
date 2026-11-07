@@ -20,19 +20,26 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_perips_phy_88e1111 #(
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// Delay between PHY status polls, in milliseconds.
   parameter int unsigned POLL_INTERVAL_MS = 100,
+
   /// Startup delay before the first PHY discovery request, in milliseconds.
   parameter int unsigned RESET_WAIT_MS = 20
 ) (
+  /// Clock, synchronous active-low reset, and sampled value from the MDIO pad.
   input var logic clk_i, rst_ni, mdio_i,
-  output logic mdc_o, mdio_o, mdio_oe_o,
+  /// MDC plus MDIO output value and active-high pad output enable.
+  output    logic mdc_o, mdio_o, mdio_oe_o,
   // Bits 0..5: valid, link, duplex, two-bit speed, management error.
   // The board may enable its MII path only for a valid 100-Mbit full-duplex link.
-  output logic [7:0] status_o,
-  output logic enabled_o
+  /// PHY discovery and negotiated status; validity qualifies every field.
+  output    logic [7:0] status_o,
+  /// Traffic-enable decision for a valid 100-Mbit full-duplex link.
+  output    logic enabled_o
 );
   localparam logic [63:0] POLL = (64'(CLK_FREQ_HZ) * 64'(POLL_INTERVAL_MS) + 64'd999) / 64'd1000;
   localparam logic [63:0] RESET_WAIT = (64'(CLK_FREQ_HZ) * 64'(RESET_WAIT_MS) + 64'd999) / 64'd1000;
@@ -91,21 +98,21 @@ module es_perips_phy_88e1111 #(
   es_perips_mdio #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_mdio (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .start_i(state_q == S_START),
-    .read_i(read_cmd),
-    .phy_i(address_q),
-    .reg_i(reg_addr),
-    .data_i(write_data),
-    .mdio_i(mdio_i),
-    .mdc_o(mdc_o),
-    .mdio_o(mdio_o),
-    .mdio_oe_o(mdio_oe_o),
-    .busy_o(busy),
-    .valid_o(valid),
-    .error_o(error),
-    .data_o(read_data)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .start_i   (state_q == S_START),
+    .read_i    (read_cmd),
+    .phy_i     (address_q),
+    .reg_i     (reg_addr),
+    .data_i    (write_data),
+    .mdio_i    (mdio_i),
+    .mdc_o     (mdc_o),
+    .mdio_o    (mdio_o),
+    .mdio_oe_o (mdio_oe_o),
+    .busy_o    (busy),
+    .valid_o   (valid),
+    .error_o   (error),
+    .data_o    (read_data)
   );
   logic unused_busy;
   assign unused_busy = busy;

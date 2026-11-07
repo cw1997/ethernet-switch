@@ -49,52 +49,52 @@ module tb_sw_switch_rmii;
   logic [32*SW_STAT_COUNT-1:0] stat_o;
 
   es_switch_rmii #(
-    .NUM_PORTS  (NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_HZ),
-    .PORT_SPEED (SPEEDS)
+    .NUM_PORTS   (NUM_PORTS),
+    .CLK_FREQ_HZ (CLK_HZ),
+    .PORT_SPEED  (SPEEDS)
   ) u_dut (
-    .phy_status_i ('0),
-    .mon_req_i    (1'b0),
-    .mon_addr_i   (32'd0),
-    .clk_i        (clk),
-    .rst_ni       (rst_n),
-    .link_up_i    (link_up),
-    .flood_mode_i (2'd1),
-    .learning_en_i(1'b1),
-    .cfg_ovr_i    (1'b0),
-    .cam_flush_i  (1'b0),
-    .rmii_crs_dv_i(rmii_crs_dv_i),
-    .rmii_rxd_i   (rmii_rxd_i),
-    .rmii_tx_en_o (rmii_tx_en_o),
-    .rmii_txd_o   (rmii_txd_o),
-    .stat_o       (stat_o)
+    .phy_status_i  ('0),
+    .mon_req_i     (1'b0),
+    .mon_addr_i    (32'd0),
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .flood_mode_i  (2'd1),
+    .learning_en_i (1'b1),
+    .cfg_ovr_i     (1'b0),
+    .cam_flush_i   (1'b0),
+    .rmii_crs_dv_i (rmii_crs_dv_i),
+    .rmii_rxd_i    (rmii_rxd_i),
+    .rmii_tx_en_o  (rmii_tx_en_o),
+    .rmii_txd_o    (rmii_txd_o),
+    .stat_o        (stat_o)
   );
 
   // ---- per-port RMII PHY models ----------------------------------------------
   sw_rmii_if #(
-    .PORT_ID(0),
-    .BYTE_PERIOD(BP0)
+    .PORT_ID     (0),
+    .BYTE_PERIOD (BP0)
   ) u_if0 (
-    .clk_i      (clk),
-    .rst_ni     (rst_n),
-    .enable_i   (link_up[0]),
-    .rmii_crs_dv(rmii_crs_dv_i[0]),
-    .rmii_rxd   (rmii_rxd_i[1:0]),
-    .rmii_tx_en (rmii_tx_en_o[0]),
-    .rmii_txd   (rmii_txd_o[1:0])
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .enable_i    (link_up[0]),
+    .rmii_crs_dv (rmii_crs_dv_i[0]),
+    .rmii_rxd    (rmii_rxd_i[1:0]),
+    .rmii_tx_en  (rmii_tx_en_o[0]),
+    .rmii_txd    (rmii_txd_o[1:0])
   );
 
   sw_rmii_if #(
-    .PORT_ID(1),
-    .BYTE_PERIOD(BP1)
+    .PORT_ID     (1),
+    .BYTE_PERIOD (BP1)
   ) u_if1 (
-    .clk_i      (clk),
-    .rst_ni     (rst_n),
-    .enable_i   (link_up[1]),
-    .rmii_crs_dv(rmii_crs_dv_i[1]),
-    .rmii_rxd   (rmii_rxd_i[3:2]),
-    .rmii_tx_en (rmii_tx_en_o[1]),
-    .rmii_txd   (rmii_txd_o[3:2])
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .enable_i    (link_up[1]),
+    .rmii_crs_dv (rmii_crs_dv_i[1]),
+    .rmii_rxd    (rmii_rxd_i[3:2]),
+    .rmii_tx_en  (rmii_tx_en_o[1]),
+    .rmii_txd    (rmii_txd_o[3:2])
   );
 
   // ---------------------------------------------------------------------------

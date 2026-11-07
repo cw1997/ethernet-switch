@@ -17,42 +17,52 @@
 `include "console/es_console_defs.sv"
 `default_nettype none
 module es_switch_de2_115_top #(
+
   /// Telemetry sampling interval in milliseconds.
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
+
   /// Console UART bit rate in bits per second.
   parameter int unsigned UART_BAUD_RATE = 115200,
+
   /// Console character width; ASCII commands require seven or eight data bits.
   parameter int unsigned UART_DATA_BITS = 8,
+
   /// Console parity encoding from es_console_defs.sv.
   parameter int unsigned UART_PARITY = SW_UART_PARITY_NONE,
+
   /// Number of console stop bits per character.
   parameter int unsigned UART_STOP_BITS = 1,
+
   /// Console CTS/RTS policy from es_console_defs.sv.
   parameter int unsigned UART_FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
-  input var logic CLOCK_50,
+  /// 50 MHz board oscillator and active-low KEY vector; KEY0 releases reset.
+  input var logic        CLOCK_50,
   input var logic [3:0] KEY,
-  output logic [8:0] LEDG,
-  output logic [17:0] LEDR,
-  output logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, HEX6, HEX7,
-  output logic [7:0] LCD_DATA,
-  output logic LCD_EN, LCD_RS, LCD_RW, LCD_ON, LCD_BLON,
+  /// Board status LEDs and active-low seven-segment outputs.
+  output    logic [8:0] LEDG,
+  output    logic [17:0] LEDR,
+  output    logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, HEX6, HEX7,
+  output    logic [7:0] LCD_DATA,
+  output    logic        LCD_EN, LCD_RS, LCD_RW, LCD_ON, LCD_BLON,
+  /// UART console pins; CTS/RTS are active low.
   input var logic UART_RXD, UART_CTS,
-  output logic UART_TXD, UART_RTS,
+  output    logic UART_TXD, UART_RTS,
+  /// Two fixed 100-Mbit MII PHY interfaces; RX/TX clocks are board-reserved.
   input var logic [3:0] ENET0_RX_DATA,
-  input var logic ENET0_RX_DV, ENET0_RX_ER,
-  output logic [3:0] ENET0_TX_DATA,
-  output logic ENET0_TX_EN, ENET0_TX_ER, ENET0_TX_CLK,
-  output logic ENET0_RESET_N, ENET0_MDC,
-  inout tri logic ENET0_MDIO,
-  input var logic ENET0_INT_N,
+  input var logic         ENET0_RX_DV, ENET0_RX_ER,
+  output    logic [3:0] ENET0_TX_DATA,
+  output    logic         ENET0_TX_EN, ENET0_TX_ER, ENET0_TX_CLK,
+  output    logic         ENET0_RESET_N, ENET0_MDC,
+  inout  tri logic        ENET0_MDIO,
+  input var logic         ENET0_INT_N,
   input var logic [3:0] ENET1_RX_DATA,
-  input var logic ENET1_RX_DV, ENET1_RX_ER,
-  output logic [3:0] ENET1_TX_DATA,
-  output logic ENET1_TX_EN, ENET1_TX_ER, ENET1_TX_CLK,
-  output logic ENET1_RESET_N, ENET1_MDC,
-  inout tri logic ENET1_MDIO,
-  input var logic ENET1_INT_N
+  input var logic         ENET1_RX_DV, ENET1_RX_ER,
+  output    logic [3:0] ENET1_TX_DATA,
+  output    logic         ENET1_TX_EN, ENET1_TX_ER, ENET1_TX_CLK,
+  output    logic         ENET1_RESET_N, ENET1_MDC,
+  inout  tri logic        ENET1_MDIO,
+  input var logic         ENET1_INT_N
 );
   // --------------------------------------------------------------------------
   // Board configuration and reset sampling
@@ -73,14 +83,14 @@ module es_switch_de2_115_top #(
   logic cam_flush;
   logic [31:0] page;
   es_monitor_page #(
-    .NUM_PORTS  (NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_FREQ_HZ)
+    .NUM_PORTS   (NUM_PORTS),
+    .CLK_FREQ_HZ (CLK_FREQ_HZ)
   ) u_page (
-    .clk_i  (CLOCK_50),
-    .rst_ni (rst_ni),
-    .key_ni (KEY[3:1]),
-    .flush_o(cam_flush),
-    .page_o (page)
+    .clk_i   (CLOCK_50),
+    .rst_ni  (rst_ni),
+    .key_ni  (KEY[3:1]),
+    .flush_o (cam_flush),
+    .page_o  (page)
   );
   logic [1:0] tx_clk_q;
   genvar g;
@@ -116,27 +126,27 @@ module es_switch_de2_115_top #(
   es_perips_phy_88e1111 #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_phy0 (
-    .clk_i(CLOCK_50),
-    .rst_ni(rst_ni && phy_rst_n_q),
-    .mdio_i(mdio_sample[0]),
-    .mdc_o(ENET0_MDC),
-    .mdio_o(mdio_out[0]),
-    .mdio_oe_o(mdio_oe[0]),
-    .status_o(phy_status[0 +: 8]),
-    .enabled_o(enabled[0])
+    .clk_i     (CLOCK_50),
+    .rst_ni    (rst_ni && phy_rst_n_q),
+    .mdio_i    (mdio_sample[0]),
+    .mdc_o     (ENET0_MDC),
+    .mdio_o    (mdio_out[0]),
+    .mdio_oe_o (mdio_oe[0]),
+    .status_o  (phy_status[0 +: 8]),
+    .enabled_o (enabled[0])
   );
   assign ENET0_MDIO = mdio_oe[0] ? mdio_out[0] : 1'bz;
   es_perips_phy_88e1111 #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_phy1 (
-    .clk_i(CLOCK_50),
-    .rst_ni(rst_ni && phy_rst_n_q),
-    .mdio_i(mdio_sample[1]),
-    .mdc_o(ENET1_MDC),
-    .mdio_o(mdio_out[1]),
-    .mdio_oe_o(mdio_oe[1]),
-    .status_o(phy_status[8 +: 8]),
-    .enabled_o(enabled[1])
+    .clk_i     (CLOCK_50),
+    .rst_ni    (rst_ni && phy_rst_n_q),
+    .mdio_i    (mdio_sample[1]),
+    .mdc_o     (ENET1_MDC),
+    .mdio_o    (mdio_out[1]),
+    .mdio_oe_o (mdio_oe[1]),
+    .status_o  (phy_status[8 +: 8]),
+    .enabled_o (enabled[1])
   );
   assign ENET1_MDIO = mdio_oe[1] ? mdio_out[1] : 1'bz;
   logic [1:0] mii_tx_en, mii_tx_er;
@@ -145,31 +155,31 @@ module es_switch_de2_115_top #(
   logic mon_req, mon_ready, mon_valid;
   logic [31:0] mon_addr, mon_data;
   es_switch_mii #(
-    .NUM_PORTS(NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_FREQ_HZ),
-    .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS),
-    .PORT_SPEED({NUM_PORTS{2'(SW_SPEED_100M)}})
+    .NUM_PORTS           (NUM_PORTS),
+    .CLK_FREQ_HZ         (CLK_FREQ_HZ),
+    .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
+    .PORT_SPEED          ({NUM_PORTS{2'(SW_SPEED_100M)}})
   ) u_switch (
-    .clk_i(CLOCK_50),
-    .rst_ni(rst_ni),
-    .link_up_i(enabled),
-    .phy_status_i(phy_status),
-    .mon_req_i(mon_req),
-    .mon_addr_i(mon_addr),
-    .mon_ready_o(mon_ready),
-    .mon_valid_o(mon_valid),
-    .mon_data_o(mon_data),
-    .flood_mode_i(2'd1),
-    .learning_en_i(1'b1),
-    .cfg_ovr_i(1'b0),
-    .cam_flush_i(cam_flush),
-    .mii_rx_dv_i({ENET1_RX_DV, ENET0_RX_DV}),
-    .mii_rx_er_i({ENET1_RX_ER, ENET0_RX_ER}),
-    .mii_rxd_i({ENET1_RX_DATA, ENET0_RX_DATA}),
-    .mii_tx_en_o(mii_tx_en),
-    .mii_tx_er_o(mii_tx_er),
-    .mii_txd_o(mii_txd),
-    .stat_o(stat)
+    .clk_i         (CLOCK_50),
+    .rst_ni        (rst_ni),
+    .link_up_i     (enabled),
+    .phy_status_i  (phy_status),
+    .mon_req_i     (mon_req),
+    .mon_addr_i    (mon_addr),
+    .mon_ready_o   (mon_ready),
+    .mon_valid_o   (mon_valid),
+    .mon_data_o    (mon_data),
+    .flood_mode_i  (2'd1),
+    .learning_en_i (1'b1),
+    .cfg_ovr_i     (1'b0),
+    .cam_flush_i   (cam_flush),
+    .mii_rx_dv_i   ({ENET1_RX_DV, ENET0_RX_DV}),
+    .mii_rx_er_i   ({ENET1_RX_ER, ENET0_RX_ER}),
+    .mii_rxd_i     ({ENET1_RX_DATA, ENET0_RX_DATA}),
+    .mii_tx_en_o   (mii_tx_en),
+    .mii_tx_er_o   (mii_tx_er),
+    .mii_txd_o     (mii_txd),
+    .stat_o        (stat)
   );
   assign {ENET1_TX_EN, ENET0_TX_EN} = mii_tx_en & enabled;
   assign {ENET1_TX_ER, ENET0_TX_ER} = mii_tx_er & enabled;
@@ -187,41 +197,41 @@ module es_switch_de2_115_top #(
   es_monitor_cache #(
     .NUM_PORTS(NUM_PORTS)
   ) u_cache (
-    .clk_i  (CLOCK_50),
-    .rst_ni (rst_ni),
-    .pause_i(console_claim),
-    .req_o  (cache_req),
-    .addr_o (cache_addr),
-    .ready_i(mon_ready && !console_claim),
-    .valid_i(mon_valid && !console_claim),
-    .data_i (mon_data),
-    .idle_o (cache_idle),
-    .image_o(image)
+    .clk_i   (CLOCK_50),
+    .rst_ni  (rst_ni),
+    .pause_i (console_claim),
+    .req_o   (cache_req),
+    .addr_o  (cache_addr),
+    .ready_i (mon_ready && !console_claim),
+    .valid_i (mon_valid && !console_claim),
+    .data_i  (mon_data),
+    .idle_o  (cache_idle),
+    .image_o (image)
   );
   es_console_core #(
-    .NUM_PORTS(NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_FREQ_HZ),
-    .UART_BAUD_RATE(UART_BAUD_RATE),
-    .UART_DATA_BITS(UART_DATA_BITS),
-    .UART_PARITY(UART_PARITY),
-    .UART_STOP_BITS(UART_STOP_BITS),
-    .UART_FLOW_CONTROL(UART_FLOW_CONTROL)
+    .NUM_PORTS         (NUM_PORTS),
+    .CLK_FREQ_HZ       (CLK_FREQ_HZ),
+    .UART_BAUD_RATE    (UART_BAUD_RATE),
+    .UART_DATA_BITS    (UART_DATA_BITS),
+    .UART_PARITY       (UART_PARITY),
+    .UART_STOP_BITS    (UART_STOP_BITS),
+    .UART_FLOW_CONTROL (UART_FLOW_CONTROL)
   ) u_console (
-    .clk_i(CLOCK_50),
-    .rst_ni(rst_ni),
-    .rx_i(UART_RXD),
-    .cts_ni(UART_CTS),
-    .tx_o(UART_TXD),
-    .rts_no(UART_RTS),
-    .image_i(image),
-    .cache_idle_i(cache_idle),
-    .bus_claim_o(console_claim),
-    .req_o(console_req),
-    .addr_o(console_addr),
-    .ready_i(mon_ready && console_claim),
-    .valid_i(mon_valid && console_claim),
-    .data_i(mon_data),
-    .fault_o(console_fault)
+    .clk_i        (CLOCK_50),
+    .rst_ni       (rst_ni),
+    .rx_i         (UART_RXD),
+    .cts_ni       (UART_CTS),
+    .tx_o         (UART_TXD),
+    .rts_no       (UART_RTS),
+    .image_i      (image),
+    .cache_idle_i (cache_idle),
+    .bus_claim_o  (console_claim),
+    .req_o        (console_req),
+    .addr_o       (console_addr),
+    .ready_i      (mon_ready && console_claim),
+    .valid_i      (mon_valid && console_claim),
+    .data_i       (mon_data),
+    .fault_o      (console_fault)
   );
   assign mon_req  = console_claim ? console_req : cache_req;
   assign mon_addr = console_claim ? console_addr : cache_addr;
@@ -231,28 +241,28 @@ module es_switch_de2_115_top #(
   es_monitor_display #(
     .NUM_PORTS(NUM_PORTS)
   ) u_display (
-    .clk_i(CLOCK_50),
-    .rst_ni(rst_ni),
-    .page_i(page),
-    .image_i(image),
-    .hex_o(hex),
-    .rx_kpps_o(rx_kpps),
-    .tx_kpps_o(tx_kpps),
-    .text_o(lcd_text)
+    .clk_i     (CLOCK_50),
+    .rst_ni    (rst_ni),
+    .page_i    (page),
+    .image_i   (image),
+    .hex_o     (hex),
+    .rx_kpps_o (rx_kpps),
+    .tx_kpps_o (tx_kpps),
+    .text_o    (lcd_text)
   );
   assign {HEX7, HEX6, HEX5, HEX4, HEX3, HEX2, HEX1, HEX0} = hex;
   es_perips_lcd #(
     .CLK_FREQ_HZ(CLK_FREQ_HZ)
   ) u_lcd (
-    .clk_i (CLOCK_50),
-    .rst_ni(rst_ni),
-    .text_i(lcd_text),
-    .data_o(LCD_DATA),
-    .rs_o  (LCD_RS),
-    .rw_o  (LCD_RW),
-    .en_o  (LCD_EN),
-    .on_o  (LCD_ON),
-    .blon_o(LCD_BLON)
+    .clk_i  (CLOCK_50),
+    .rst_ni (rst_ni),
+    .text_i (lcd_text),
+    .data_o (LCD_DATA),
+    .rs_o   (LCD_RS),
+    .rw_o   (LCD_RW),
+    .en_o   (LCD_EN),
+    .on_o   (LCD_ON),
+    .blon_o (LCD_BLON)
   );
   logic [24:0] heartbeat_q;
   logic [3:0] activity;

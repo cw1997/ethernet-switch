@@ -55,15 +55,18 @@ module sw_rmii_if
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
+  /// Clock/reset and link enable for this port's wire model.
   input logic clk_i,
   input logic rst_ni,
   input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
+  /// RMII receive chunk stream; CRS_DV also represents carrier sense.
   output logic       rmii_crs_dv,
   output logic [1:0] rmii_rxd,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
+  /// Transmit chunks observed and checked at the wire boundary.
   input logic       rmii_tx_en,
   input logic [1:0] rmii_txd
 );
@@ -200,10 +203,10 @@ module sw_rmii_if
   sw_rec_q #(
     .DEPTH(MON_DEPTH)
   ) u_mon (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .push_i     (mon_push_q),
-    .push_data_i(mon_push_rec)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .push_i      (mon_push_q),
+    .push_data_i (mon_push_rec)
   );
 
   // The reassembly, in a single process.  One process owns every signal it

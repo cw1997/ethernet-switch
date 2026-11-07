@@ -22,17 +22,24 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_monitor_page #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// Required stable key interval, in milliseconds.
   parameter int unsigned DEBOUNCE_MS = 20
 ) (
+  /// Core clock and synchronous active-low reset for debounce and page state.
   input var logic clk_i, rst_ni,
+  /// Active-low flush, previous-page, and next-page keys.
   input var logic [2:0] key_ni,  // flush, previous, next
-  output logic flush_o,
-  output logic [31:0] page_o
+  /// One clock pulse for each qualified flush-key press.
+  output    logic flush_o,
+  /// Current page: zero is aggregate; 1..NUM_PORTS select ports 0..N-1.
+  output    logic [31:0] page_o
 );
   logic [2:0] stable_keys, keys, pressed;
   logic unused_stable;
@@ -40,8 +47,8 @@ module es_monitor_page #(
   es_perips_key_debounce #(
     .WIDTH(3), .CLK_FREQ_HZ(CLK_FREQ_HZ), .DEBOUNCE_MS(DEBOUNCE_MS)
   ) u_keys (
-    .clk_i(clk_i), .rst_ni(rst_ni), .key_ni(key_ni),
-    .stable_no(stable_keys), .value_no(keys), .pressed_o(pressed)
+    .clk_i     (clk_i), .rst_ni(rst_ni), .key_ni(key_ni),
+    .stable_no (stable_keys), .value_no(keys), .pressed_o(pressed)
   );
   // Navigation policy stays here; events are consumed on the original commit
   // edge. Simultaneous previous and next presses do not change the page.

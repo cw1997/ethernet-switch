@@ -21,18 +21,18 @@ module sw_phy_monitor_tb;
   logic read_cmd = 0, selected = 0;
   logic [4:0] reg_addr = 0;
   es_perips_phy_88e1111 #(
-    .CLK_FREQ_HZ(10_000_000),
-    .POLL_INTERVAL_MS(1),
-    .RESET_WAIT_MS(0)
+    .CLK_FREQ_HZ      (10_000_000),
+    .POLL_INTERVAL_MS (1),
+    .RESET_WAIT_MS    (0)
   ) dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .mdio_i(oe ? out_pin : mdio),
-    .mdc_o(mdc),
-    .mdio_o(out_pin),
-    .mdio_oe_o(oe),
-    .status_o(status),
-    .enabled_o(enabled)
+    .clk_i     (clk),
+    .rst_ni    (rst),
+    .mdio_i    (oe ? out_pin : mdio),
+    .mdc_o     (mdc),
+    .mdio_o    (out_pin),
+    .mdio_oe_o (oe),
+    .status_o  (status),
+    .enabled_o (enabled)
   );
   always @(posedge mdc) begin
     command = {command[62:0], oe ? out_pin : mdio};

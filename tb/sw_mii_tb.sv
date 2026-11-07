@@ -70,18 +70,18 @@ module sw_mii_tb;
   es_switch_mii_adapter #(
     .BYTE_PERIOD(BP)
   ) u_mii (
-    .clk_i      (clk),
-    .rst_ni     (rst_n),
-    .mii_rx_dv_i(rx_dv),
-    .mii_rx_er_i(rx_er),
-    .mii_rxd_i  (rxd),
-    .mii_tx_en_o(tx_en),
-    .mii_tx_er_o(tx_er_o),
-    .mii_txd_o  (txd),
-    .oct_en_o   (oct_en_o),
-    .oct_d_o    (oct_d_o),
-    .oct_en_i   (oct_en_i),
-    .oct_d_i    (oct_d_i)
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .mii_rx_dv_i (rx_dv),
+    .mii_rx_er_i (rx_er),
+    .mii_rxd_i   (rxd),
+    .mii_tx_en_o (tx_en),
+    .mii_tx_er_o (tx_er_o),
+    .mii_txd_o   (txd),
+    .oct_en_o    (oct_en_o),
+    .oct_d_o     (oct_d_o),
+    .oct_en_i    (oct_en_i),
+    .oct_d_i     (oct_d_i)
   );
 
   // ---------------------------------------------------------------------------
@@ -104,18 +104,18 @@ module sw_mii_tb;
   es_switch_mii_adapter #(
     .BYTE_PERIOD(BP2)
   ) u_fast (
-    .clk_i      (clk),
-    .rst_ni     (rst_n),
-    .mii_rx_dv_i(f_rx_dv),
-    .mii_rx_er_i(f_rx_er),
-    .mii_rxd_i  (f_rxd),
-    .mii_tx_en_o(f_tx_en),
-    .mii_tx_er_o(f_tx_er_o),
-    .mii_txd_o  (f_txd),
-    .oct_en_o   (f_oct_en_o),
-    .oct_d_o    (f_oct_d_o),
-    .oct_en_i   (f_oct_en_i),
-    .oct_d_i    (f_oct_d_i)
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .mii_rx_dv_i (f_rx_dv),
+    .mii_rx_er_i (f_rx_er),
+    .mii_rxd_i   (f_rxd),
+    .mii_tx_en_o (f_tx_en),
+    .mii_tx_er_o (f_tx_er_o),
+    .mii_txd_o   (f_txd),
+    .oct_en_o    (f_oct_en_o),
+    .oct_d_o     (f_oct_d_o),
+    .oct_en_i    (f_oct_en_i),
+    .oct_d_i     (f_oct_d_i)
   );
 
   // ---------------------------------------------------------------------------

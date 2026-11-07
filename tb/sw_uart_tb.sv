@@ -13,9 +13,17 @@
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_uart_case #(
-  parameter int BITS = 8, PAR = 0, STOPS = 1, FLOW = 0, HZ = 1_600_000, BAUD = 100_000
+  /// UART character width, parity mode, stop-bit count, and flow-control mode.
+  parameter int BITS = 8,
+  parameter int PAR = 0,
+  parameter int STOPS = 1,
+  parameter int FLOW = 0,
+  /// Clock frequency and baud rate used by this UART instance.
+  parameter int HZ = 1_600_000,
+  parameter int BAUD = 100_000
 ) (
-  output logic finished = 0
+  /// Completion flag for the enclosing parallel regression.
+  output    logic finished = 0
 );
   logic clk = 0, rst = 0, rx = 1, cts = 0, tx, rts;
   always #5 clk = ~clk;
@@ -26,28 +34,28 @@ module sw_uart_case #(
   localparam int PERIOD = (HZ + BAUD / 2) / BAUD;
   localparam logic [7:0] MASK = 8'(255 >> (8 - BITS));
   es_perips_uart #(
-    .CLK_FREQ_HZ(HZ),
-    .BAUD_RATE(BAUD),
-    .DATA_BITS(BITS),
-    .PARITY(PAR),
-    .STOP_BITS(STOPS),
-    .FLOW_CONTROL(FLOW)
+    .CLK_FREQ_HZ  (HZ),
+    .BAUD_RATE    (BAUD),
+    .DATA_BITS    (BITS),
+    .PARITY       (PAR),
+    .STOP_BITS    (STOPS),
+    .FLOW_CONTROL (FLOW)
   ) dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .rx_i(rx),
-    .cts_ni(cts),
-    .tx_o(tx),
-    .rts_no(rts),
-    .tx_valid_i(send),
-    .tx_data_i(txdata),
-    .tx_ready_o(ready),
-    .rx_valid_o(got),
-    .rx_data_o(rxdata),
-    .rx_ready_i(accept),
-    .parity_error_o(parerr),
-    .frame_error_o(frerr),
-    .overflow_o(overflow)
+    .clk_i          (clk),
+    .rst_ni         (rst),
+    .rx_i           (rx),
+    .cts_ni         (cts),
+    .tx_o           (tx),
+    .rts_no         (rts),
+    .tx_valid_i     (send),
+    .tx_data_i      (txdata),
+    .tx_ready_o     (ready),
+    .rx_valid_o     (got),
+    .rx_data_o      (rxdata),
+    .rx_ready_i     (accept),
+    .parity_error_o (parerr),
+    .frame_error_o  (frerr),
+    .overflow_o     (overflow)
   );
   // --------------------------------------------------------------------------
   // Reference and checking helpers
@@ -148,46 +156,46 @@ endmodule
 module sw_uart_tb;
   logic [5:0] finished;
   sw_uart_case #(
-    .HZ  (50_000_000),
-    .BAUD(115200)
+    .HZ   (50_000_000),
+    .BAUD (115200)
   ) c0 (
     finished[0]
   );
   sw_uart_case #(
-    .BITS (7),
-    .PAR  (2),
-    .STOPS(2),
-    .FLOW (1)
+    .BITS  (7),
+    .PAR   (2),
+    .STOPS (2),
+    .FLOW  (1)
   ) c1 (
     finished[1]
   );
   sw_uart_case #(
-    .BITS (5),
-    .PAR  (1),
-    .STOPS(1),
-    .FLOW (1)
+    .BITS  (5),
+    .PAR   (1),
+    .STOPS (1),
+    .FLOW  (1)
   ) c2 (
     finished[2]
   );
   sw_uart_case #(
-    .BITS (6),
-    .PAR  (0),
-    .STOPS(2)
+    .BITS  (6),
+    .PAR   (0),
+    .STOPS (2)
   ) c3 (
     finished[3]
   );
   sw_uart_case #(
-    .BITS (8),
-    .PAR  (1),
-    .STOPS(2)
+    .BITS  (8),
+    .PAR   (1),
+    .STOPS (2)
   ) c4 (
     finished[4]
   );
   sw_uart_case #(
-    .BITS (8),
-    .PAR  (2),
-    .STOPS(1),
-    .FLOW (1)
+    .BITS  (8),
+    .PAR   (2),
+    .STOPS (1),
+    .FLOW  (1)
   ) c5 (
     finished[5]
   );

@@ -23,30 +23,44 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_console_core #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS,
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// Console UART bit rate in bits per second.
   parameter int unsigned UART_BAUD_RATE = 115200,
+
   /// Console character width; ASCII commands require seven or eight data bits.
   parameter int unsigned UART_DATA_BITS = 8,
+
   /// Console parity encoding from es_perips_defs.sv.
   parameter int unsigned UART_PARITY = SW_UART_PARITY_NONE,
+
   /// Number of console stop bits per character.
   parameter int unsigned UART_STOP_BITS = 1,
+
   /// Console CTS/RTS policy from es_perips_defs.sv.
   parameter int unsigned UART_FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
+  /// Clock/reset and asynchronous UART RX/CTS inputs; reset is active low.
   input var logic clk_i, rst_ni, rx_i, cts_ni,
-  output logic tx_o, rts_no,
+  /// UART transmit data and active-low RTS back-pressure output.
+  output    logic tx_o, rts_no,
+  /// Coherent telemetry image: aggregate record zero, then one record per port.
   input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
+  /// Safe CSR handoff boundary from the background telemetry cache.
   input var logic cache_idle_i,
-  output logic bus_claim_o, req_o,
-  output logic [31:0] addr_o,
-  input var logic ready_i, valid_i,
+  /// Console ownership and request to the shared byte-addressed CSR bus.
+  output    logic                                 bus_claim_o, req_o,
+  output    logic [31:0] addr_o,
+  /// CSR response handshake and returned data word.
+  input var logic                                 ready_i, valid_i,
   input var logic [31:0] data_i,
-  output logic fault_o
+  /// Sticky diagnostic that input was rejected or a UART error occurred.
+  output    logic fault_o
 );
   generate
     if (UART_DATA_BITS < 7) begin : g_ascii_invalid
@@ -82,69 +96,69 @@ module es_console_core #(
   logic parse_ready;
   assign parse_ready = (state_q == S_PARSE) && text_empty && !long_q;
   es_console_cmd_status #(.NUM_PORTS(NUM_PORTS)) u_cmd_status (
-    .start_i(parse_ready && (parsed[35:32] == 4'd1)), .selected_i(state_q == S_STATUS),
-    .engine_busy_i(snapshot_busy), .engine_done_i(snapshot_done),
-    .start_o(status_start), .busy_o(status_busy), .done_o(status_done),
-    .first_page_o(status_first), .last_page_o(status_last)
+    .start_i       (parse_ready && (parsed[35:32] == 4'd1)), .selected_i(state_q == S_STATUS),
+    .engine_busy_i (snapshot_busy), .engine_done_i(snapshot_done),
+    .start_o       (status_start), .busy_o(status_busy), .done_o(status_done),
+    .first_page_o  (status_first), .last_page_o(status_last)
   );
   es_console_cmd_port u_cmd_port (
-    .start_i(parse_ready && (parsed[35:32] == 4'd2)), .selected_i(state_q == S_PORT),
-    .engine_busy_i(snapshot_busy), .engine_done_i(snapshot_done), .port_i(parsed[31:0]),
-    .start_o(port_start), .busy_o(port_busy), .done_o(port_done),
-    .first_page_o(port_first), .last_page_o(port_last)
+    .start_i       (parse_ready && (parsed[35:32] == 4'd2)), .selected_i(state_q == S_PORT),
+    .engine_busy_i (snapshot_busy), .engine_done_i(snapshot_done), .port_i(parsed[31:0]),
+    .start_o       (port_start), .busy_o(port_busy), .done_o(port_done),
+    .first_page_o  (port_first), .last_page_o(port_last)
   );
   es_console_snapshot #(.NUM_PORTS(NUM_PORTS)) u_snapshot (
-    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(status_start || port_start),
-    .first_page_i(port_start ? port_first : status_first),
-    .last_page_i(port_start ? port_last : status_last), .image_i(image_i),
-    .parity_errors_i(parity_errors_q), .frame_errors_i(frame_errors_q),
-    .overflow_errors_i(overflow_errors_q), .busy_errors_i(busy_errors_q),
-    .long_errors_i(long_errors_q), .ready_i(text_empty), .valid_o(snapshot_valid),
-    .busy_o(snapshot_busy), .done_o(snapshot_done), .text_o(snapshot_text)
+    .clk_i             (clk_i), .rst_ni(rst_ni), .start_i(status_start || port_start),
+    .first_page_i      (port_start ? port_first : status_first),
+    .last_page_i       (port_start ? port_last : status_last), .image_i(image_i),
+    .parity_errors_i   (parity_errors_q), .frame_errors_i(frame_errors_q),
+    .overflow_errors_i (overflow_errors_q), .busy_errors_i(busy_errors_q),
+    .long_errors_i     (long_errors_q), .ready_i(text_empty), .valid_o(snapshot_valid),
+    .busy_o            (snapshot_busy), .done_o(snapshot_done), .text_o(snapshot_text)
   );
   assign mac_start = parse_ready && ((parsed[35:32] == 4'd3) || (parsed[35:32] == 4'd4)) &&
       image_i[SW_MON_VALID_WORD*32];
   es_console_cmd_mac u_cmd_mac (
-    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(mac_start),
-    .filter_i((parsed[35:32] == 4'd3) ? 32'hffff_ffff : parsed[31:0]),
-    .count_i(image_i[52*32 +: 32]), .cache_idle_i(cache_idle_i),
-    .bus_claim_o(bus_claim_o), .req_o(req_o), .addr_o(addr_o),
-    .csr_ready_i(ready_i), .csr_valid_i(valid_i), .csr_data_i(data_i),
-    .text_ready_i(text_empty), .text_valid_o(mac_valid), .busy_o(mac_busy),
-    .done_o(mac_done), .text_o(mac_text)
+    .clk_i        (clk_i), .rst_ni(rst_ni), .start_i(mac_start),
+    .filter_i     ((parsed[35:32] == 4'd3) ? 32'hffff_ffff : parsed[31:0]),
+    .count_i      (image_i[52*32 +: 32]), .cache_idle_i(cache_idle_i),
+    .bus_claim_o  (bus_claim_o), .req_o(req_o), .addr_o(addr_o),
+    .csr_ready_i  (ready_i), .csr_valid_i(valid_i), .csr_data_i(data_i),
+    .text_ready_i (text_empty), .text_valid_o(mac_valid), .busy_o(mac_busy),
+    .done_o       (mac_done), .text_o(mac_text)
   );
   assign rts_no = (UART_FLOW_CONTROL == SW_UART_FLOW_NONE) ? 1'b0 : (state_q != S_RX);
   assign text_empty = text_left_q == 7'd0;
   es_console_cmd_help u_cmd_help (
-    .start_i((state_q == S_PARSE) && !long_q && (parsed[35:32] == 4'd0)),
-    .ready_i(text_empty),
-    .valid_o(help_valid),
-    .done_o(help_done),
-    .text_o(help_text)
+    .start_i ((state_q == S_PARSE) && !long_q && (parsed[35:32] == 4'd0)),
+    .ready_i (text_empty),
+    .valid_o (help_valid),
+    .done_o  (help_done),
+    .text_o  (help_text)
   );
   es_perips_uart #(
-    .CLK_FREQ_HZ(CLK_FREQ_HZ),
-    .BAUD_RATE(UART_BAUD_RATE),
-    .DATA_BITS(UART_DATA_BITS),
-    .PARITY(UART_PARITY),
-    .STOP_BITS(UART_STOP_BITS),
-    .FLOW_CONTROL(UART_FLOW_CONTROL)
+    .CLK_FREQ_HZ  (CLK_FREQ_HZ),
+    .BAUD_RATE    (UART_BAUD_RATE),
+    .DATA_BITS    (UART_DATA_BITS),
+    .PARITY       (UART_PARITY),
+    .STOP_BITS    (UART_STOP_BITS),
+    .FLOW_CONTROL (UART_FLOW_CONTROL)
   ) u_uart (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .rx_i(rx_i),
-    .cts_ni(cts_ni),
-    .tx_o(tx_o),
-    .rts_no(unused_rts),
-    .tx_valid_i(!text_empty && (text_q[511:504] != 8'd0)),
-    .tx_data_i(text_q[511:504]),
-    .tx_ready_o(tx_ready),
-    .rx_valid_o(rx_valid),
-    .rx_data_o(rx_data),
-    .rx_ready_i(1'b1),
-    .parity_error_o(parity_error),
-    .frame_error_o(frame_error),
-    .overflow_o(overflow)
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .rx_i           (rx_i),
+    .cts_ni         (cts_ni),
+    .tx_o           (tx_o),
+    .rts_no         (unused_rts),
+    .tx_valid_i     (!text_empty && (text_q[511:504] != 8'd0)),
+    .tx_data_i      (text_q[511:504]),
+    .tx_ready_o     (tx_ready),
+    .rx_valid_o     (rx_valid),
+    .rx_data_o      (rx_data),
+    .rx_ready_i     (1'b1),
+    .parity_error_o (parity_error),
+    .frame_error_o  (frame_error),
+    .overflow_o     (overflow)
   );
 
   // --------------------------------------------------------------------------

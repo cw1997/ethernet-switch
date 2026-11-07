@@ -13,9 +13,11 @@
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_tx_completion_case #(
+  /// Octet period used to check completion timing at multiple link rates.
   parameter int BP = 1
 ) (
-  output logic finished = 0
+  /// Completion flag for the enclosing parallel regression.
+  output    logic finished = 0
 );
   logic clk = 0, rst = 0, start = 0;
   always #5 clk = ~clk;
@@ -26,18 +28,18 @@ module sw_tx_completion_case #(
   es_switch_gmii_tx #(
     .BYTE_PERIOD(BP)
   ) dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .fr_start_i(start),
-    .fr_len_i(length),
-    .done_o(done),
-    .done_len_o(done_len),
-    .tx_busy_o(busy),
-    .beat_valid_i(1'b1),
-    .beat_data_i(64'd0),
-    .beat_rd_o(rd),
-    .oct_en_o(en),
-    .oct_d_o(data)
+    .clk_i        (clk),
+    .rst_ni       (rst),
+    .fr_start_i   (start),
+    .fr_len_i     (length),
+    .done_o       (done),
+    .done_len_o   (done_len),
+    .tx_busy_o    (busy),
+    .beat_valid_i (1'b1),
+    .beat_data_i  (64'd0),
+    .beat_rd_o    (rd),
+    .oct_en_o     (en),
+    .oct_d_o      (data)
   );
   always @(posedge clk)
     if (rst) begin

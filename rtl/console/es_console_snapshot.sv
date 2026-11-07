@@ -14,20 +14,25 @@
 `default_nettype none
 
 module es_console_snapshot #(
+  /// Number of switch ports included after aggregate record zero.
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
+  /// Clock, synchronous active-low reset, and command start pulse.
   input var logic clk_i, rst_ni, start_i,
   // Page zero is aggregate; page p+1 holds port p. The caller guarantees
   // 0 <= first_page_i <= last_page_i <= NUM_PORTS.
   input var logic [31:0] first_page_i, last_page_i,
+  /// Packed image captured at start; records contain SW_MON_BITS each.
   input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
+  /// Live console error counters appended to each response.
   input var logic [31:0] parity_errors_i, frame_errors_i, overflow_errors_i,
   input var logic [31:0] busy_errors_i, long_errors_i,
+  /// Ready/valid line handshake; state advances only when ready_i is high.
   input var logic ready_i,
   // done_o accompanies acceptance of the last line, not UART transmission.
-  output logic valid_o, busy_o, done_o,
-  output logic [511:0] text_o
-);
+  output    logic valid_o, busy_o, done_o,
+  /// One left-aligned 64-byte ASCII response line.
+  output    logic [511:0] text_o);
   // A page is held until all of its lines have been accepted. The cache copy
   // is frozen at command start, even if transmission is stopped by CTS.
   logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] held_q;

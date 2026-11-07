@@ -25,28 +25,39 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_perips_uart #(
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// UART bit rate in bits per second.
   parameter int unsigned BAUD_RATE = 115200,
+
   /// Number of data bits per UART character, from five through eight.
   parameter int unsigned DATA_BITS = 8,
+
   /// UART parity encoding from es_perips_defs.sv.
   parameter int unsigned PARITY = SW_UART_PARITY_NONE,
+
   /// Number of UART stop bits, one or two.
   parameter int unsigned STOP_BITS = 1,
+
   /// CTS/RTS policy from es_perips_defs.sv.
   parameter int unsigned FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
+  /// Clock/reset and asynchronous UART RX plus active-low CTS inputs.
   input var logic clk_i, rst_ni, rx_i, cts_ni,
-  output logic tx_o, rts_no,
-  input var logic tx_valid_i,
+  /// UART TX pin and active-low RTS back-pressure output.
+  output    logic tx_o, rts_no,
+  /// Transmit ready/valid interface; characters are sent least-significant bit first.
+  input var logic       tx_valid_i,
   input var logic [7:0] tx_data_i,
-  output logic tx_ready_o,
-  output logic rx_valid_o,
-  output logic [7:0] rx_data_o,
-  input var logic rx_ready_i,
-  output logic parity_error_o, frame_error_o, overflow_o
+  output    logic       tx_ready_o,
+  /// Receive ready/valid interface; a character is dropped when rx_ready_i is low.
+  output    logic       rx_valid_o,
+  output    logic [7:0] rx_data_o,
+  input var logic       rx_ready_i,
+  /// Parity, framing, and receive-overflow event pulses.
+  output    logic parity_error_o, frame_error_o, overflow_o
 );
   localparam int unsigned PERIOD = (BAUD_RATE == 0) ? 1 : (CLK_FREQ_HZ + BAUD_RATE / 2) / BAUD_RATE;
   localparam logic [63:0] ACTUAL_PRODUCT = 64'(PERIOD) * 64'(BAUD_RATE);
@@ -69,8 +80,8 @@ module es_perips_uart #(
   // --------------------------------------------------------------------------
   logic rx_sync_q, cts_sync_q;
   es_common_sync_2ff #(.WIDTH(2)) u_sync (
-    .clk_i(clk_i), .rst_ni(rst_ni), .async_i({rx_i, cts_ni}),
-    .sync_o({rx_sync_q, cts_sync_q})
+    .clk_i  (clk_i), .rst_ni(rst_ni), .async_i({rx_i, cts_ni}),
+    .sync_o ({rx_sync_q, cts_sync_q})
   );
   // --------------------------------------------------------------------------
   // UART frame construction

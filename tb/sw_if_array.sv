@@ -43,13 +43,14 @@ module sw_if_array
   /// Capacity of one port's scoreboard queue.
   parameter int unsigned EXP_DEPTH = 256
 ) (
+  /// Shared test clock/reset and per-port administrative link enables.
   input logic                 clk_i,
   input logic                 rst_ni,
   input logic [NUM_PORTS-1:0] link_up,
-
-  output logic [  NUM_PORTS-1:0] rx_en,
+  /// Packed receive and transmit buses; port zero occupies the low slice.
+  output logic [NUM_PORTS-1:0] rx_en,
   output logic [NUM_PORTS*8-1:0] rx_d,
-  input  logic [  NUM_PORTS-1:0] tx_en,
+  input  logic [NUM_PORTS-1:0] tx_en,
   input  logic [NUM_PORTS*8-1:0] tx_d
 );
 
@@ -82,55 +83,55 @@ module sw_if_array
   // Per-port GMII models
   // ==========================================================================
   sw_gmii_if #(
-    .PORT_ID(0),
-    .BYTE_PERIOD(BP0)
+    .PORT_ID     (0),
+    .BYTE_PERIOD (BP0)
   ) u0 (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .enable_i(link_up[0]),
-    .gmii_rx_en(rx_en[0]),
-    .gmii_rx_d(rx_d[0*8 +: 8]),
-    .gmii_tx_en(tx_en[0]),
-    .gmii_tx_d(tx_d[0*8 +: 8])
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .enable_i   (link_up[0]),
+    .gmii_rx_en (rx_en[0]),
+    .gmii_rx_d  (rx_d[0*8 +: 8]),
+    .gmii_tx_en (tx_en[0]),
+    .gmii_tx_d  (tx_d[0*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(1),
-    .BYTE_PERIOD(BP1)
+    .PORT_ID     (1),
+    .BYTE_PERIOD (BP1)
   ) u1 (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .enable_i(link_up[1]),
-    .gmii_rx_en(rx_en[1]),
-    .gmii_rx_d(rx_d[1*8 +: 8]),
-    .gmii_tx_en(tx_en[1]),
-    .gmii_tx_d(tx_d[1*8 +: 8])
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .enable_i   (link_up[1]),
+    .gmii_rx_en (rx_en[1]),
+    .gmii_rx_d  (rx_d[1*8 +: 8]),
+    .gmii_tx_en (tx_en[1]),
+    .gmii_tx_d  (tx_d[1*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(2),
-    .BYTE_PERIOD(BP2)
+    .PORT_ID     (2),
+    .BYTE_PERIOD (BP2)
   ) u2 (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .enable_i(link_up[2]),
-    .gmii_rx_en(rx_en[2]),
-    .gmii_rx_d(rx_d[2*8 +: 8]),
-    .gmii_tx_en(tx_en[2]),
-    .gmii_tx_d(tx_d[2*8 +: 8])
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .enable_i   (link_up[2]),
+    .gmii_rx_en (rx_en[2]),
+    .gmii_rx_d  (rx_d[2*8 +: 8]),
+    .gmii_tx_en (tx_en[2]),
+    .gmii_tx_d  (tx_d[2*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(3),
-    .BYTE_PERIOD(BP3)
+    .PORT_ID     (3),
+    .BYTE_PERIOD (BP3)
   ) u3 (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .enable_i(link_up[3]),
-    .gmii_rx_en(rx_en[3]),
-    .gmii_rx_d(rx_d[3*8 +: 8]),
-    .gmii_tx_en(tx_en[3]),
-    .gmii_tx_d(tx_d[3*8 +: 8])
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .enable_i   (link_up[3]),
+    .gmii_rx_en (rx_en[3]),
+    .gmii_rx_d  (rx_d[3*8 +: 8]),
+    .gmii_tx_en (tx_en[3]),
+    .gmii_tx_d  (tx_d[3*8 +: 8])
   );
 
   // ==========================================================================
@@ -139,26 +140,26 @@ module sw_if_array
   sw_rec_q #(
     .DEPTH(EXP_DEPTH)
   ) q0 (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni)
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni)
   );
   sw_rec_q #(
     .DEPTH(EXP_DEPTH)
   ) q1 (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni)
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni)
   );
   sw_rec_q #(
     .DEPTH(EXP_DEPTH)
   ) q2 (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni)
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni)
   );
   sw_rec_q #(
     .DEPTH(EXP_DEPTH)
   ) q3 (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni)
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni)
   );
 
   // ==========================================================================

@@ -27,67 +27,67 @@ module sw_console_tb;
   int errors = 0, checks = 0;
   logic [31:0] before_sequence;
   es_monitor_core #(
-    .CLK_FREQ_HZ(4_000_000),
-    .REFRESH_INTERVAL_MS(2),
-    .CAM_CAPACITY(2)
+    .CLK_FREQ_HZ         (4_000_000),
+    .REFRESH_INTERVAL_MS (2),
+    .CAM_CAPACITY        (2)
   ) monitor_dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .port_stat_i(stat),
-    .tx_done_i(N'(0)),
-    .tx_len_i('0),
-    .phy_status_i({N{8'h0f}}),
-    .rx_used_i('0),
-    .tx_used_i('0),
-    .busy_i(1'b0),
-    .flush_i(1'b0),
-    .cam_entries_i(32'd1),
-    .req_i(req),
-    .addr_i(addr),
-    .ready_o(ready),
-    .valid_o(valid),
-    .data_o(data),
-    .cam_req_o(cam_req),
-    .cam_index_o(cam_index),
-    .cam_valid_i(cam_valid),
-    .cam_entry_i(cam_entry)
+    .clk_i         (clk),
+    .rst_ni        (rst),
+    .port_stat_i   (stat),
+    .tx_done_i     (N'(0)),
+    .tx_len_i      ('0),
+    .phy_status_i  ({N{8'h0f}}),
+    .rx_used_i     ('0),
+    .tx_used_i     ('0),
+    .busy_i        (1'b0),
+    .flush_i       (1'b0),
+    .cam_entries_i (32'd1),
+    .req_i         (req),
+    .addr_i        (addr),
+    .ready_o       (ready),
+    .valid_o       (valid),
+    .data_o        (data),
+    .cam_req_o     (cam_req),
+    .cam_index_o   (cam_index),
+    .cam_valid_i   (cam_valid),
+    .cam_entry_i   (cam_entry)
   );
   always @(posedge clk) begin
     cam_valid <= cam_req;
     if (cam_req) cam_entry <= (cam_index == 0) ? {32'd1, 32'd1, 16'd0, 48'h021122334455} : 128'd0;
   end
   es_monitor_cache cache_dut (
-    .clk_i  (clk),
-    .rst_ni (rst),
-    .pause_i(claim),
-    .req_o  (cache_req),
-    .addr_o (cache_addr),
-    .ready_i(ready && !claim),
-    .valid_i(valid && !claim),
-    .data_i (data),
-    .idle_o (cache_idle),
-    .image_o(image)
+    .clk_i   (clk),
+    .rst_ni  (rst),
+    .pause_i (claim),
+    .req_o   (cache_req),
+    .addr_o  (cache_addr),
+    .ready_i (ready && !claim),
+    .valid_i (valid && !claim),
+    .data_i  (data),
+    .idle_o  (cache_idle),
+    .image_o (image)
   );
   es_console_core #(
-    .CLK_FREQ_HZ(4_000_000),
-    .UART_BAUD_RATE(100000),
-    .UART_FLOW_CONTROL(SW_UART_FLOW_RTS_CTS)
+    .CLK_FREQ_HZ       (4_000_000),
+    .UART_BAUD_RATE    (100000),
+    .UART_FLOW_CONTROL (SW_UART_FLOW_RTS_CTS)
   ) console_dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .rx_i(rx),
-    .cts_ni(cts),
-    .tx_o(tx),
-    .rts_no(rts),
-    .image_i(image),
-    .cache_idle_i(cache_idle),
-    .bus_claim_o(claim),
-    .req_o(console_req),
-    .addr_o(console_addr),
-    .ready_i(ready && claim),
-    .valid_i(valid && claim),
-    .data_i(data),
-    .fault_o(fault)
+    .clk_i        (clk),
+    .rst_ni       (rst),
+    .rx_i         (rx),
+    .cts_ni       (cts),
+    .tx_o         (tx),
+    .rts_no       (rts),
+    .image_i      (image),
+    .cache_idle_i (cache_idle),
+    .bus_claim_o  (claim),
+    .req_o        (console_req),
+    .addr_o       (console_addr),
+    .ready_i      (ready && claim),
+    .valid_i      (valid && claim),
+    .data_i       (data),
+    .fault_o      (fault)
   );
   assign req  = claim ? console_req : cache_req;
   assign addr = claim ? console_addr : cache_addr;

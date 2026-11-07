@@ -63,45 +63,55 @@
 // in a port range and in a subroutine argument type.  See es_defs.sv for why a
 // package cannot be used here.
 module sw_mac_table_reference #(
+
   /// Number of switch ports (read and learn ports).
   parameter int unsigned NUM_PORTS       = SW_DEFAULT_NUM_PORTS,
+
   /// Number of CAM buckets; the address space is hashed into this range.
   parameter int unsigned NUM_SETS        = 128,
+
   /// Associativity: entries per bucket.
   parameter int unsigned NUM_WAYS        = 4,
+
   /// 1 = enable entry ageing.
   parameter logic        AGE_EN          = 1'b0,
+
   /// clk_i cycles between two ageing steps; 0 steps once per clock.
   parameter int unsigned AGE_TICK_CYCLES = 1_000_000,
+
   /// Ageing countdown reload value; 0 expires an entry on the next sweep.
   parameter int unsigned AGE_LIMIT       = 0
 ) (
+  /// Clock/reset and whole-table invalidation control.
   input var logic clk_i,
   input var logic rst_ni,
-  input var logic flush_i, ///< invalidate every entry
+  input var logic flush_i,  ///< invalidate every entry
 
   // ---- lookup ports: one per ingress port, one clock of latency ------------
-  input var logic [NUM_PORTS-1:0]    req_i,
+  /// Parallel destination-MAC queries; port p occupies packed slice p.
+  input var logic [NUM_PORTS-1:0] req_i,
   input var logic [NUM_PORTS*48-1:0] mac_i,
-  output logic [NUM_PORTS-1:0]    hit_o,     ///< a valid entry matched
+  output    logic [NUM_PORTS-1:0] hit_o,  ///< a valid entry matched
   /// One-hot learned egress port, one NUM_PORTS-wide vector per lookup port.
-  output logic [NUM_PORTS*NUM_PORTS-1:0] port_o,
+  output    logic [NUM_PORTS*NUM_PORTS-1:0] port_o,
 
   // ---- learn ports: one per ingress port, serialised internally -----------
-  input var logic [NUM_PORTS-1:0]    learn_i,
+  /// Parallel source learns processed by the independent reference model.
+  input var logic [NUM_PORTS-1:0] learn_i,
   input var logic [NUM_PORTS*48-1:0] learn_mac_i,
   /// Ingress port index of every learn port (`learn_port_i[p]` == p).
   input var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
 
   // ---- status counters -----------------------------------------------------
-  output            logic [ 31:0] entries_o,    ///< entries currently held
-  output            logic [ 31:0] hits_o,       ///< lookups that resolved
-  output            logic [ 31:0] misses_o,     ///< lookups that did not resolve
+  /// Occupancy, lookup, and learn counters plus indexed CAM inspection response.
+  output    logic [31:0] entries_o,  ///< entries currently held
+  output    logic [31:0] hits_o,  ///< lookups that resolved
+  output    logic [31:0] misses_o,  ///< lookups that did not resolve
   input var logic         mon_req_i,
-  input var logic [ 31:0] mon_index_i,
-  output            logic         mon_valid_o,
-  output            logic [127:0] mon_entry_o,
-  output            logic [ 31:0] learns_o      ///< learn operations performed
+  input var logic [31:0] mon_index_i,
+  output    logic         mon_valid_o,
+  output    logic [127:0] mon_entry_o,
+  output    logic [31:0] learns_o  ///< learn operations performed
 );
 
   // --------------------------------------------------------------------------

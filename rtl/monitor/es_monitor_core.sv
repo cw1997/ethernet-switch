@@ -24,33 +24,43 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_monitor_core #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS,
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 125_000_000,
+
   /// Telemetry sampling interval in milliseconds.
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
+
   /// Reported number of MAC-table entries, independent of CSR byte addresses.
   parameter int unsigned CAM_CAPACITY = 512,
+
   /// Reported MAC-table aging configuration.
   parameter logic CAM_AGE_EN = 1'b0
 ) (
+  /// Clock and synchronous active-low reset for telemetry state.
   input var logic clk_i, rst_ni,
+  /// Per-port statistics, transmit completions, and completed-frame lengths.
   input var logic [NUM_PORTS*32*SW_STAT_COUNT-1:0] port_stat_i,
   input var logic [NUM_PORTS-1:0] tx_done_i,
   input var logic [NUM_PORTS*SW_LEN_W-1:0] tx_len_i,
-  // bits 0 valid, 1 physical link, 2 full duplex, 4:3 speed, 5 management error
+  /// PHY status per port: valid, link, duplex, speed[4:3], and management error.
   input var logic [NUM_PORTS*8-1:0] phy_status_i,
+  /// Per-port FIFO occupancy in beats and shared fabric busy/flush events.
   input var logic [NUM_PORTS*32-1:0] rx_used_i, tx_used_i,
-  input var logic busy_i, flush_i,
+  input var logic                    busy_i, flush_i,
+  /// MAC-table occupancy and read-only CSR request/response interface.
   input var logic [31:0] cam_entries_i,
-  input var logic req_i,
+  input var logic                    req_i,
   input var logic [31:0] addr_i,
-  output logic ready_o, valid_o,
-  output logic [31:0] data_o,
-  output logic cam_req_o,
-  output logic [31:0] cam_index_o,
-  input var logic cam_valid_i,
+  output    logic                    ready_o, valid_o,
+  output    logic [31:0] data_o,
+  /// CAM snapshot read request interface for the monitor cache.
+  output    logic                    cam_req_o,
+  output    logic [31:0] cam_index_o,
+  input var logic                    cam_valid_i,
   input var logic [127:0] cam_entry_i
 );
   generate
@@ -216,15 +226,15 @@ module es_monitor_core #(
   end
   assign ratio_start = state_q == S_START;
   es_common_ratio u_ratio (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .start_i(ratio_start),
-    .value_i(ratio_value),
-    .scale_i(ratio_scale),
-    .divisor_i(ratio_divisor),
-    .busy_o(ratio_busy),
-    .valid_o(ratio_valid),
-    .result_o(ratio_result)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .start_i   (ratio_start),
+    .value_i   (ratio_value),
+    .scale_i   (ratio_scale),
+    .divisor_i (ratio_divisor),
+    .busy_o    (ratio_busy),
+    .valid_o   (ratio_valid),
+    .result_o  (ratio_result)
   );
   logic unused_ratio_busy;
   assign unused_ratio_busy = ratio_busy;

@@ -39,13 +39,13 @@ module sw_crc32_tb;
   always #5 clk = ~clk;  // 100 MHz - the block is clock enabled, not clock bound
 
   es_common_crc32 u_dut (
-    .clk_i     (clk),
-    .rst_ni    (rst_n),
-    .en_i      (en),
-    .din_i     (din),
-    .clr_i     (clr),
-    .crc_fin_o (crc_fin),
-    .resid_ok_o(resid_ok)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .en_i       (en),
+    .din_i      (din),
+    .clr_i      (clr),
+    .crc_fin_o  (crc_fin),
+    .resid_ok_o (resid_ok)
   );
 
   // --------------------------------------------------------------------------

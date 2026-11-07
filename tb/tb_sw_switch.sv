@@ -152,35 +152,35 @@ module tb_sw_switch;
   logic [32*SW_STAT_COUNT-1:0] stat;
 
   es_switch_gmii #(
-    .NUM_PORTS     (NUM_PORTS),
-    .CLK_FREQ_HZ   (CLK_FREQ),
-    .PORT_MAC      (PORT_MAC),
-    .PORT_SPEED    (PORT_SPEED),
-    .RX_FIFO_DEPTH (RX_DEPTH),
-    .TX_FIFO_DEPTH (TX_DEPTH),
-    .TAG_FIFO_DEPTH(16),
-    .MAX_FRAME_LEN (MAX_FRAME),
-    .FLOOD_MODE    (2'd1),
-    .LEARNING_EN   (1'b1),
-    .CAM_SETS      (CAM_SETS),
-    .CAM_WAYS      (CAM_WAYS),
-    .CAM_AGE_EN    (1'b0)
+    .NUM_PORTS      (NUM_PORTS),
+    .CLK_FREQ_HZ    (CLK_FREQ),
+    .PORT_MAC       (PORT_MAC),
+    .PORT_SPEED     (PORT_SPEED),
+    .RX_FIFO_DEPTH  (RX_DEPTH),
+    .TX_FIFO_DEPTH  (TX_DEPTH),
+    .TAG_FIFO_DEPTH (16),
+    .MAX_FRAME_LEN  (MAX_FRAME),
+    .FLOOD_MODE     (2'd1),
+    .LEARNING_EN    (1'b1),
+    .CAM_SETS       (CAM_SETS),
+    .CAM_WAYS       (CAM_WAYS),
+    .CAM_AGE_EN     (1'b0)
   ) u_dut (
-    .phy_status_i  ('0),
-    .mon_req_i     (1'b0),
-    .mon_addr_i    (32'd0),
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .link_up_i     (link_up),
-    .flood_mode_i  (flood_mode),
-    .learning_en_i (learning_en),
-    .cfg_ovr_i     (cfg_ovr),
-    .cam_flush_i   (cam_flush),
-    .gmii_rx_en_i  (gmii_rx_en),
-    .gmii_rx_data_i(gmii_rx_d),
-    .gmii_tx_en_o  (gmii_tx_en),
-    .gmii_tx_data_o(gmii_tx_d),
-    .stat_o        (stat)
+    .phy_status_i   ('0),
+    .mon_req_i      (1'b0),
+    .mon_addr_i     (32'd0),
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .link_up_i      (link_up),
+    .flood_mode_i   (flood_mode),
+    .learning_en_i  (learning_en),
+    .cfg_ovr_i      (cfg_ovr),
+    .cam_flush_i    (cam_flush),
+    .gmii_rx_en_i   (gmii_rx_en),
+    .gmii_rx_data_i (gmii_rx_d),
+    .gmii_tx_en_o   (gmii_tx_en),
+    .gmii_tx_data_o (gmii_tx_d),
+    .stat_o         (stat)
   );
 
   // ==========================================================================
@@ -197,16 +197,16 @@ module tb_sw_switch;
   // module instance is the portable way to gather the four models into an
   // array: Icarus Verilog does not support an unpacked array of instances.
   sw_if_array #(
-    .NUM_PORTS(NUM_PORTS),
-    .CLK_FREQ (CLK_FREQ)
+    .NUM_PORTS (NUM_PORTS),
+    .CLK_FREQ  (CLK_FREQ)
   ) u_ifs (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .link_up(link_up),
-    .rx_en  (gmii_rx_en),
-    .rx_d   (gmii_rx_d),
-    .tx_en  (gmii_tx_en),
-    .tx_d   (gmii_tx_d)
+    .clk_i   (clk_i),
+    .rst_ni  (rst_ni),
+    .link_up (link_up),
+    .rx_en   (gmii_rx_en),
+    .rx_d    (gmii_rx_d),
+    .tx_en   (gmii_tx_en),
+    .tx_d    (gmii_tx_d)
   );
 
   // ==========================================================================

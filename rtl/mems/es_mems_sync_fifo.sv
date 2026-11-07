@@ -33,11 +33,14 @@
 `default_nettype none
 
 module es_mems_sync_fifo #(
+
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
+
   /// Number of entries; any value >= 2, not necessarily a power of two.
   parameter int unsigned DEPTH  = 16,
   parameter int unsigned ADDR_W = (DEPTH <= 2) ? 1 : $clog2(DEPTH),
+
   /// Occupancy / free-space counter width: one extra bit for the DEPTH+1 state.
   parameter int unsigned CNT_W  = ADDR_W + 1
 ) (
@@ -45,8 +48,8 @@ module es_mems_sync_fifo #(
   input var logic rst_ni,
 
   // ---- abort (rewind) ------------------------------------------------------
-  input var logic             undo_i,     ///< rewind the write pointer
-  input var logic [CNT_W-1:0] undo_cnt_i, ///< number of entries to discard
+  input var logic             undo_i,  ///< rewind the write pointer
+  input var logic [CNT_W-1:0] undo_cnt_i,  ///< number of entries to discard
 
   // ---- hard flush ----------------------------------------------------------
   input var logic flush_i,  ///< drop every buffered entry
@@ -55,7 +58,7 @@ module es_mems_sync_fifo #(
   input var logic             wr_en_i,
   input var logic [WIDTH-1:0] wr_data_i,
   output    logic             full_o,
-  output    logic [CNT_W-1:0] free_o,     ///< entries that can still be written
+  output    logic [CNT_W-1:0] free_o,  ///< entries that can still be written
 
   // ---- read port (FWFT) ----------------------------------------------------
   input var logic             rd_en_i,
@@ -68,8 +71,8 @@ module es_mems_sync_fifo #(
   // because it is written from a single clocked process.
   // --------------------------------------------------------------------------
   es_mems_ram_1r1w #(.WIDTH(WIDTH), .DEPTH(DEPTH), .ADDR_W(ADDR_W)) u_ram (
-    .clk_i(clk_i), .wr_en_i(do_write), .wr_addr_i(wr_ptr),
-    .rd_addr_i(rd_ptr), .wr_data_i(wr_data_i), .rd_data_o(rd_data_o)
+    .clk_i     (clk_i), .wr_en_i(do_write), .wr_addr_i(wr_ptr),
+    .rd_addr_i (rd_ptr), .wr_data_i(wr_data_i), .rd_data_o(rd_data_o)
   );
 
   logic [ADDR_W-1:0] wr_ptr;

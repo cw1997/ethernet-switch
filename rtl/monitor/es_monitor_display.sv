@@ -22,16 +22,22 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_monitor_display #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
+  /// Clock and synchronous active-low reset for the display pipeline.
   input var logic clk_i, rst_ni,
   // The owner supplies a page in [0, NUM_PORTS]; zero selects aggregate data.
+  /// Page selected by the monitor controls.
   input var logic [31:0] page_i,
+  /// Coherent aggregate-plus-port image from the telemetry cache.
   input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
-  output logic [55:0] hex_o,
-  output logic rx_kpps_o, tx_kpps_o,
-  output logic [255:0] text_o
+  /// Active-low seven-segment patterns and packet-rate scale indicators.
+  output    logic [55:0] hex_o,
+  output    logic                                 rx_kpps_o, tx_kpps_o,
+  /// Two packed 16-character LCD rows in left-to-right ASCII order.
+  output    logic [255:0] text_o
 );
 
   // --------------------------------------------------------------------------
@@ -84,23 +90,23 @@ module es_monitor_display #(
     screen = t;
   endfunction
   es_common_ratio u_scale (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .start_i(state_q == S_SCALE),
-    .value_i(value_q),
-    .scale_i(64'd1),
-    .divisor_i(64'd1000),
-    .busy_o(ratio_busy),
-    .valid_o(ratio_valid),
-    .result_o(ratio_result)
+    .clk_i     (clk_i),
+    .rst_ni    (rst_ni),
+    .start_i   (state_q == S_SCALE),
+    .value_i   (value_q),
+    .scale_i   (64'd1),
+    .divisor_i (64'd1000),
+    .busy_o    (ratio_busy),
+    .valid_o   (ratio_valid),
+    .result_o  (ratio_result)
   );
   es_common_bin_to_bcd u_decimal (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .start_i(state_q == S_DEC),
-    .value_i(value_q),
-    .valid_o(decimal_valid),
-    .bcd_o  (decimal_result)
+    .clk_i   (clk_i),
+    .rst_ni  (rst_ni),
+    .start_i (state_q == S_DEC),
+    .value_i (value_q),
+    .valid_o (decimal_valid),
+    .bcd_o   (decimal_result)
   );
   logic unused_busy;
   assign unused_busy = ratio_busy;

@@ -19,14 +19,18 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_perips_lcd #(
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000
 ) (
+  /// Clock and synchronous active-low reset for the LCD pin sequencer.
   input var logic clk_i, rst_ni,
   // First row occupies [255:128], each row in left-to-right ASCII order.
+  /// Two 16-character ASCII rows; changes are captured between write passes.
   input var logic [255:0] text_i,
-  output logic [7:0] data_o,
-  output logic rs_o, rw_o, en_o, on_o, blon_o
+  /// Write-only data/control pins; power and backlight remain enabled.
+  output    logic [7:0] data_o,
+  output    logic         rs_o, rw_o, en_o, on_o, blon_o
 );
   localparam int unsigned US = (CLK_FREQ_HZ + 999_999) / 1_000_000;
 

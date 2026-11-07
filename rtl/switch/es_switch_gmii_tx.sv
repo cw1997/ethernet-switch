@@ -64,30 +64,36 @@
 // what lets them appear in a parameter default and in a port range.  See
 // es_defs.sv for why a package cannot be used here.
 module es_switch_gmii_tx #(
+
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1,
+
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
   parameter int unsigned IFG_OCTETS  = SW_IFG_OCTETS
 ) (
+  /// Clock/reset and one frame request per accepted descriptor.
   input var logic clk_i,
   input var logic rst_ni,
 
   // ---- frame request -------------------------------------------------------
+  /// Frame length excludes FCS; completion reports the accepted client length.
   input var logic                fr_start_i,  ///< pulse: begin transmitting a new frame
-  input var logic [SW_LEN_W-1:0] fr_len_i,    ///< MAC client data length, FCS excluded
+  input var logic [SW_LEN_W-1:0] fr_len_i,  ///< MAC client data length, FCS excluded
   // Completion is sampled on the final FCS window, before entering IFG.
   output    logic                done_o,
   output    logic [SW_LEN_W-1:0] done_len_o,
-  output    logic                tx_busy_o,   ///< high from fr_start_i until the IFG ends
+  output    logic                tx_busy_o,  ///< high from fr_start_i until the IFG ends
 
   // ---- frame data source (first-word-fall-through) -------------------------
+  /// Beat source is FWFT and remains valid until beat_rd_o consumes its head.
   input var logic        beat_valid_i,  ///< a beat is available
   input var logic [63:0] beat_data_i,
-  output    logic        beat_rd_o,     ///< the current beat was consumed
+  output    logic        beat_rd_o,  ///< the current beat was consumed
 
   // ---- canonical octet transmit interface ----------------------------------
-  output logic       oct_en_o,  ///< octet-stream enable towards the front-end
-  output logic [7:0] oct_d_o    ///< octet towards the front-end
+  /// Octet and enable remain stable for the full BYTE_PERIOD output window.
+  output    logic       oct_en_o,  ///< octet-stream enable towards the front-end
+  output    logic [7:0] oct_d_o  ///< octet towards the front-end
 );
 
   // --------------------------------------------------------------------------
@@ -254,13 +260,13 @@ module es_switch_gmii_tx #(
   assign crc_clr = fr_start_i;
 
   es_common_crc32 u_crc (
-    .clk_i     (clk_i),
-    .rst_ni    (rst_ni),
-    .en_i      (crc_en),
-    .din_i     (crc_din),
-    .clr_i     (crc_clr),
-    .crc_fin_o (crc_fin),
-    .resid_ok_o(crc_resid_ok)  // unused: the receive path performs the check
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .en_i       (crc_en),
+    .din_i      (crc_din),
+    .clr_i      (crc_clr),
+    .crc_fin_o  (crc_fin),
+    .resid_ok_o (crc_resid_ok)  // unused: the receive path performs the check
   );
 
   logic unused_crc_ok;

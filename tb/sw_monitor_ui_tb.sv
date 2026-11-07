@@ -13,10 +13,15 @@
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_page_case #(
+  /// Port count used to check non-power-of-two page wrapping.
   parameter int N = 3,
+  /// Exercise the module's default port count when set.
   parameter bit USE_DEFAULT = 0
 ) (
-  output logic finished = 0
+
+  /// Completion flag for the enclosing parallel regression.
+
+  output    logic finished = 0
 );
   logic clk = 0, rst = 0;
   always #5 clk = ~clk;
@@ -28,26 +33,26 @@ module sw_page_case #(
   generate
     if (USE_DEFAULT) begin : g_default
       es_monitor_page #(
-        .CLK_FREQ_HZ(1000),
-        .DEBOUNCE_MS(2)
+        .CLK_FREQ_HZ (1000),
+        .DEBOUNCE_MS (2)
       ) dut (
-        .clk_i  (clk),
-        .rst_ni (rst),
-        .key_ni (keys),
-        .flush_o(flush),
-        .page_o (page)
+        .clk_i   (clk),
+        .rst_ni  (rst),
+        .key_ni  (keys),
+        .flush_o (flush),
+        .page_o  (page)
       );
     end else begin : g_override
       es_monitor_page #(
-        .NUM_PORTS  (N),
-        .CLK_FREQ_HZ(1000),
-        .DEBOUNCE_MS(2)
+        .NUM_PORTS   (N),
+        .CLK_FREQ_HZ (1000),
+        .DEBOUNCE_MS (2)
       ) dut (
-        .clk_i  (clk),
-        .rst_ni (rst),
-        .key_ni (keys),
-        .flush_o(flush),
-        .page_o (page)
+        .clk_i   (clk),
+        .rst_ni  (rst),
+        .key_ni  (keys),
+        .flush_o (flush),
+        .page_o  (page)
       );
     end
   endgenerate
@@ -103,8 +108,8 @@ module sw_monitor_ui_tb;
   sw_page_case #(.N(3)) p3 (finished[2]);
   sw_page_case #(.N(5)) p5 (finished[3]);
   sw_page_case #(
-    .N(4),
-    .USE_DEFAULT(1)
+    .N           (4),
+    .USE_DEFAULT (1)
   ) p4 (
     finished[4]
   );
@@ -123,27 +128,27 @@ module sw_monitor_ui_tb;
   es_monitor_display #(
     .NUM_PORTS(2)
   ) display_dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .page_i(page),
-    .image_i(image),
-    .hex_o(hex),
-    .rx_kpps_o(rk),
-    .tx_kpps_o(tk),
-    .text_o(text)
+    .clk_i     (clk),
+    .rst_ni    (rst),
+    .page_i    (page),
+    .image_i   (image),
+    .hex_o     (hex),
+    .rx_kpps_o (rk),
+    .tx_kpps_o (tk),
+    .text_o    (text)
   );
   es_perips_lcd #(
     .CLK_FREQ_HZ(1_000_000)
   ) lcd_dut (
-    .clk_i (clk),
-    .rst_ni(rst),
-    .text_i(text),
-    .data_o(lcd_data),
-    .rs_o  (rs),
-    .rw_o  (rw),
-    .en_o  (en),
-    .on_o  (on_pin),
-    .blon_o(bl)
+    .clk_i  (clk),
+    .rst_ni (rst),
+    .text_i (text),
+    .data_o (lcd_data),
+    .rs_o   (rs),
+    .rw_o   (rw),
+    .en_o   (en),
+    .on_o   (on_pin),
+    .blon_o (bl)
   );
   always @(negedge en)
     if (rst) begin

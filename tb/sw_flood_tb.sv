@@ -22,12 +22,19 @@
 `timescale 1ns/1ps
 
 module sw_flood_tb #(
+
   /// Link speed of port 0.  2 = 1000 Mbit/s (the default, and the fast
+
   /// configuration), 0 = 10 Mbit/s.  The slow configuration is the one that
+
   /// matters: it makes port 0's egress buffer accumulate a long queue while the
+
   /// fabric is still pushing frames into it, which is the situation the
+
   /// four-port testbench runs into and the one a store-and-forward fabric is
+
   /// most likely to get wrong.  Elaborate it with
+
   ///     iverilog -P sw_flood_tb.SPEED0=0
   parameter int unsigned SPEED0 = 2
 );
@@ -91,105 +98,105 @@ module sw_flood_tb #(
         $fatal(1, "monitor changed output/latency at cycle %0d", compared_cycles);
     end
   es_switch_gmii #(
-    .NUM_PORTS          (NUM_PORTS),
-    .REFRESH_INTERVAL_MS(1),
-    .CLK_FREQ_HZ        (CLK_FREQ),
-    .PORT_MAC           (PORT_MAC),
-    .PORT_SPEED         (PORT_SPEED),
-    .RX_FIFO_DEPTH      (RX_DEPTH),
-    .TX_FIFO_DEPTH      (TX_DEPTH),
-    .TAG_FIFO_DEPTH     (TAG_DEPTH),
-    .CAM_SETS           (CAM_SETS),
-    .CAM_WAYS           (CAM_WAYS)
+    .NUM_PORTS           (NUM_PORTS),
+    .REFRESH_INTERVAL_MS (1),
+    .CLK_FREQ_HZ         (CLK_FREQ),
+    .PORT_MAC            (PORT_MAC),
+    .PORT_SPEED          (PORT_SPEED),
+    .RX_FIFO_DEPTH       (RX_DEPTH),
+    .TX_FIFO_DEPTH       (TX_DEPTH),
+    .TAG_FIFO_DEPTH      (TAG_DEPTH),
+    .CAM_SETS            (CAM_SETS),
+    .CAM_WAYS            (CAM_WAYS)
   ) u_dut (
-    .phy_status_i  ('0),
-    .mon_req_i     (rst_n && mon_ready),
-    .mon_addr_i    (monitor_address),
-    .mon_ready_o   (mon_ready),
-    .mon_valid_o   (mon_valid),
-    .mon_data_o    (mon_data),
-    .clk_i         (clk),
-    .rst_ni        (rst_n),
-    .link_up_i     (link_up),
-    .flood_mode_i  (flood_mode),
-    .learning_en_i (learning_en),
-    .cfg_ovr_i     (cfg_ovr),
-    .cam_flush_i   (cam_flush),
-    .gmii_rx_en_i  (gmii_rx_en),
-    .gmii_rx_data_i(gmii_rx_data),
-    .gmii_tx_en_o  (gmii_tx_en),
-    .gmii_tx_data_o(gmii_tx_data),
-    .stat_o        (stat)
+    .phy_status_i   ('0),
+    .mon_req_i      (rst_n && mon_ready),
+    .mon_addr_i     (monitor_address),
+    .mon_ready_o    (mon_ready),
+    .mon_valid_o    (mon_valid),
+    .mon_data_o     (mon_data),
+    .clk_i          (clk),
+    .rst_ni         (rst_n),
+    .link_up_i      (link_up),
+    .flood_mode_i   (flood_mode),
+    .learning_en_i  (learning_en),
+    .cfg_ovr_i      (cfg_ovr),
+    .cam_flush_i    (cam_flush),
+    .gmii_rx_en_i   (gmii_rx_en),
+    .gmii_rx_data_i (gmii_rx_data),
+    .gmii_tx_en_o   (gmii_tx_en),
+    .gmii_tx_data_o (gmii_tx_data),
+    .stat_o         (stat)
   );
   es_switch_gmii #(
-    .NUM_PORTS          (NUM_PORTS),
-    .REFRESH_INTERVAL_MS(1),
-    .CLK_FREQ_HZ        (CLK_FREQ),
-    .PORT_MAC           (PORT_MAC),
-    .PORT_SPEED         (PORT_SPEED),
-    .RX_FIFO_DEPTH      (RX_DEPTH),
-    .TX_FIFO_DEPTH      (TX_DEPTH),
-    .TAG_FIFO_DEPTH     (TAG_DEPTH),
-    .CAM_SETS           (CAM_SETS),
-    .CAM_WAYS           (CAM_WAYS)
+    .NUM_PORTS           (NUM_PORTS),
+    .REFRESH_INTERVAL_MS (1),
+    .CLK_FREQ_HZ         (CLK_FREQ),
+    .PORT_MAC            (PORT_MAC),
+    .PORT_SPEED          (PORT_SPEED),
+    .RX_FIFO_DEPTH       (RX_DEPTH),
+    .TX_FIFO_DEPTH       (TX_DEPTH),
+    .TAG_FIFO_DEPTH      (TAG_DEPTH),
+    .CAM_SETS            (CAM_SETS),
+    .CAM_WAYS            (CAM_WAYS)
   ) u_quiet (
-    .phy_status_i  ('0),
-    .mon_req_i     (1'b0),
-    .mon_addr_i    (32'd0),
-    .clk_i         (clk),
-    .rst_ni        (rst_n),
-    .link_up_i     (link_up),
-    .flood_mode_i  (flood_mode),
-    .learning_en_i (learning_en),
-    .cfg_ovr_i     (cfg_ovr),
-    .cam_flush_i   (cam_flush),
-    .gmii_rx_en_i  (gmii_rx_en),
-    .gmii_rx_data_i(gmii_rx_data),
-    .gmii_tx_en_o  (quiet_tx_en),
-    .gmii_tx_data_o(quiet_tx_data),
-    .stat_o        (quiet_stat)
+    .phy_status_i   ('0),
+    .mon_req_i      (1'b0),
+    .mon_addr_i     (32'd0),
+    .clk_i          (clk),
+    .rst_ni         (rst_n),
+    .link_up_i      (link_up),
+    .flood_mode_i   (flood_mode),
+    .learning_en_i  (learning_en),
+    .cfg_ovr_i      (cfg_ovr),
+    .cam_flush_i    (cam_flush),
+    .gmii_rx_en_i   (gmii_rx_en),
+    .gmii_rx_data_i (gmii_rx_data),
+    .gmii_tx_en_o   (quiet_tx_en),
+    .gmii_tx_data_o (quiet_tx_data),
+    .stat_o         (quiet_stat)
   );
 
   // --------------------------------------------------------------------------
   // Per-port models
   // --------------------------------------------------------------------------
   sw_gmii_if #(
-    .PORT_ID(0),
-    .BYTE_PERIOD(SPEED0 == 0 ? 100 : 1)
+    .PORT_ID     (0),
+    .BYTE_PERIOD (SPEED0 == 0 ? 100 : 1)
   ) i0 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[0]),
-    .gmii_rx_en(gmii_rx_en[0]),
-    .gmii_rx_d(gmii_rx_data[0*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[0]),
-    .gmii_tx_d(gmii_tx_data[0*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[0]),
+    .gmii_rx_en (gmii_rx_en[0]),
+    .gmii_rx_d  (gmii_rx_data[0*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[0]),
+    .gmii_tx_d  (gmii_tx_data[0*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(1),
-    .BYTE_PERIOD(1)
+    .PORT_ID     (1),
+    .BYTE_PERIOD (1)
   ) i1 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[1]),
-    .gmii_rx_en(gmii_rx_en[1]),
-    .gmii_rx_d(gmii_rx_data[1*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[1]),
-    .gmii_tx_d(gmii_tx_data[1*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[1]),
+    .gmii_rx_en (gmii_rx_en[1]),
+    .gmii_rx_d  (gmii_rx_data[1*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[1]),
+    .gmii_tx_d  (gmii_tx_data[1*8 +: 8])
   );
 
   sw_gmii_if #(
-    .PORT_ID(2),
-    .BYTE_PERIOD(1)
+    .PORT_ID     (2),
+    .BYTE_PERIOD (1)
   ) i2 (
-    .clk_i(clk),
-    .rst_ni(rst_n),
-    .enable_i(link_up[2]),
-    .gmii_rx_en(gmii_rx_en[2]),
-    .gmii_rx_d(gmii_rx_data[2*8 +: 8]),
-    .gmii_tx_en(gmii_tx_en[2]),
-    .gmii_tx_d(gmii_tx_data[2*8 +: 8])
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .enable_i   (link_up[2]),
+    .gmii_rx_en (gmii_rx_en[2]),
+    .gmii_rx_d  (gmii_rx_data[2*8 +: 8]),
+    .gmii_tx_en (gmii_tx_en[2]),
+    .gmii_tx_d  (gmii_tx_data[2*8 +: 8])
   );
 
   // --------------------------------------------------------------------------

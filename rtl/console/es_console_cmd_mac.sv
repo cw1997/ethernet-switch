@@ -15,21 +15,26 @@
 `include "es_defs.sv"
 `default_nettype none
 module es_console_cmd_mac (
+  /// Clock, synchronous active-low reset, and command start handshake.
   input var logic clk_i, rst_ni, start_i,
   // filter_i is a zero-based port, or all ones for every port; count_i is
   // the table capacity captured with the command, not the number of matches.
   input var logic [31:0] filter_i, count_i,
-  input var logic cache_idle_i,
-  output logic bus_claim_o, req_o,
-  output logic [31:0] addr_o,
-  input var logic csr_ready_i, csr_valid_i,
+  /// Shared CSR ownership is taken only at safe cache-idle boundaries.
+  input var logic        cache_idle_i,
+  output    logic        bus_claim_o, req_o,
+  output    logic [31:0] addr_o,
+  /// CSR read handshake and returned word.
+  input var logic        csr_ready_i, csr_valid_i,
   input var logic [31:0] csr_data_i,
+  /// Text sink handshake; a line advances only when it is ready.
   input var logic text_ready_i,
   // done_o coincides with acceptance of the final metadata line; busy_o stays
   // high from the cycle after start_i until that handshake completes.
-  output logic text_valid_o, busy_o, done_o,
-  output logic [511:0] text_o
-);
+  output    logic         text_valid_o, busy_o, done_o,
+  output    logic [511:0] text_o);
+  // The traversal reads an entry's four words, emits matching lines, then
+  // brackets the scan with metadata reads; CSR ownership drops between waits.
   typedef enum logic [3:0] {
     S_IDLE, S_MAC_IDLE, S_MAC_SEND, S_MAC_WAIT, S_MAC_PRINT, S_MAC_NEXT,
     S_META_SEND, S_META_WAIT, S_META_PRINT

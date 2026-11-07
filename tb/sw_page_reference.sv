@@ -21,17 +21,23 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module sw_page_reference #(
+
   /// Number of switch ports; packed port 0 uses the least-significant slice.
   parameter int unsigned NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
+
   /// Core clock frequency in hertz; timing counters use this value.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+
   /// Required stable key interval, in milliseconds.
   parameter int unsigned DEBOUNCE_MS = 20
 ) (
+  /// Clock and synchronous active-low reset for the independent page model.
   input var logic clk_i, rst_ni,
+  /// Active-low flush, previous-page, and next-page key vector.
   input var logic [2:0] key_ni,  // flush, previous, next
-  output logic flush_o,
-  output logic [31:0] page_o
+  /// Single-cycle flush pulse and selected aggregate/port page.
+  output    logic        flush_o,
+  output    logic [31:0] page_o
 );
   localparam logic [63:0] DEBOUNCE = (64'(CLK_FREQ_HZ) * 64'(DEBOUNCE_MS) + 64'd999) / 64'd1000;
   // --------------------------------------------------------------------------

@@ -16,11 +16,13 @@ module es_mems_reg_bank #(
   /// Synchronous reset/clear contents for each word.
   parameter logic [WIDTH-1:0] RESET_VALUE = '0
 ) (
+  /// Clock, synchronous active-low reset, and synchronous bank-wide clear.
   input var logic clk_i, rst_ni, clear_i,
+  /// Per-entry write enables and packed words; entry zero occupies the low slice.
   input var logic [DEPTH-1:0] wr_en_i,
   input var logic [DEPTH*WIDTH-1:0] wr_data_i,
-  output logic [DEPTH*WIDTH-1:0] data_o
-);
+  /// Packed register contents, with entry zero in the least-significant slice.
+  output    logic [DEPTH*WIDTH-1:0] data_o);
   genvar g;
   generate
     for (g = 0; g < DEPTH; g++) begin : g_entry

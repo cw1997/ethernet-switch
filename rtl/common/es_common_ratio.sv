@@ -19,11 +19,10 @@
 // Configuration and public interface
 // --------------------------------------------------------------------------
 module es_common_ratio (
-  input var logic clk_i, rst_ni, start_i,
+  input var logic        clk_i, rst_ni, start_i,
   input var logic [63:0] value_i, scale_i, divisor_i,
-  output logic busy_o, valid_o,
-  output logic [63:0] result_o
-);
+  output    logic        busy_o, valid_o,
+  output    logic [63:0] result_o);
 
   // --------------------------------------------------------------------------
   // Control state

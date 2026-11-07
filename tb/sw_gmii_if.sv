@@ -47,15 +47,18 @@ module sw_gmii_if
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
+  /// Clock/reset and link enable for this port's wire model.
   input logic clk_i,
   input logic rst_ni,
   input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
+  /// GMII receive octets presented to the DUT.
   output logic       gmii_rx_en,
   output logic [7:0] gmii_rx_d,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
+  /// Transmit octets observed and checked at the wire boundary.
   input logic       gmii_tx_en,
   input logic [7:0] gmii_tx_d
 );
@@ -194,10 +197,10 @@ module sw_gmii_if
   sw_rec_q #(
     .DEPTH(MON_DEPTH)
   ) u_mon (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .push_i     (mon_push_q),
-    .push_data_i(mon_push_rec)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .push_i      (mon_push_q),
+    .push_data_i (mon_push_rec)
   );
 
   // The reassembly, in a single process.

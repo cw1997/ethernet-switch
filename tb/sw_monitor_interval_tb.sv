@@ -12,9 +12,13 @@
 `include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_interval_case #(
-  parameter int HZ = 100000, MS = 500
+  /// Core clock frequency used to check the interval conversion.
+  parameter int HZ = 100000,
+  /// Expected monitor refresh interval in milliseconds.
+  parameter int MS = 500
 ) (
-  output logic finished = 0
+  /// Completion flag for the enclosing parallel regression.
+  output    logic finished = 0
 );
   logic clk = 0, rst = 0;
   always #5 clk = ~clk;
@@ -23,30 +27,30 @@ module sw_interval_case #(
   localparam logic [63:0] WINDOW = (64'(HZ) * 64'(MS) + 64'd999) / 64'd1000;
   logic [31:0] low_word;
   es_monitor_core #(
-    .NUM_PORTS(1),
-    .CLK_FREQ_HZ(HZ),
-    .REFRESH_INTERVAL_MS(MS)
+    .NUM_PORTS           (1),
+    .CLK_FREQ_HZ         (HZ),
+    .REFRESH_INTERVAL_MS (MS)
   ) dut (
-    .clk_i(clk),
-    .rst_ni(rst),
-    .port_stat_i('0),
-    .tx_done_i(1'b0),
-    .tx_len_i('0),
-    .phy_status_i(8'd0),
-    .rx_used_i(32'd0),
-    .tx_used_i(32'd0),
-    .busy_i(1'b0),
-    .flush_i(1'b0),
-    .cam_entries_i(32'd0),
-    .req_i(rst && ready),
-    .addr_i(address),
-    .ready_o(ready),
-    .valid_o(valid),
-    .data_o(data),
-    .cam_req_o(cam_req),
-    .cam_index_o(index),
-    .cam_valid_i(1'b0),
-    .cam_entry_i(128'd0)
+    .clk_i         (clk),
+    .rst_ni        (rst),
+    .port_stat_i   ('0),
+    .tx_done_i     (1'b0),
+    .tx_len_i      ('0),
+    .phy_status_i  (8'd0),
+    .rx_used_i     (32'd0),
+    .tx_used_i     (32'd0),
+    .busy_i        (1'b0),
+    .flush_i       (1'b0),
+    .cam_entries_i (32'd0),
+    .req_i         (rst && ready),
+    .addr_i        (address),
+    .ready_o       (ready),
+    .valid_o       (valid),
+    .data_o        (data),
+    .cam_req_o     (cam_req),
+    .cam_index_o   (index),
+    .cam_valid_i   (1'b0),
+    .cam_entry_i   (128'd0)
   );
   // --------------------------------------------------------------------------
   // Stimulus and expected results
@@ -75,14 +79,14 @@ module sw_monitor_interval_tb;
   logic [2:0] finished;
   sw_interval_case default_case (finished[0]);
   sw_interval_case #(
-    .HZ(100001),
-    .MS(333)
+    .HZ (100001),
+    .MS (333)
   ) other_case (
     finished[1]
   );
   sw_interval_case #(
-    .HZ(10000000),
-    .MS(1)
+    .HZ (10000000),
+    .MS (1)
   ) fast_case (
     finished[2]
   );

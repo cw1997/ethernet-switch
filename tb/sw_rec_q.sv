@@ -30,6 +30,7 @@ module sw_rec_q
   /// Number of records the queue can hold.
   parameter int unsigned DEPTH = 512
 ) (
+  /// Clock and synchronous active-low reset for the testbench record queue.
   input logic clk_i,
   input logic rst_ni,
 
@@ -40,10 +41,12 @@ module sw_rec_q
   // task-driven strobes below could not contribute, and the queue would appear
   // permanently idle.  A `Z` port reads as high impedance and is resolved out of
   // the equation by the internal strobe, which is the behaviour wanted here.
+  /// Optional hardware push path; test tasks may also enqueue records directly.
   input wire     push_i,
   input tb_rec_t push_data_i,
 
   // ---- pop -----------------------------------------------------------------
+  /// Scoreboard pop request, head record, and current occupancy indicators.
   input  wire         pop_i,
   output tb_rec_t     pop_data_o,  ///< head record; only valid when !empty_o
   output logic        empty_o,

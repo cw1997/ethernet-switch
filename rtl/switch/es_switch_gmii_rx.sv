@@ -59,20 +59,22 @@ module es_switch_gmii_rx #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
+  /// Clock/reset and canonical octet input share the same synchronous domain.
   input var logic clk_i,
   input var logic rst_ni,
 
   // ---- canonical octet receive interface (clock-enable qualified) ----------
+  /// One octet is held stable for BYTE_PERIOD clocks while oct_en_i is high.
   input var logic       oct_en_i,  ///< octet-stream enable from the front-end
-  input var logic [7:0] oct_d_i,   ///< octet from the front-end
-
+  input var logic [7:0] oct_d_i,  ///< octet from the front-end
   // ---- core beat interface -------------------------------------------------
-  output logic        beat_valid_o,   ///< a 64-bit beat is available
-  output logic [63:0] beat_data_o,    ///< octet 0 in [63:56] ... octet 7 in [7:0]
-  output logic        beat_sof_o,     ///< beat carries the first octet of a frame
-  output logic        beat_eof_o,     ///< beat carries the last octet of a frame
-  output logic        beat_crc_ok_o,  ///< FCS verdict, valid together with eof
-  output logic [ 3:0] beat_octets_o   ///< valid octets in this beat (1..8)
+  /// Packed eight-octet beat with frame boundaries and FCS verdict metadata.
+  output    logic        beat_valid_o,  ///< a 64-bit beat is available
+  output    logic [63:0] beat_data_o,  ///< octet 0 in [63:56] ... octet 7 in [7:0]
+  output    logic        beat_sof_o,  ///< beat carries the first octet of a frame
+  output    logic        beat_eof_o,  ///< beat carries the last octet of a frame
+  output    logic        beat_crc_ok_o,  ///< FCS verdict, valid together with eof
+  output    logic [3:0] beat_octets_o  ///< valid octets in this beat (1..8)
 );
 
   // --------------------------------------------------------------------------
@@ -149,13 +151,13 @@ module es_switch_gmii_rx #(
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_common_crc32 u_crc (
-    .clk_i     (clk_i),
-    .rst_ni    (rst_ni),
-    .en_i      (crc_en),
-    .din_i     (oct_d_i),
-    .clr_i     (crc_clr),
-    .crc_fin_o (),             // unused: the receive side checks instead of generating
-    .resid_ok_o(crc_resid_ok)
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .en_i       (crc_en),
+    .din_i      (oct_d_i),
+    .clr_i      (crc_clr),
+    .crc_fin_o  (),  // unused: the receive side checks instead of generating
+    .resid_ok_o (crc_resid_ok)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
