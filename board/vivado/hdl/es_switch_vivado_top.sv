@@ -35,7 +35,6 @@
 // in Vivado 2026.1 under default_nettype none, retaining the four-state type.
 `include "es_defs.sv"
 `include "switch/es_switch_defs.sv"
-`include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 `default_nettype none
 
@@ -96,12 +95,24 @@ module es_switch_vivado_top (
   assign phy_mdio_io = {NUM_PORTS{1'bz}};
 
   // ---- switch datapath and fixed control policy -----------------------------
-  // The 448-bit statistics bus stays internal. Making the core itself the
-  // physical top exposes this bus as package pins and causes I/O exhaustion.
+  // The aggregate statistics bus and the panel buses stay internal. Making them
+  // physical pins would exhaust the package: this template uses 138 of them for
+  // the PHY interfaces alone.
   logic [32*SW_STAT_COUNT-1:0] stat;
-  // Telemetry is not exposed by this physical template; consume its responses.
-  logic unused_mon_ready, unused_mon_valid;
-  logic [31:0] unused_mon_data;
+  // Panel lamps are not brought out by this template; they are reduced below
+  // rather than left dangling, so "nothing shows this" stays an explicit
+  // decision.
+  logic [7:0]   led_link, led_act, led_duplex, led_fault;
+  logic [15:0]  led_speed;
+  logic [15:0]  led_stat;
+  logic [1:0]   cfg_flood_mode;
+  // Console-facing outputs this template does not use: it has no console.
+  logic [31:0]  unused_stat_data;
+  logic         unused_cam_valid;
+  logic [127:0] unused_cam_entry;
+  logic [31:0]  unused_cam_count;
+  logic         cfg_learning_en, cfg_ovr;
+
   es_switch_mii #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
@@ -109,28 +120,41 @@ module es_switch_vivado_top (
     // enum in the replication, rather than truncating an arithmetic result.
     .PORT_SPEED ({NUM_PORTS{2'(SW_SPEED_100M)}})
   ) u_switch (
-    .phy_status_i ('0),
-    .mon_req_i    (1'b0),
-    .mon_addr_i   (32'd0),
-    .mon_ready_o  (unused_mon_ready),
-    .mon_valid_o  (unused_mon_valid),
-    .mon_data_o   (unused_mon_data),
-    .clk_i        (clk_i),
-    .rst_ni       (rst_ni),
-    // Ports are administratively enabled without reading PHY link status.
-    // cfg_ovr_i=0 selects the wrapper defaults: learning and unknown-unicast
-    // flooding enabled, with no runtime override or CAM-flush button.
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    // Ports are administratively enabled without reading PHY link status: this
+    // template has no management controller, so there is nothing to ask.
     .link_up_i     ({NUM_PORTS{1'b1}}),
-    .flood_mode_i  (2'd1),
-    .learning_en_i (1'b1),
-    .cfg_ovr_i     (1'b0),
-    .cam_flush_i   (1'b0),
     .mii_rx_dv_i   (mii_rx_dv_i),
     .mii_rx_er_i   (mii_rx_er_i),
     .mii_rxd_i     (mii_rxd_i),
     .mii_tx_en_o   (mii_tx_en_o),
     .mii_tx_er_o   (mii_tx_er_o),
     .mii_txd_o     (mii_txd_o),
+    .phy_status_i  ('0),
+    // No console in this template, so its read ports are held idle and the
+    // per-port statistics are simply not read - the aggregate bus below is the
+    // only observability it offers.
+    .stat_port_i   ('0),
+    .stat_id_i     ('0),
+    .stat_data_o   (unused_stat_data),
+    .cam_rd_req_i  (1'b0),
+    .cam_rd_index_i(32'd0),
+    .cam_rd_valid_o(unused_cam_valid),
+    .cam_rd_entry_o(unused_cam_entry),
+    .cam_entries_o (unused_cam_count),
+    // All board switches low: the panel then reports "no override", and the
+    // elaboration-time FLOOD_MODE / LEARNING_EN defaults apply unchanged.
+    .dip_i         ('0),
+    .led_link_o    (led_link),
+    .led_act_o     (led_act),
+    .led_speed_o   (led_speed),
+    .led_duplex_o  (led_duplex),
+    .led_fault_o   (led_fault),
+    .led_stat_o    (led_stat),
+    .cfg_flood_mode_o (cfg_flood_mode),
+    .cfg_learning_en_o(cfg_learning_en),
+    .cfg_ovr_o     (cfg_ovr),
     .stat_o        (stat)
   );
 
@@ -140,8 +164,13 @@ module es_switch_vivado_top (
   // synchronizers; neither reserved PHY clock currently clocks any logic.
   logic unused_phy;
   logic unused_stat;
-  assign unused_phy  = ^{mii_rx_clk_i, mii_tx_clk_i, phy_mdio_io};
-  assign unused_stat = ^stat;
+  logic unused_panel;
+  assign unused_phy   = ^{mii_rx_clk_i, mii_tx_clk_i, phy_mdio_io};
+  assign unused_stat  = ^stat;
+  assign unused_panel = ^{led_link, led_act, led_speed, led_duplex, led_fault,
+                          led_stat, cfg_flood_mode, cfg_learning_en, cfg_ovr,
+                          unused_stat_data, unused_cam_valid, unused_cam_entry,
+                          unused_cam_count};
 endmodule
 
 // Restore the compilation-unit default so this board file cannot turn an

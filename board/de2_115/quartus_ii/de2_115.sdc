@@ -56,6 +56,8 @@ set_output_delay -clock tx_clk1 -min 0.000 [get_ports {ENET1_TX_DATA[*] ENET1_TX
 
 # Peripheral outputs are asynchronous to their external consumers. Their
 # protocol setup/hold intervals are generated with enables in the 50 MHz domain.
+# Only the ports this design actually drives are listed: a name that matches no
+# pin makes Quartus report an unmatched collection, and the board's HEX and LCD
+# displays are no longer driven by anything.
 set_false_path -to [get_ports {ENET0_MDC ENET1_MDC ENET0_MDIO ENET1_MDIO \
-  HEX0[*] HEX1[*] HEX2[*] HEX3[*] HEX4[*] HEX5[*] HEX6[*] HEX7[*] \
-  LCD_DATA[*] LCD_EN LCD_RW LCD_RS LCD_ON LCD_BLON UART_TXD UART_RTS}]
+  UART_TXD UART_RTS GPIO_TXD GPIO_RTS_N}]

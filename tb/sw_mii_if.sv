@@ -116,7 +116,7 @@ module sw_mii_if
   // ==========================================================================
   // The monitor has to sample the transmit pins exactly once per nibble.  An
   // octet counter reproduces the cadence, started by the *enable itself*
-  // rather than by a free-running phase - the transmit windows of es_switch_gmii_tx
+  // rather than by a free-running phase - the transmit windows of es_mac_tx_frame
   // are on the reset grid and its enable rises on one of their boundaries, so
   // counting from the enable puts the samples in the middle of each nibble
   // window at any line rate.  The pins are read in the *active* region of the

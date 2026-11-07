@@ -1,6 +1,7 @@
 // ============================================================================
 //  File        : es_defs.sv
-//  Description : Common switch/telemetry interface widths and statistics.
+//  Description : Common switch interface widths, the statistics map and the
+//                declarations every domain shares.
 //
 //                Compilation-unit declarations keep port ranges readable by
 //                yosys read_verilog -sv.  Include guards prevent redefinition;
@@ -36,7 +37,7 @@
 localparam int unsigned SW_DEFAULT_NUM_PORTS = 4;
 
 /// Frame length in octets, excluding the FCS, shared by the forwarding
-/// datapath and by telemetry.  Eleven bits cover 2047 octets, i.e. any frame
+/// datapath and by the MAC beat stream.  Eleven bits cover 2047 octets, i.e. any frame
 /// up to `SW_MAX_FRAME_LEN` with headroom.
 localparam int unsigned SW_LEN_W = 11;
 
@@ -100,9 +101,9 @@ endfunction
 // 3.  Statistics register map exported on the read-only `stat_o` bus
 // ============================================================================
 // Every statistics word in the design is a 32-bit field on this packed bus,
-// selected by its own `sw_stat_id_e` index.  The order is part of the monitor
-// and console interface, so a new counter is appended rather than inserted:
-// the monitor snapshot layout is derived from these IDs.
+// selected by its own `sw_stat_id_e` index.  The order is part of the console
+// interface - `stat` prints one line per ID in this order - so a new counter is
+// appended rather than inserted.
 typedef enum int unsigned {
   SW_STAT_RX_FRAMES   = 0,   ///< frames accepted by the receive filter
   SW_STAT_RX_OCTETS   = 1,   ///< octets forwarded into the switching fabric
@@ -128,12 +129,16 @@ localparam int unsigned SW_STAT_COUNT = 14;
 // ============================================================================
 // Included, not compiled separately: each file is guarded, and pulling them in
 // here is what lets a module be compiled on its own.  Dependency order is
-// common -> perips -> monitor -> console -> switch; the switch library depends
-// on `sw_port_w` from common and on `SW_LEN_W` above, and borrows the CRC
-// helpers that common declares.
+// common -> mac -> perips -> panel -> console -> switch; the switch library
+// depends on `sw_port_w` from common and on `SW_LEN_W` above, and borrows the
+// CRC helpers that common declares.  The mac library is intentionally ahead of
+// the switch library so that its declarations sit inside the two
+// declaration-only lint waivers opened above - a new `SW_MAC_*` constant that
+// nothing reads yet must not fail `make lint` as UNUSEDPARAM.
 `include "common/es_common_defs.sv"
+`include "mac/es_mac_defs.sv"
 `include "perips/es_perips_defs.sv"
-`include "monitor/es_monitor_defs.sv"
+`include "panel/es_panel_defs.sv"
 `include "console/es_console_defs.sv"
 `include "switch/es_switch_defs.sv"
 

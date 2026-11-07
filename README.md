@@ -8,7 +8,7 @@ down to GDSII.
 
 The generic RTL defaults to **four ports** with parameter overrides; the DE2-115
 board shell is **two ports** and the Vivado template is **eight ports**. The RTL
-is grouped under `switch/`, `monitor/`, `console/`, `perips/`, `mems/` and
+is grouped under `mac/`, `switch/`, `panel/`, `console/`, `perips/`, `mems/` and
 `common/`, and `rtl/es_defs.sv` pulls the common and per-domain declaration
 libraries together in dependency order.
 
@@ -69,7 +69,10 @@ without breaking it.
 * [9. The life of one frame](#9-the-life-of-one-frame)
 * [10. The frame descriptor](#10-the-frame-descriptor)
 * [11. Statistics](#11-statistics)
-* [12. Telemetry and console](#12-telemetry-and-console)
+* [12. Read ports and the console](#12-read-ports-and-the-console)
+  - [12.1 Two read ports, one shared and one stateless](#121-two-read-ports-one-shared-and-one-stateless)
+  - [12.2 The command set](#122-the-command-set)
+  - [12.3 A second console, and what hot plug means here](#123-a-second-console-and-what-hot-plug-means-here)
 * [13. Parameters and configuration recipes](#13-parameters-and-configuration-recipes)
 * [14. PHY interfaces](#14-phy-interfaces)
 * [15. Board shells](#15-board-shells)
@@ -135,10 +138,10 @@ forwarding decision is made exactly once.
 | Pin front-ends | `rtl/switch/es_switch_{gmii,mii,rmii}.sv` | three selectable top modules, one per MAC interface |
 | Generic top | `es_switch_gmii` | the default top: GMII-style octet pins, four ports by default |
 | Board shells | `board/de2_115/`, `board/vivado/` | FPGA-specific tops with pins, clocks, PHYs and user I/O |
-| Telemetry | `rtl/monitor/` | 64-bit per-port counters, rates, queue load, PHY state, MAC-table reader |
-| Console | `rtl/console/` | ASCII command shell over the UART (`help`, `status`, `port`, `mac`) |
-| Peripherals | `rtl/perips/` | UART, LCD, MDIO, 88E1111 management, key debounce |
-| Shared storage/logic | `rtl/mems/`, `rtl/common/` | FIFOs, register banks, CRC-32, ratio engine, BCD, synchroniser |
+| MAC layer | `rtl/mac/` | pins to a 64-bit beat stream: preamble, FCS, IFG, symbol serialisation, elastic buffer |
+| Console | `rtl/console/` | ASCII command shell over N independent UARTs (`help`, `status`, `stat`, `link`, `port`, `cfg`, `version`, `mac`) |
+| Peripherals | `rtl/perips/` | UART, MDIO, 88E1111 management |
+| Shared storage/logic | `rtl/mems/`, `rtl/common/` | FIFOs, register banks, CRC-32, synchroniser |
 | Regression | `tb/` | self-checking benches: block level, fabric, full switch, all three front-ends, board shells |
 | CI contract | `ci/`, `Makefile` | pinned toolchain, lint, elaboration, simulation, synthesis gates |
 | Physical flow | `librelane/` | LibreLane + sky130A configuration down to GDSII |
@@ -171,13 +174,13 @@ one egress buffer.
 
 ```mermaid
 flowchart LR
-    A["GMII RX octets<br/>one octet per BYTE_PERIOD"] --> B["es_switch_gmii_rx<br/>octets to 64-bit beats<br/>FCS checked at octet rate"]
+    A["GMII RX octets<br/>one octet per BYTE_PERIOD"] --> B["es_mac_rx_frame<br/>octets to 64-bit beats<br/>FCS checked at octet rate"]
     B -->|"beats"| C["es_switch_rx_port<br/>parse, look up, filter, buffer"]
     C -->|"destination lookup"| D["es_switch_mac_table<br/>shared forwarding database"]
     D -->|"hit plus port, one clock later"| C
     C -->|"payload beats<br/>plus one tag per frame"| E["es_switch_arbiter<br/>whole-frame admission<br/>one-to-many beat copy"]
     E -->|"payload beats<br/>plus one length per frame"| F["es_switch_tx_port<br/>egress beat buffer"]
-    F --> G["es_switch_gmii_tx<br/>preamble, SFD, padding, FCS, IFG"]
+    F --> G["es_mac_tx_frame<br/>preamble, SFD, padding, FCS, IFG"]
     G --> H["GMII TX octets"]
 ```
 
@@ -283,14 +286,14 @@ is not an error locally.
 | Path | What is in it |
 |---|---|
 | `rtl/es_defs.sv` | the umbrella header: shared widths, the statistics map, and includes of every domain library |
-| `rtl/switch/` | the switch itself: framer, parser, CAM, fabric, egress, three top wrappers |
-| `rtl/monitor/` | telemetry capture, snapshot cache, page policy, display formatting |
-| `rtl/console/` | the ASCII command shell and its command modules |
-| `rtl/perips/` | UART, LCD, MDIO, 88E1111 PHY management, key debounce |
+| `rtl/switch/` | the switching function alone: parser, CAM, fabric, egress, three top wrappers |
+| `rtl/mac/` | MAC layer: pins to the 64-bit beat contract, for GMII, MII and RMII |
+| `rtl/panel/` | board switches decoded into policy, switch status encoded into lamps |
+| `rtl/console/` | the ASCII command shell: one self-contained port per UART, plus the hub |
+| `rtl/perips/` | UART, MDIO, 88E1111 PHY management |
 | `rtl/mems/` | FWFT FIFO, 1R1W RAM, parallel register bank |
-| `rtl/common/` | CRC-32, two-stage synchroniser, bin-to-BCD, serial ratio engine |
+| `rtl/common/` | CRC-32 and the two-stage synchroniser |
 | `tb/` | self-checking testbenches; never synthesised, never linted by CI |
-| `sim/` | alternative runner scripts (Verilator, Questa/ModelSim) and `.f` source lists; the Makefile remains the canonical gate |
 | `board/de2_115/quartus_ii/` | Quartus II project: board top, pin assignments, SDC, `build.bat` |
 | `board/vivado/` | eight-port MII Vivado template (see the status note in §15) |
 | `ci/` | the toolchain contract (`check-toolchain.sh`) and the toolchain image definition (`toolchain/Dockerfile`) |
@@ -300,37 +303,38 @@ is not an error locally.
 
 ### 3.2 Every module, and what it owns
 
-**Switch domain**
+**MAC domain** — everything the line interface implies
 
 | Module | File | Responsibility |
 |---|---|---|
-| `es_switch_core` | `switch/es_switch_core.sv` | interface-agnostic datapath: port instances, CAM, fabric, statistics aggregation, elaboration-time checks |
-| `es_switch_gmii_rx` | `switch/es_switch_gmii_rx.sv` | octet stream to 64-bit beats, plus the FCS check |
+| `es_mac_rx_frame` | `mac/es_mac_rx_frame.sv` | octet stream to 64-bit beats, plus the FCS check |
+| `es_mac_tx_frame` | `mac/es_mac_tx_frame.sv` | beats to a wire-legal frame; FCS generated one octet ahead of the wire |
+| `es_mac_mii_serdes` | `mac/es_mac_mii_serdes.sv` | MII nibbles to and from the canonical octet stream |
+| `es_mac_rmii_serdes` | `mac/es_mac_rmii_serdes.sv` | RMII 2-bit chunks to and from the canonical octet stream |
+| `es_mac_gmii` | `mac/es_mac_gmii.sv` | GMII pins to the beat contract: framer, serialiser, elastic buffer |
+| `es_mac_mii` | `mac/es_mac_mii.sv` | MII pins to the beat contract, 10/100 Mbit/s only |
+| `es_mac_rmii` | `mac/es_mac_rmii.sv` | RMII pins to the beat contract, 10/100 Mbit/s only |
+
+**Switch domain** — the switching function, and nothing else
+
+| Module | File | Responsibility |
+|---|---|---|
+| `es_switch_core` | `switch/es_switch_core.sv` | interface-agnostic datapath: port instances, CAM, fabric, statistics aggregation, console read ports |
 | `es_switch_rx_port` | `switch/es_switch_rx_port.sv` | header parse, CAM lookup, ingress policy, buffering, descriptor generation |
 | `es_switch_mac_table` | `switch/es_switch_mac_table.sv` | the shared forwarding database: `NUM_SETS` x `NUM_WAYS`, parallel reads, serialised learn queue, ageing |
 | `es_switch_arbiter` | `switch/es_switch_arbiter.sv` | round-robin scheduling, whole-frame admission, one-to-many beat copy, transmit accounting |
-| `es_switch_tx_port` | `switch/es_switch_tx_port.sv` | egress beat buffer, per-frame length descriptors, completion reporting |
-| `es_switch_gmii_tx` | `switch/es_switch_gmii_tx.sv` | beats to a wire-legal frame; FCS generated one octet ahead of the wire |
-| `es_switch_mii_adapter` | `switch/es_switch_mii_adapter.sv` | MII nibbles to and from the canonical octet stream |
-| `es_switch_rmii_adapter` | `switch/es_switch_rmii_adapter.sv` | RMII 2-bit chunks to and from the canonical octet stream |
-| `es_switch_gmii` | `switch/es_switch_gmii.sv` | default top: GMII pins passed straight to the core |
-| `es_switch_mii` | `switch/es_switch_mii.sv` | MII top: per-port adapter, 10/100 Mbit/s only |
-| `es_switch_rmii` | `switch/es_switch_rmii.sv` | RMII top: per-port adapter, 10/100 Mbit/s only |
+| `es_switch_tx_port` | `switch/es_switch_tx_port.sv` | egress beat buffer, per-frame length descriptors, frame handshake to the MAC |
+| `es_switch_gmii` | `switch/es_switch_gmii.sv` | default top: `NUM_PORTS` GMII MACs + core + panel |
+| `es_switch_mii` | `switch/es_switch_mii.sv` | MII top: 10/100 Mbit/s only |
+| `es_switch_rmii` | `switch/es_switch_rmii.sv` | RMII top: 10/100 Mbit/s only |
 
-**Monitor and console**
+**Panel and console**
 
 | Module | File | Responsibility |
 |---|---|---|
-| `es_monitor_core` | `monitor/es_monitor_core.sv` | atomic snapshot capture, 64-bit counter extension, serial rate calculation, CSR service |
-| `es_monitor_cache` | `monitor/es_monitor_cache.sv` | low-priority CSR scanner: reads the sequence word before and after the image, publishes only when the two match |
-| `es_monitor_page` | `monitor/es_monitor_page.sv` | debounced page and flush controls; page wraps over `NUM_PORTS + 1` |
-| `es_monitor_display` | `monitor/es_monitor_display.sv` | seven-segment and LCD field formatting |
-| `es_console_core` | `console/es_console_core.sv` | line assembly, command dispatch, response serialisation |
-| `es_console_cmd_help` | `console/es_console_cmd_help.sv` | `help` |
-| `es_console_cmd_status` | `console/es_console_cmd_status.sv` | `status` |
-| `es_console_cmd_port` | `console/es_console_cmd_port.sv` | `port <n>` |
-| `es_console_cmd_mac` | `console/es_console_cmd_mac.sv` | `mac all`, `mac <n>` |
-| `es_console_snapshot` | `console/es_console_snapshot.sv` | copies a snapshot so a slow UART cannot mix windows |
+| `es_panel` | `panel/es_panel.sv` | board switches to run-time policy; status to semantic lamps |
+| `es_console_port` | `console/es_console_port.sv` | one complete console: UART, line editor, parser, dispatcher, response sequencer |
+| `es_console_hub` | `console/es_console_hub.sv` | `NUM_CONSOLE` independent ports sharing only the table read port |
 
 **Shared infrastructure**
 
@@ -338,16 +342,12 @@ is not an error locally.
 |---|---|---|
 | `es_common_crc32` | `common/es_common_crc32.sv` | octet-serial IEEE 802.3 FCS generation and checking from one computed table |
 | `es_common_sync_2ff` | `common/es_common_sync_2ff.sv` | two-stage synchroniser for a single asynchronous bit |
-| `es_common_bin_to_bcd` | `common/es_common_bin_to_bcd.sv` | binary to packed BCD for the display |
-| `es_common_ratio` | `common/es_common_ratio.sv` | serial multiply/divide used for pps and bit/s |
 | `es_mems_sync_fifo` | `mems/es_mems_sync_fifo.sv` | FWFT FIFO with frame-granular rewind and hard flush |
 | `es_mems_ram_1r1w` | `mems/es_mems_ram_1r1w.sv` | one-read one-write RAM |
 | `es_mems_reg_bank` | `mems/es_mems_reg_bank.sv` | parallel register bank with per-entry write enables |
 | `es_perips_uart` | `perips/es_perips_uart.sv` | UART with 5-8 data bits, parity, 1/2 stop bits, RTS/CTS |
-| `es_perips_lcd` | `perips/es_perips_lcd.sv` | HD44780-style character LCD driver |
 | `es_perips_mdio` | `perips/es_perips_mdio.sv` | MDIO master |
 | `es_perips_phy_88e1111` | `perips/es_perips_phy_88e1111.sv` | 88E1111 configuration, autonegotiation and status polling |
-| `es_perips_key_debounce` | `perips/es_perips_key_debounce.sv` | vector key debounce |
 
 ### 3.3 How the declaration libraries work
 
@@ -366,8 +366,9 @@ includes the domain libraries in dependency order:
 ```mermaid
 flowchart TD
     U["rtl/es_defs.sv<br/>umbrella, compilation-unit scope"] --> C["common/es_common_defs.sv"]
+    U --> A["mac/es_mac_defs.sv"]
     U --> P["perips/es_perips_defs.sv"]
-    U --> M["monitor/es_monitor_defs.sv"]
+    U --> N["panel/es_panel_defs.sv"]
     U --> K["console/es_console_defs.sv"]
     U --> S["switch/es_switch_defs.sv"]
     S -->|"uses sw_port_w from common"| C
@@ -396,25 +397,29 @@ there is still exactly one definition of every constant. See
 
 ```mermaid
 flowchart TD
-    B["Board shells<br/>es_switch_de2_115_top, es_switch_vivado_top"] --> W["Pin front-ends<br/>es_switch_gmii, es_switch_mii, es_switch_rmii"]
+    B["Board shells<br/>es_switch_de2_115_top, es_switch_vivado_top"] --> W["Interface tops<br/>es_switch_gmii, es_switch_mii, es_switch_rmii"]
+    W --> A["MAC layer<br/>es_mac_gmii, es_mac_mii, es_mac_rmii"]
     W --> R["Switch core<br/>es_switch_core"]
+    W --> N["Panel<br/>es_panel"]
     R --> D["Datapath blocks<br/>rx_port, mac_table, arbiter, tx_port"]
-    R --> T["Telemetry<br/>es_monitor_core"]
-    B --> P["Board peripherals<br/>UART, LCD, MDIO, PHY, keys"]
-    P --> K["Console<br/>es_console_core"]
-    K --> T
+    B --> P["Board peripherals<br/>UART, MDIO, PHY"]
+    P --> H["Console hub + ports<br/>es_console_hub"]
     D --> L["Shared libraries<br/>mems, common"]
-    T --> L
+    A --> L
 ```
 
-* The **core** knows nothing about pins, clocks or PHYs. It speaks one
-  canonical, clock-enable-qualified octet stream per port.
-* A **wrapper** adapts a physical MAC interface onto that stream. Three exist,
-  and exactly one is elaborated per build.
+* The **core** knows nothing about pins, clocks or PHYs. Each port hands it a
+  64-bit beat stream and takes back whole frames.
+* A **MAC** turns one line interface into that beat stream: preamble, FCS,
+  inter-frame gap, symbol serialisation and the elastic buffer a PHY needs
+  because it cannot be stalled. Three exist, and exactly one is elaborated.
 * A **board shell** adds what a board needs: oscillator, reset sampling, PHY
-  management, displays, buttons and a UART.
-* The **monitor** observes the core and serves a read-only CSR; the **console**
-  is a client of that CSR. Neither can stall forwarding.
+  management and the switch and lamp pins.
+* The **panel** is the only place that decides what a board switch position
+  means and what a lamp shows.
+* A **console port** reads counters through a stateless per-port statistics
+  port. Reading statistics cannot stall forwarding, and because each port owns
+  its own read slice, one console cannot delay another.
 
 ### 4.2 One core, three pin front-ends
 
@@ -424,10 +429,10 @@ flowchart TD
 | `es_switch_mii` | `mii_rx_dv_i`, `mii_rx_er_i`, `mii_rxd_i`, `mii_tx_en_o`, `mii_tx_er_o`, `mii_txd_o` | two 4-bit nibbles | 10 / 100 Mbit/s | 1000 Mbit/s is rejected at elaboration |
 | `es_switch_rmii` | `rmii_crs_dv_i`, `rmii_rxd_i`, `rmii_tx_en_o`, `rmii_txd_o` | four 2-bit chunks | 10 / 100 Mbit/s | 1000 Mbit/s is rejected at elaboration |
 
-All three forward the same parameters, the same statistics bus and the same
-telemetry ports. `make lint`, `make rtl` and `make synth` each elaborate **all
-five** tops - the three wrappers plus the two board shells - because a top that
-is never compiled silently rots.
+All three forward the same parameters, expose the same statistics bus and the
+same console parameters. `make lint`, `make rtl` and `make synth` each elaborate
+**all five** tops - the three wrappers plus the two board shells - because a top
+that is never compiled silently rots.
 
 The interface is selected by *which wrapper is the elaborated top*, not by a
 parameter. That is why only the pins of the selected interface exist in a given
@@ -440,7 +445,9 @@ anywhere** in the core, which is a deliberate choice with two consequences.
 
 **A port's line rate is a clock enable, not a clock.** The only elaboration-time
 constant a port needs is `BYTE_PERIOD`: the number of `clk_i` cycles that make
-up one octet time. It is derived from the core clock and the configured speed:
+up one octet time. It lives in the MAC (`rtl/mac/es_mac_*.sv`), because that is
+where the symbol serialisation happens; the switch core never sees it. It is
+derived from the core clock and the configured speed:
 
 ```systemverilog
 period = (clk_freq_hz * 8 + baud / 2) / baud;   // rounded to nearest, minimum 1
@@ -512,10 +519,10 @@ conversion:
 
 ### 5.1 Octets to beats, and the FCS check
 
-`es_switch_gmii_rx` does three jobs in one module: it re-times the incoming octet
+`es_mac_rx_frame` does three jobs in one module: it re-times the incoming octet
 stream, assembles 64-bit beats, and runs the CRC.
 
-**Re-timing.** The adapter runs a free-running phase counter of `BYTE_PERIOD`
+**Re-timing.** The framer runs a free-running phase counter of `BYTE_PERIOD`
 states and samples the octet on the **last** cycle of each octet time. Sampling
 late gives a full clock of hold margin without a FIFO and without a CDC. The
 counter is free-running so that it stays phase-aligned with the PHY even while
@@ -526,7 +533,7 @@ de-assertion of the octet enable. A PHY may hold that enable high for the
 remainder of the final octet time - several clocks on a 10 Mbit/s port - so a
 beat that was emitted eagerly would leave the pipeline before the end-of-frame
 marker existed, and the marker would arrive with nothing to attach to. The
-adapter therefore *holds* a full beat until the next octet proves the frame
+framer therefore *holds* a full beat until the next octet proves the frame
 continues, or until the link goes idle proves it ended. That costs one octet
 time of latency and no throughput: the beat is released on the same clock the
 next octet is sampled, so one beat still leaves every eight octets.
@@ -550,14 +557,18 @@ good frame leaves the residue `0xDEBB20E3` in the register.
 > non-reflected constant with a reflected LFSR rejects every valid frame - which
 > is exactly the mismatch `sw_crc32_tb` exists to catch.
 
-The output is an unconditional beat stream (no ready/valid handshake). The
-receive port in front of it always drains its beat FIFO, so a beat cannot be
-dropped, which is what lets the adapter sustain full line rate.
+The framer's output is an unconditional beat stream (no ready/valid handshake):
+it writes into the elastic buffer inside the MAC (`es_mac_gmii`), and the core
+pulls from that buffer with `rx_beat_rd_i`. A GMII PHY cannot be paused
+mid-frame, so the buffer is what absorbs the parser's stalls; a write while full
+is dropped, which is safe only because the switch admits a whole frame into its
+ingress FIFO before it starts draining it.
 
 ### 5.2 The parser as a state machine
 
-`es_switch_rx_port` owns the elastic beat FIFO, the parser, the ingress buffers
-and the statistics for one port.
+`es_switch_rx_port` owns the parser, the ingress buffers and the statistics for
+one port. The elastic beat FIFO in front of it belongs to the MAC (§5.1), which
+is what lets the core see a plain beat stream instead of a line interface.
 
 ```mermaid
 stateDiagram-v2
@@ -843,8 +854,8 @@ frame, which reloads the countdown. There is no separate "refresh" command.
 ### 6.5 Flush, occupancy, and what the table is not
 
 * `cam_flush_i` invalidates every entry and clears the occupancy counter. The
-  monitor reports the flush request directly rather than counting it, because it
-  is a one-shot software action, not an event the table can observe.
+  core counts the flush pulses into `CAM_FLUSH`, because a flush is a one-shot
+  action the table itself has no event to report.
 * The table is a **register file**, not a memory. A memory with several
   distributed readers plus per-entry writers in a generate loop is more than
   Icarus will settle: the write enable and the data are both correct, the store
@@ -1007,8 +1018,12 @@ one:
   streams cannot drift apart.
 
 The fabric guarantees that the complete frame fits before it starts writing, so
-the serialiser never stalls. `done_o` marks the end of the last FCS octet
-window - "this MAC finished serialising the frame", not "the peer received it".
+the serialiser never stalls and `tx_fr_ready_i` is always a registered "not
+busy" flag. The framer itself still marks the end of the last FCS window on
+`done_o` / `done_len_o` - "this MAC finished serialising the frame", not "the
+peer received it" - but the switch counts `TX_FRAMES` when it **admits** a copy,
+so nothing above the MAC consumes that pair; `es_mac_tx_frame` keeps it because
+`sw_tx_completion_tb` checks the octet accounting against it.
 
 ### 8.2 The frame sequencer
 
@@ -1040,16 +1055,16 @@ What actually goes on the wire, in order:
 
 | Field | Length | Generated by |
 |---|---|---|
-| preamble | 7 octets of `0x55` | `es_switch_gmii_tx` |
-| start-of-frame delimiter | 1 octet `0xD5` | `es_switch_gmii_tx` |
+| preamble | 7 octets of `0x55` | `es_mac_tx_frame` |
+| start-of-frame delimiter | 1 octet `0xD5` | `es_mac_tx_frame` |
 | destination MAC + source MAC + type/length | 14 octets, or 18 with an 802.1Q tag | payload, from the ingress buffer |
 | MAC client data | the descriptor's `len` octets, zero-padded up to `SW_MIN_PAYLOAD` (46) | payload |
-| FCS | 4 octets, least significant octet first | `es_switch_gmii_tx` |
-| inter-frame gap | at least 12 octet times | `es_switch_gmii_tx` |
+| FCS | 4 octets, least significant octet first | `es_mac_tx_frame` |
+| inter-frame gap | at least 12 octet times | `es_mac_tx_frame` |
 
 `len` is the MAC client data length the parser measured: the header included,
 the FCS excluded. `MAX_FRAME_LEN` bounds it. The pad path only matters when
-`es_switch_gmii_tx` is used stand-alone, because the parser never forwards a
+`es_mac_tx_frame` is used stand-alone, because the parser never forwards a
 frame shorter than `SW_MIN_FRAME_LEN`.
 
 The padding is **covered by the FCS**, because it is generated before the CRC
@@ -1114,7 +1129,7 @@ sequenceDiagram
     TX->>P3: preamble, SFD, padded data, FCS, IFG
 ```
 
-1. **Octets arrive.** `es_switch_gmii_rx` samples the stream on a free-running
+1. **Octets arrive.** `es_mac_rx_frame` samples the stream on a free-running
    phase counter, checks the FCS as the octets stream by, and assembles 64-bit
    beats. The last beat is deliberately held until the next octet or the link
    idle, so the end-of-frame marker cannot be lost.
@@ -1142,7 +1157,7 @@ sequenceDiagram
    descriptor the beats belong to.
 8. **The frame is re-serialised.** `es_switch_tx_port` waits until a descriptor
    is available and the inter-frame gap has elapsed, pops the descriptor at the
-   same moment the beats start, and `es_switch_gmii_tx` emits preamble, SFD, the
+   same moment the beats start, and `es_mac_tx_frame` emits preamble, SFD, the
    padded client data and a freshly computed FCS.
 
 A broadcast is the same walk with a multi-bit mask at step 6. The fabric counts
@@ -1209,9 +1224,11 @@ later would need it.
 
 ## 11. Statistics
 
-A 14-counter read-only bus, summed across ports at the top level, 32 bits per
-counter, selected by `sw_stat_id_e`. Counters are named for the *event* they
-record, not for the block that happens to own them.
+A 14-counter read-only bus, 32 bits per counter, selected by `sw_stat_id_e`.
+Counters are named for the *event* they record, not for the block that happens
+to own them. Each receive port owns one plane of the bus, each transmit port
+owns another, and `es_switch_core` sums the two across ports once - the sum is
+`stat_o` at the top of the core.
 
 | ID | Counter | Counted where | Meaning and caveat |
 |---|---|---|---|
@@ -1228,7 +1245,7 @@ record, not for the block that happens to own them.
 | 10 | `CAM_HIT` | mac_table | lookups that resolved to a port |
 | 11 | `CAM_MISS` | mac_table | lookups that fell through to flooding |
 | 12 | `CAM_LEARN` | mac_table | insertions written into the table |
-| 13 | `CAM_FLUSH` | core | reported straight from the flush request line, not counted |
+| 13 | `CAM_FLUSH` | core | flush requests seen |
 
 Things worth knowing before you quote these numbers:
 
@@ -1237,70 +1254,110 @@ Things worth knowing before you quote these numbers:
   them hides which problem you have.
 * **`TX_FRAMES` counts copies, not grants.** A broadcast to three ports is three
   copies, and counting grants would report it as one.
+* **`TX_FRAMES` counts admission, not completion.** The counter advances when a
+  copy is admitted into an egress buffer, so a frame that is queued but not yet
+  on the wire is already counted. Completion exists inside the MAC
+  (`es_mac_tx_frame`'s `done_o`) but nothing above the MAC consumes it.
 * **Two ports hitting in the same clock are both counted.** The tally is a
   population count of per-port qualifiers, not a sequencing loop.
 * **`RX_OCTETS` excludes the FCS**, `TX_OCTETS` excludes preamble, FCS and IFG.
-  The telemetry ABI has a separate, completion-based transmit counter that counts
-  a different event (frames that finished serialising, not frames admitted), so
-  the two are not directly comparable.
 * **Error categories are not disjoint.** A frame can be both malformed and
   short; the parser applies a fixed priority and increments one category.
 
-The full telemetry ABI - 64-bit per-port counters, rates, queue/load snapshots,
-PHY metadata and a separate MAC-table reader - is documented in
-[`docs/monitor.md`](docs/monitor.md) (Chinese: [`docs/monitor.zh-Hans.md`](docs/monitor.zh-Hans.md)).
-
 ---
 
-## 12. Telemetry and console
+## 12. Read ports and the console
 
-### 12.1 The snapshot model
+Observability is not a subsystem of its own. The switch core exposes **two read
+ports**, and a console is a UART plus a sequencer that drives them. There is no
+sampling engine, no snapshot buffer and no background scanner: what a command
+prints is what the counters hold at the moment that line is fetched.
 
-The monitor does not expose live counters directly. Every `REFRESH_INTERVAL_MS`
-(default 500 ms) it:
+### 12.1 Two read ports, one shared and one stateless
 
-1. captures the raw counters and extends every 32-bit counter into 64 bits, so
-   wraps are preserved even across long windows;
-2. computes rates serially through one shared multiplier/divider;
-3. publishes the whole image **atomically** with a new sequence number.
-
-A reader that wants a coherent view reads the sequence word, reads its fields,
-reads the sequence again, and retries if it changed. The display scanner does
-exactly that; the console copies the scanner's finished image, so a slow UART
-cannot mix two windows either.
+| Port | Direction | Access | Why it looks like this |
+|---|---|---|---|
+| statistics | `stat_port_i`, `stat_id_i` -> `stat_data_o` | purely combinational, one slice per console | every console has its own address and data slice, so no two readers can collide and no arbitration exists |
+| forwarding table | `cam_rd_req_i` -> `cam_rd_valid_o` | one registered read port, granted by the hub | the table is a register file with one physical read mux, so the readers must be serialised |
 
 ```mermaid
 flowchart LR
-    C["32-bit live counters"] --> E["extend to 64 bits<br/>every clock"]
-    E --> S["stage one sample"]
-    S --> R["serial rate calculation<br/>pps, bit/s, load"]
-    R --> P["publish snapshot<br/>sequence++"]
-    P --> D["display cache"]
-    P --> K["console snapshot"]
-    K --> U["UART"]
+    P0["port 0 counters"] --> A["stat plane<br/>32 x SW_STAT_COUNT per port"]
+    P1["port N-1 counters"] --> A
+    A --> S["sum tree<br/>stat_o"]
+    A --> R0["console 0<br/>stat_port_i / stat_data_o"]
+    A --> R1["console N<br/>stat_port_i / stat_data_o"]
+    T["forwarding table"] --> C["registered read port"]
+    C --> H["es_console_hub<br/>claim / grant"]
+    H --> R0
+    H --> R1
 ```
 
-No request, display, UART or management handshake can stall forwarding. The
-monitor is a read-only observer.
+Both ports are read-only. Nothing a console does can stall forwarding, and
+because the statistics port is combinational, reading a counter cannot perturb
+the datapath either. What a console *can* do is observe a counter changing
+between two lines of one response - the table read port is the only structure
+that has to guarantee anything stronger, and it does so by construction: one
+registered request per claimed traversal.
 
-### 12.2 The CSR map, in one page
+### 12.2 The command set
 
-| Region | Address | Contents |
+The board shell and `es_console_port` accept compile-time parameters:
+
+| Parameter | Default | Allowed |
 |---|---|---|
-| system record | `0x0000_0000` | status, port count, reserved words, uptime, window, sequence, CAM state |
-| per-port record `p` | `0x1000_0000 + p*256` | PHY status, queue occupancy and peaks, load, 14 counter pairs, four rate pairs |
-| MAC entry `i` | `0x2000_0000 + i*16` | MAC[31:0], MAC[47:32], port, valid |
-| live timestamp | `0x0000_00f0` / `f4` / `f8` | live clock low/high and flush generation |
+| `NUM_CONSOLE` | 1 | any value >= 1; one UART each |
+| `UART_BAUD_RATE` | 115200 | any rate whose rounded integer period is at least 4 clocks and within 2% |
+| `UART_DATA_BITS` | 8 | 5..8 for the UART; 7 or 8 for the ASCII console |
+| `UART_PARITY` | none | none, odd, even |
+| `UART_STOP_BITS` | 1 | 1 or 2 |
+| `UART_FLOW_CONTROL` | none | none or RTS/CTS (active low) |
+| `MAC_IF` | GMII | echoed by `version`; set by the wrapper that instantiates the hub |
 
-* Values are little-word-first: a 64-bit field occupies two consecutive 32-bit
-  words, low word first.
-* Assert `mon_req_i` with a byte address and accept it when `mon_ready_o` is
-  high; data is meaningful only while `mon_valid_o` is high.
-* Ordinary reads respond in one clock. MAC reads can take additional clocks;
-  requests must respect ready.
-* Unmapped or misaligned reads return zero.
+Commands are lowercase ASCII terminated with CR, LF or CRLF:
 
-The per-port PHY status byte is the same on `phy_status_i` and in the snapshot:
+```text
+help        version     status      stat
+link        cfg         port <n>
+mac all     mac <n>     mac count
+```
+
+| Command | Lines | Contents |
+|---|---|---|
+| `help` | 4 | the command list, one line per group |
+| `version` | 4 | `num_ports`, `cam_capacity`, `mac_interface`, `console_port` |
+| `status` | 2 + 4N | table occupancy and capacity, then link / speed / `rx_frames` / `tx_frames` per port |
+| `stat` | `SW_STAT_COUNT` + 2 | every counter in §11, summed across ports, then occupancy and capacity |
+| `link` | N | one `phy_status` line per port |
+| `cfg` | 4 | `flood_mode`, `learning_enable`, `cfg_override`, `cam_capacity` |
+| `port <n>` | 4 + `SW_STAT_COUNT` | `phy_status`, `link_up`, `speed_mbit`, `full_duplex`, then port *n*'s own counters |
+| `mac all` | variable | every valid entry, two lines each |
+| `mac <n>` | variable | only entries learned on port *n* |
+| `mac count` | 2 | `cam_entries`, `cam_capacity` |
+
+* Every command is a query. There is no path from the console into the switch
+  configuration, so two consoles can never disagree about what the policy is;
+  what they *report* is what the panel decoded the switches into (§15).
+* Port numbers are zero-based decimal. `port <n>` with *n* >= `NUM_PORTS` and
+  `mac <n>` with *n* >= `NUM_PORTS` are rejected, not clamped.
+* Values are printed as `label = 0x` followed by sixteen hex digits, so two
+  dumps can be compared by eye without counting digits.
+* `port <n>` and `stat` read one counter per line through the statistics port,
+  so a 32-bit counter cannot be printed half-updated: the fetch happens once,
+  one clock before the line is rendered.
+* `mac all` / `mac <n>` walk the table through its read port. Two lines per
+  match: `mac_hi_port` carries the top sixteen bits of the address plus the
+  learned port, `mac_lo` the bottom thirty-two. A traversal is a **live view**,
+  not an atomic dump - entries can move or expire mid-scan, which is why the
+  occupancy line is printed first and again in `mac count`.
+* One command is processed at a time, per port. A line longer than 32 bytes is
+  drained to its terminator and rejected; input during a response is discarded
+  and counted. Neither affects any other console port.
+* Parity, framing and overflow errors are counted separately from command
+  errors, so a bad cable is distinguishable from a bad command.
+
+The per-port PHY status byte is the same on `phy_status_i`, in `link` and in
+`port <n>`:
 
 | Bit | Meaning |
 |---|---|
@@ -1311,60 +1368,36 @@ The per-port PHY status byte is the same on `phy_status_i` and in the snapshot:
 | 5 | management error |
 | 7:6 | reserved, zero |
 
-A port whose status is not valid has no known link capacity, so its load reads
-zero; the validity and link bits are what distinguish "idle" from "unknown".
-
-The important semantic details:
-
-* **TX completion, not admission.** The telemetry transmit counters advance when
-  the MAC finishes the last FCS octet, so queued copies are not reported as
-  transmitted. An administratively disabled egress completion is excluded.
-* **The telemetry octet count comes from the completion's client-data length**
-  (`done_len_o`), so preamble, FCS and IFG are excluded. `stat_o`'s `TX_OCTETS`
-  counts injection instead of completion; the two answer different questions.
-* **Load is per mille of the link capacity**, separately for RX and TX, and is
-  zero when the PHY reports unknown or down. Read the validity and link bits
-  before interpreting a zero.
-* **Queue occupancy is in 64-bit beats**, not packets, and does not include the
-  beat currently being serialised or descriptor slots.
-* **The MAC list is a live view, not an atomic dump.** Entries can move or
-  expire during a traversal; the console prints start/end clocks and flush
-  generations so an interrupted scan is visible.
-
-### 12.3 The console
-
-The board shell and `es_console_core` accept compile-time parameters:
-
-| Parameter | Default | Allowed |
-|---|---|---|
-| `UART_BAUD_RATE` | 115200 | any rate whose rounded integer period is at least 4 clocks and within 2% |
-| `UART_DATA_BITS` | 8 | 5..8 for the UART; 7 or 8 for the ASCII console |
-| `UART_PARITY` | none | none, odd, even |
-| `UART_STOP_BITS` | 1 | 1 or 2 |
-| `UART_FLOW_CONTROL` | none | none or RTS/CTS (active low) |
-
-Commands are lowercase ASCII terminated with CR, LF or CRLF:
-
-```text
-help
-status
-port 0
-mac all
-mac 0
-```
-
-* `status` reports the aggregate and every port.
-* Port numbers are zero-based decimal.
-* Values are named hexadecimal integers with `0x` prefixes; `_pps`,
-  `_bit_per_second`, `_permille` and `_octets` carry the units.
-* One command is processed at a time. A line longer than 32 bytes is drained to
-  its terminator and rejected; input while busy is discarded with a diagnostic.
-* Parity, framing and overflow errors are counted separately from command
-  errors, so a bad cable is distinguishable from a bad command.
+A port whose status is not valid has no known link; `link_up`, `speed_mbit` and
+`full_duplex` then read zero, and the validity bit is what distinguishes "idle"
+from "unknown".
 
 `cts` is checked between characters, never inside one, and `rts` is deasserted
 while a command is being processed. A host without flow control should wait for
 the complete response before sending the next command.
+
+### 12.3 A second console, and what hot plug means here
+
+`es_console_hub` instantiates `NUM_CONSOLE` complete `es_console_port`s. Each
+has its own UART, its own line buffer, its own parser, its own response
+sequencer and its own `rst_ni` bit, and it never reads state another port owns.
+The consequences are the point:
+
+* two operators can type at once without seeing each other's characters;
+* a port that is absent, babbling or held in reset has **no path** by which it
+  can stall a peer - its `present_i` bit low makes it drive neither `tx_o` nor a
+  claim on the table;
+* a third console is a parameter change, not a redesign.
+
+The one shared resource is the forwarding-table read port. A port that wants a
+traversal raises `cam_claim_o` and waits for `cam_grant_i`, holds the grant for
+the whole traversal, and drops the claim when it finishes; a fixed priority is
+enough because traversals are short and human-driven. `present_i` also gates the
+claim, so an unplugged console cannot hold the port.
+
+The DE2-115 board wires console 0 to the on-board USB-UART and console 1 to the
+JP5 header (§15.1), which is what makes "plug a second terminal in" true rather
+than planned.
 
 ---
 
@@ -1382,7 +1415,8 @@ the complete response before sending the next command.
 | `RX_FIFO_DEPTH` | 256 | payload beats per ingress port; must be >= `ceil(MAX_FRAME_LEN/8)`, i.e. 190 at the default |
 | `TX_FIFO_DEPTH` | 256 | payload beats per egress port; same rule, 190 at the default |
 | `TAG_FIFO_DEPTH` | 16 | descriptors buffered per ingress port |
-| `WF_DEPTH` | 16 | elastic beat FIFO between the octet adapter and the parser |
+| `WF_DEPTH` | 16 | elastic beat FIFO inside each port's MAC, between the octet adapter and the beat contract |
+| `NUM_CONSOLE` | 1 | independent console read ports; see §12.2 for the UART parameters that go with it |
 | `FLOOD_MODE` | 1 | 0 = block unknown unicast, 1 = flood it, 2 = flood unknown group too |
 | `LEARNING_EN` | 1 | source-address learning default |
 | `STALL_LIMIT` | 0 | cycles a head-of-line frame may wait before being dropped; 0 never drops |
@@ -1390,7 +1424,6 @@ the complete response before sending the next command.
 | `CAM_AGE_EN` | 0 | ageing off by default |
 | `CAM_AGE_CYCLES` | 1 000 000 | clocks between two ageing steps |
 | `CAM_AGE_LIMIT` | 4 | ageing countdown reload value |
-| `REFRESH_INTERVAL_MS` | 500 | telemetry sampling interval, must be positive; all three wrappers forward it |
 
 `LEN_FIFO_DEPTH` (default 8) is a parameter of `es_switch_tx_port`, not of the
 top-level core. It is the number of frames that can be queued in an egress
@@ -1476,6 +1509,12 @@ and re-inserted on transmit, exactly as a real MAC does. The stream therefore
 starts with the first octet of the destination MAC and ends with the four FCS
 octets.
 
+> **Administrative enable.** `link_up_i` gates the *receive* side only: a port
+> with the bit low drops its PHY's octets in the MAC, so a dead or incompatible
+> link never reaches the forwarding table. Transmit is not gated - a port that
+> stopped draining would stall every ingress that floods to it, and a frame sent
+> into a dead link is the cheaper failure.
+
 > **What the wrappers do not contain.** There is no `RX_CLK`, `TX_CLK` or
 > `REF_CLK` pin, and no PLL. The adapters are *synchronous models*: they expect
 > a stream that is already in the `clk_i` domain. Capturing a real PHY's own
@@ -1499,7 +1538,7 @@ is idle, so every frame's windows are counted from that frame's own `DV` rise -
 no front-end or testbench has to land a frame on any particular grid. The
 assembled octet is presented for one full octet time, one octet behind the wire,
 and a presentation down-counter keeps the *last* octet stable for a full
-`BYTE_PERIOD` after the link went idle, which is what `es_switch_gmii_rx`
+`BYTE_PERIOD` after the link went idle, which is what `es_mac_rx_frame`
 samples on.
 
 `RX_ER` while the link is enabled sets a sticky flag that suppresses the enable
@@ -1524,7 +1563,9 @@ DE2-115 (Cyclone IV E, `EP4CE115F29C7`):
 | PHY | two Marvell 88E1111, MDIO addresses 16 and 17 |
 | Reset | `KEY0`, sampled through two registers; hold it through startup |
 | Board settings | JP1 must select **MII**; JP7 stays at the default 2.5 V |
-| Console | 115200 8N1, no flow control by default |
+| Console 0 | the RS-232 connector, 115200 8N1, no flow control by default |
+| Console 1 | `GPIO` header JP5 as 3.3 V TTL, for a USB-serial adapter |
+| Front panel | `SW[7:0]` = policy switches, `LEDG[8:0]` + `LEDR[17:0]` = status lamps |
 
 **Build and program.** Install Quartus II 13.0sp1/13.1 Web Edition with Cyclone IV
 E device support, then:
@@ -1545,20 +1586,58 @@ What the shell adds around the core:
 * **PHY management.** After reset it waits 20 ms, probes each MDIO address,
   advertises only 100 Mbit/s full duplex, restarts autonegotiation, then polls
   every 100 ms. `BMSR` is read twice to handle latch-low bits, followed by
-  register 17 to confirm speed, duplex and resolution. Transmit and receive are
-  enabled only after 100 Mbit/s full duplex is confirmed; an unknown, silent or
-  incompatible PHY is not reported as healthy.
-* **Displays.** `HEX7..4` show RX pps and `HEX3..0` show TX pps; above 10000 the
-  value is divided by 1000 and `LEDG4/5` indicate the unit. The LCD shows RX on
-  the top line and TX on the bottom, six decimal digits plus a `k` suffix, and
-  dashes when there is no valid sample.
-* **LEDs.** Green: heartbeat, sample/PHY ready, per-port enable, kpps units,
-  page indicator. Red: per-port activity (100 ms hold), port error, PHY
-  management error, console error, queue peak at 224/256 beats, and four load
-  bars in 10% steps.
-* **Buttons.** `KEY0` holds reset, `KEY1` flushes the MAC table, `KEY2`/`KEY3`
-  move between the aggregate and per-port pages and wrap. Function keys are
-  debounced for 20 ms; pressing both page keys does not change page.
+  register 17 to confirm speed, duplex and resolution. The port's administrative
+  receive enable (`link_up_i`) is raised only after 100 Mbit/s full duplex is
+  confirmed, so an unknown, silent or incompatible PHY cannot put frames into
+  the forwarding table; transmit stays enabled, because a port that stopped
+  draining would stall every ingress that floods to it (§14.1).
+
+**Slide switches (`SW`).** The board top passes `SW[7:0]` to the switch as
+`dip_i` and nothing else; the meaning is decoded in `es_panel`, so every board
+that wires its switches there gets the same behaviour.
+
+| Switch | Function |
+|---|---|
+| `SW[1:0]` | flooding policy: 0 = known unicast only, 1 = flood unknown unicast, 2 = flood unknown group too, 3 = same as 2 |
+| `SW[2]` | source-address learning enable |
+| `SW[3]` | **configuration override** - while it is off the two positions above are ignored and the elaboration values apply, so a board powers up in a known state whatever the switches say |
+| `SW[4]` | flush the forwarding table (edge-triggered: holding it up flushes once) |
+| `SW[5]` | lamp test: every lamp on, per-port and switch-wide |
+| `SW[17:6]` | not connected (tied off, kept out of the panel's eight-bit bus) |
+
+**Lamps.** Green is per-port state, red is switch-wide state and diagnostics.
+
+| LED | Meaning |
+|---|---|
+| `LEDG[0]` `LEDG[1]` | port 0 / port 1 link (green) |
+| `LEDG[2]` `LEDG[3]` | port 0 / port 1 activity, stretched by 100 ms |
+| `LEDG[4]` `LEDG[5]` | port 0 / port 1 full duplex |
+| `LEDG[6]` `LEDG[7]` | port 0 / port 1 PHY management fault |
+| `LEDG[8]` | forwarding table full |
+| `LEDR[1:0]` | port 0 speed: `[0]` = 100 Mbit/s, `[1]` = 1000 Mbit/s |
+| `LEDR[3:2]` | port 1 speed, same encoding |
+| `LEDR[7:4]` | table utilisation bar: 25 %, 50 %, 75 %, 100 % |
+| `LEDR[8]` | table non-empty |
+| `LEDR[9]` | at least one port has link |
+| `LEDR[10]` | **decoded** flooding policy, bit 0 - lit only when the override switch is on |
+| `LEDR[11]` | decoded learning enable |
+| `LEDR[12]` | configuration override is in force |
+| `LEDR[13]` | a flush was requested this cycle |
+| `LEDR[14]` | heartbeat, about 4 Hz |
+| `LEDR[15]` `LEDR[16]` | console 0 / console 1 saw invalid input (sticky) |
+| `LEDR[17]` | some receive error counter is non-zero |
+
+`LEDR[10]` reporting the *decoded* policy rather than the raw switch position is
+deliberate: an operator who moves a policy switch with the override off should
+see that the switch is not acting on it, rather than a lamp that agrees with the
+switch and disagrees with the fabric.
+
+**Buttons and consoles.** `KEY0` holds reset. `KEY[3:1]` are unused (their pins
+are tied off explicitly). Console 0 is the RS-232 port; console 1 is four pins
+on the JP5 header (`GPIO_RXD`, `GPIO_TXD`, `GPIO_CTS_N`, `GPIO_RTS_N`), so a
+3.3 V USB-serial adapter turns the board into a two-console switch. The two are
+independent down to the reset: an absent or babbling console cannot stall the
+other, and either one can print the full command set (§12.2).
 
 > **Board-level honesty.** The RX path samples the PHY's asynchronous data
 > directly, with no asynchronous FIFO, so this shell does **not** claim a closed
@@ -1619,15 +1698,12 @@ flowchart LR
 The gates are ordered by how fast they fail. Run them in that order; a lint
 error is cheaper to fix than a simulation that hangs.
 
-`sim/` carries an alternative runner set for a second opinion: `sim/run_lint.sh`
-lints the RTL and the testbench with Verilator, `sim/run_verilator.sh <top>`
-builds and runs one bench with Verilator `--binary --timing`,
-`sim/run_questa.sh <top>` does the same with Questa/ModelSim, and
-`sim/run_all.sh` runs the suite through either. Re-running a difficult failure
-on a second simulator is the fastest way to separate a design bug from a
-simulator quirk. The Makefile and CI remain the canonical gates - note that
-`run_verilator.sh` passes `-Wno-fatal`, so warnings there are reported but do
-not fail the run; `make lint` is the gate that does.
+`make lint` is the only warning gate. If you want a second opinion on a
+difficult failure, re-run the same bench under Verilator (`--binary --timing`)
+or Questa: the sources are plain SystemVerilog with no vendor primitives, and
+the only includes are the `rtl/` headers, so any simulator that can compile the
+RTL can compile the bench. Use `-Wno-fatal` for those runs - the point is a
+second behavioural opinion, not a second lint.
 
 ### 16.2 The testbench inventory
 
@@ -1640,14 +1716,11 @@ not fail the run; `make lint` is the gate that does.
 | | `sw_rmii_tb` | dibit assembly and serialisation against the contract |
 | | `sw_flood_tb` | multi-frame flooding with a small CAM; run at line rate and with one 10 Mbit/s port |
 | | `sw_uart_tb` | framing, parity, stop bits, RTS/CTS |
-| | `sw_phy_monitor_tb` | 88E1111 register sequence against a wire-level model |
-| | `sw_monitor_tb` | sampling arithmetic, 32-to-64-bit wrap, MAC word coherence |
-| | `sw_monitor_interval_tb` | non-integral sampling windows |
-| | `sw_monitor_ui_tb` | page wrap for 1/2/3/5 ports, HEX and LCD formatting |
+| | `sw_phy_88e1111_tb` | 88E1111 register sequence against a wire-level model |
 | | `sw_console_tb` | the real UART console, command dispatch, error diagnostics |
-| | `sw_tx_completion_tb` | transmit completion, padding, disabled-egress exclusion |
-| | `sw_shared_tb` | the shared primitives (CRC, ratio, BCD, page) |
-| | `check_monitor_params.sh` | rejected parameter combinations |
+| | `sw_panel_tb` | switch positions to policy (with the override gating them), flush as a one-shot request, PHY status and table occupancy to lamps, lamp test |
+| | `sw_tx_completion_tb` | the framer's completion pulse, its length and its octet accounting |
+| | `sw_shared_tb` | the shared primitives (1R1W RAM, register bank, two-stage sampler) |
 | `make mii` | `tb_sw_switch_mii` | two 100 Mbit/s MII ports: flood, then known unicast both ways, no reflection |
 | `make rmii` | `tb_sw_switch_rmii` | two RMII ports at 100 and 10 Mbit/s from one 50 MHz clock |
 | `make vivado` | `tb_sw_vivado_top` | eight ports, flood to seven, ring of directed frames, reset recovery |
@@ -2006,22 +2079,31 @@ the width is stated exactly once. Per-port quantities are flat packed vectors,
 not unpacked arrays. Add an elaboration-time check under `ifndef SYNTHESIS` if a
 wrong value would otherwise show up as mysterious frame loss.
 
-**A new statistics counter.** Appending an ID to `sw_stat_id_e` and bumping
-`SW_STAT_COUNT` is not enough by itself: the monitor's counter block is a fixed
-14 pairs at words 8..35, and the rate block starts at word 36. A fifteenth
-counter would overlap the rate block, so a new counter is an ABI change: extend
-the monitor word map, the console formatting and `docs/monitor.md` in the same
-commit, and bump `SW_MON_ABI_VERSION`. Every block that does not own the new
-counter must drive it to zero: the monitor ORs the receive and transmit per-port
-buses together, and `stat_o` sums across ports, so an undriven field would
-accumulate whatever the other blocks happen to leave there.
+**A new statistics counter.** Append an ID to `sw_stat_id_e` and bump
+`SW_STAT_COUNT`; there is no fixed word map to extend any more, because the
+console reads counters by ID and the panel reads error counters by name. Four
+places still have to agree, in one commit:
+
+1. **The owning block** drives `stat_o[32*ID +: 32]`.
+2. **Every other block** must drive that field to zero - the core sums the
+   per-port planes, so an undriven field accumulates whatever its neighbours
+   leave behind. Both `es_switch_rx_port` and `es_switch_tx_port` already end
+   their `always_comb` with a zero-fill loop for exactly this reason.
+3. **`es_switch_core`'s sum** must exclude the new counter from the planes that
+   do not own it, if it is single-instance like `TX_FRAMES` or `CAM_HIT`.
+4. **`sw_console_stat_label`** needs a name, or `stat` prints `reserved`. Its
+   line count comes from `SW_STAT_COUNT`, so the response grows automatically.
+
+`SW_STAT_COUNT` must stay <= 16: `stat_id_i` is four bits, and the elaboration
+check in `es_switch_core` rejects a larger set rather than letting two counters
+alias onto one address.
 
 ### 18.8 Reading order for a newcomer
 
 1. This README, §1 and §4, for the shape of the thing.
 2. `rtl/es_defs.sv` and `rtl/switch/es_switch_defs.sv` - the vocabulary.
-3. `es_switch_gmii_rx` → `es_switch_rx_port` → `es_switch_arbiter` →
-   `es_switch_tx_port` → `es_switch_gmii_tx`, in that order.
+3. `es_mac_gmii` → `es_switch_rx_port` → `es_switch_arbiter` →
+   `es_switch_tx_port` → `es_mac_tx_frame`, in that order.
 4. `es_switch_mac_table` once the datapath makes sense.
 5. `tb/sw_gmii_if.sv` and `tb/tb_sw_switch.sv` to see what "correct" means.
 6. `AGENTS.md` before you change a line.
@@ -2033,7 +2115,7 @@ accumulate whatever the other blocks happen to leave there.
 | Symptom | Most likely cause | Where to look |
 |---|---|---|
 | Every unicast is flooded and nothing is ever learned | the I/G bit is being read from the wrong position, so every address looks like a group address | `SW_MAC_IG_BIT` (bit 40), `sw_is_unicast` |
-| Frames are forwarded but every FCS is bad | wrong CRC residue, wrong seed, or padding generated after the FCS | `es_common_crc32`, `es_switch_gmii_tx` |
+| Frames are forwarded but every FCS is bad | wrong CRC residue, wrong seed, or padding generated after the FCS | `es_common_crc32`, `es_mac_tx_frame` |
 | A 1000 Mbit/s port runs at 400 Mbit/s on a 50 MHz core | `BYTE_PERIOD` rounded 2.5 clocks down to 1 | `sw_byte_period`, §4.3 |
 | The same frame repeats forever | the tag FIFO was not popped in the clock the fabric registered the descriptor | `src_tag_rd_en_o`, the prefetch register in the arbiter |
 | An egress port wedges after a few frames | the beat FIFO had room but the descriptor FIFO did not | `slot_o`, `LEN_FIFO_DEPTH` |
@@ -2058,7 +2140,7 @@ accumulate whatever the other blocks happen to leave there.
 | **CAM** | content-addressable memory; here, the set-associative forwarding table |
 | **CDC** | clock-domain crossing; this core has none |
 | **clock enable** | a strobe that qualifies a synchronous transfer, used instead of a second clock |
-| **CSR** | control/status register; the read-only telemetry interface |
+| **DIP** | the board's slide switches; `dip_i` is the panel's only input |
 | **cut-through** | forwarding before the whole frame has arrived; **not** implemented |
 | **elaboration** | turning parameterised RTL into a concrete instance; where parameter checks run |
 | **FCS** | frame check sequence, the 32-bit CRC at the end of a frame |
@@ -2082,10 +2164,8 @@ accumulate whatever the other blocks happen to leave there.
 | Document | What it covers |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | the full style and portability contract, the tool flow, width discipline, testbench rules |
-| [`docs/monitor.md`](docs/monitor.md) | the complete telemetry ABI, word by word |
-| [`docs/monitor.zh-Hans.md`](docs/monitor.zh-Hans.md) | the same, in Chinese |
 | [`librelane/README.md`](librelane/README.md) | running the physical flow, every configuration value, the 2.4-to-3.0 migration |
-| [`board/de2_115/quartus_ii/README.md`](board/de2_115/quartus_ii/README.md) | board pins, displays, MDIO, console, clocking limits |
+| [`board/de2_115/quartus_ii/README.md`](board/de2_115/quartus_ii/README.md) | board pins, switch positions, lamps, MDIO, both consoles, clocking limits |
 | `rtl/*/es_*_defs.sv` | the constants, and the comments that explain why they have those values |
 
 ## License

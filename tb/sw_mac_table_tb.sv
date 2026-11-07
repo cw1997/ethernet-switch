@@ -64,9 +64,9 @@ module sw_mac_table_tb #(
   logic [NUM_PORTS*PW-1:0] learn_port;
 
   logic [31:0] entries, hits, misses, learns;
-  logic mon_req = 0, mon_valid;
-  logic [31:0] mon_index = 0;
-  logic [127:0] mon_entry;
+  logic rd_req = 0, rd_valid;
+  logic [31:0] rd_index = 0;
+  logic [127:0] rd_entry;
 
   int unsigned errors;
   int unsigned checks;
@@ -81,10 +81,10 @@ module sw_mac_table_tb #(
     .AGE_TICK_CYCLES (AGE_TICK),
     .AGE_LIMIT       (AGE_LIMIT)
   ) u_dut (
-    .mon_req_i    (mon_req),
-    .mon_index_i  (mon_index),
-    .mon_valid_o  (mon_valid),
-    .mon_entry_o  (mon_entry),
+    .rd_req_i    (rd_req),
+    .rd_index_i  (rd_index),
+    .rd_valid_o  (rd_valid),
+    .rd_entry_o  (rd_entry),
     .clk_i        (clk),
     .rst_ni       (rst_n),
     .flush_i      (flush),
@@ -107,8 +107,8 @@ module sw_mac_table_tb #(
   logic [$bits(hits)-1:0] ref_hits;
   logic [$bits(misses)-1:0] ref_misses;
   logic [$bits(learns)-1:0] ref_learns;
-  logic [$bits(mon_valid)-1:0] ref_mon_valid;
-  logic [$bits(mon_entry)-1:0] ref_mon_entry;
+  logic [$bits(rd_valid)-1:0] ref_rd_valid;
+  logic [$bits(rd_entry)-1:0] ref_rd_entry;
   sw_mac_table_reference #(
     .NUM_PORTS       (NUM_PORTS),
     .NUM_SETS        (NUM_SETS),
@@ -117,10 +117,10 @@ module sw_mac_table_tb #(
     .AGE_TICK_CYCLES (AGE_TICK),
     .AGE_LIMIT       (AGE_LIMIT)
   ) u_reference (
-    .mon_req_i    (mon_req),
-    .mon_index_i  (mon_index),
-    .mon_valid_o  (ref_mon_valid),
-    .mon_entry_o  (ref_mon_entry),
+    .rd_req_i    (rd_req),
+    .rd_index_i  (rd_index),
+    .rd_valid_o  (ref_rd_valid),
+    .rd_entry_o  (ref_rd_entry),
     .clk_i        (clk),
     .rst_ni       (rst_n),
     .flush_i      (flush),
@@ -138,7 +138,7 @@ module sw_mac_table_tb #(
   );
   always @(negedge clk) begin
     #1;
-    if (rst_n && (({hit, port, entries, hits, misses, learns, mon_valid, mon_entry} !== {ref_hit, ref_port, ref_entries, ref_hits, ref_misses, ref_learns, ref_mon_valid, ref_mon_entry})))
+    if (rst_n && (({hit, port, entries, hits, misses, learns, rd_valid, rd_entry} !== {ref_hit, ref_port, ref_entries, ref_hits, ref_misses, ref_learns, ref_rd_valid, ref_rd_entry})))
       $fatal(1, "mac_table differs from pre-extraction cycle reference");
   end
 
@@ -213,14 +213,14 @@ module sw_mac_table_tb #(
     found = 0;
     for (int unsigned i = 0; i < NUM_SETS * NUM_WAYS; i++) begin
       @(negedge clk);
-      mon_req   = 1;
-      mon_index = 32'(i);
+      rd_req   = 1;
+      rd_index = 32'(i);
       @(negedge clk);
-      mon_req = 0;
-      if (!mon_valid) $fatal(1, "CAM monitor response missing");
-      if (mon_entry[96] && mon_entry[47:0] == address) begin
+      rd_req = 0;
+      if (!rd_valid) $fatal(1, "CAM read response missing");
+      if (rd_entry[96] && rd_entry[47:0] == address) begin
         found++;
-        expect_eq(mon_entry[95:64], expected_port, "monitor reports learned port");
+        expect_eq(rd_entry[95:64], expected_port, "read port reports learned port");
       end
     end
     expect_eq(found, expected ? 1 : 0, "monitor enumeration matches learned/expired/flush state");
@@ -247,12 +247,12 @@ module sw_mac_table_tb #(
     $display("=====================================================================");
 
     @(negedge clk);
-    mon_req   = 1;
-    mon_index = 32'(NUM_SETS * NUM_WAYS);
+    rd_req   = 1;
+    rd_index = 32'(NUM_SETS * NUM_WAYS);
     @(negedge clk);
-    mon_req = 0;
-    expect_eq(mon_valid, 1, "out-of-range management request completes");
-    expect_eq(mon_entry[96], 0, "out-of-range management entry is invalid");
+    rd_req = 0;
+    expect_eq(rd_valid, 1, "out-of-range management request completes");
+    expect_eq(rd_entry[96], 0, "out-of-range management entry is invalid");
 
     // ---- miss on an empty table ------------------------------------------
     do_lookup(0, MAC_A);

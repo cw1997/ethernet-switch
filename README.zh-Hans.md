@@ -7,8 +7,8 @@ GDSII 的物理实现流程。
 [English](README.md) | **简体中文**
 
 通用 RTL 默认 **四端口**，支持参数覆盖；DE2-115 板级壳是 **双端口**，Vivado 模板是
-**八端口**。RTL 按 `switch/`、`monitor/`、`console/`、`perips/`、`mems/`、`common/`
-分层，`rtl/es_defs.sv` 按依赖顺序把公共声明与各职责域的声明库统一导入。
+**八端口**。RTL 按 `switch/`、`mac/`、`panel/`、`console/`、`perips/`、`mems/`、
+`common/` 分层，`rtl/es_defs.sv` 按依赖顺序把公共声明与各职责域的声明库统一导入。
 
 本文档为两类读者而写：第一次打开本仓库、希望从头读到尾的人；以及之后把它当参考手册
 查阅的人。它会说明每个模块做什么、**为什么**要这样做、一帧数据如何一拍一拍地穿过
@@ -65,7 +65,10 @@ GDSII 的物理实现流程。
 * [9. 一帧的一生](#9-一帧的一生)
 * [10. 帧描述符](#10-帧描述符)
 * [11. 统计计数器](#11-统计计数器)
-* [12. 监控与串口控制台](#12-监控与串口控制台)
+* [12. 读取端口与串口控制台](#12-读取端口与串口控制台)
+  - [12.1 两个读取端口：一个共享，一个无状态](#121-两个读取端口一个共享一个无状态)
+  - [12.2 命令集](#122-命令集)
+  - [12.3 第二路控制台，以及"热插拔"在这里的含义](#123-第二路控制台以及热插拔在这里的含义)
 * [13. 参数与配置配方](#13-参数与配置配方)
 * [14. PHY 接口](#14-phy-接口)
 * [15. 板级壳](#15-板级壳)
@@ -122,14 +125,15 @@ flowchart LR
 
 | 组成 | 位置 | 说明 |
 |---|---|---|
-| 交换内核 | `rtl/switch/` | 成帧器、解析器、转发表、交换矩阵与统计 |
+| 交换内核 | `rtl/switch/` | 解析器、转发表、交换矩阵与统计——只管交换本身 |
+| MAC 层 | `rtl/mac/` | 把 GMII / MII / RMII 引脚变成统一的 64 位节拍流 |
 | 引脚前端 | `rtl/switch/es_switch_{gmii,mii,rmii}.sv` | 三种 MAC 接口各一个顶层，按需选择 |
 | 通用顶层 | `es_switch_gmii` | 默认顶层：GMII 风格八位组引脚，默认四端口 |
 | 板级壳 | `board/de2_115/`、`board/vivado/` | 含引脚、时钟、PHY 与用户 I/O 的 FPGA 顶层 |
-| 监控 | `rtl/monitor/` | 每端口 64 位计数、速率、队列负载、PHY 状态、MAC 表读取 |
-| 控制台 | `rtl/console/` | 基于 UART 的 ASCII 命令壳（`help`、`status`、`port`、`mac`） |
-| 外设 | `rtl/perips/` | UART、LCD、MDIO、88E1111 管理、按键消抖 |
-| 共享存储/逻辑 | `rtl/mems/`、`rtl/common/` | FIFO、寄存器组、CRC-32、比例运算、BCD、同步器 |
+| 面板 | `rtl/panel/` | 拨码开关解码成策略，交换机状态编码成指示灯 |
+| 控制台 | `rtl/console/` | 基于 UART 的 ASCII 查询壳：每个 UART 一个自包含端口，外加 hub |
+| 外设 | `rtl/perips/` | UART、MDIO、88E1111 管理 |
+| 共享存储/逻辑 | `rtl/mems/`、`rtl/common/` | FIFO、RAM、寄存器组、CRC-32、同步器 |
 | 回归测试 | `tb/` | 自校验测试台：模块级、矩阵级、整机、三种前端、板级壳 |
 | CI 契约 | `ci/`、`Makefile` | 固定工具链、lint、展开、仿真、综合各门 |
 | 物理流程 | `librelane/` | LibreLane + sky130A 配置，直至 GDSII |
@@ -159,13 +163,13 @@ CI `gds` 作业所证明的。
 
 ```mermaid
 flowchart LR
-    A["GMII RX 八位组<br/>每 BYTE_PERIOD 拍一个"] --> B["es_switch_gmii_rx<br/>八位组转 64 位节拍<br/>FCS 按八位组速率校验"]
+    A["GMII RX 八位组<br/>每 BYTE_PERIOD 拍一个"] --> B["es_mac_rx_frame<br/>八位组转 64 位节拍<br/>FCS 按八位组速率校验"]
     B -->|"节拍"| C["es_switch_rx_port<br/>解析、查找、过滤、缓冲"]
     C -->|"目的地址查找"| D["es_switch_mac_table<br/>共享转发表"]
     D -->|"命中与端口，一拍后"| C
     C -->|"载荷节拍<br/>每帧一个标签"| E["es_switch_arbiter<br/>整帧准入<br/>一对多节拍复制"]
     E -->|"载荷节拍<br/>每帧一个长度"| F["es_switch_tx_port<br/>出口节拍缓冲"]
-    F --> G["es_switch_gmii_tx<br/>前导码、SFD、填充、FCS、IFG"]
+    F --> G["es_mac_tx_frame<br/>前导码、SFD、填充、FCS、IFG"]
     G --> H["GMII TX 八位组"]
 ```
 
@@ -259,14 +263,14 @@ CI 直接在 Linux 上跑，从不需要 `wsl.sh`。本地运行 `ci/check-toolc
 | 路径 | 内容 |
 |---|---|
 | `rtl/es_defs.sv` | 伞形头文件：共享位宽、统计映射，并按顺序包含各域声明库 |
-| `rtl/switch/` | 交换机本体：成帧、解析、CAM、矩阵、出口、三个顶层 wrapper |
-| `rtl/monitor/` | 监控采样、快照缓存、分页策略、显示格式化 |
-| `rtl/console/` | ASCII 命令壳及其命令模块 |
-| `rtl/perips/` | UART、LCD、MDIO、88E1111 PHY 管理、按键消抖 |
+| `rtl/switch/` | 交换机本体，且只有交换本体：解析、CAM、矩阵、出口、三个顶层 wrapper |
+| `rtl/mac/` | MAC 层：把 GMII / MII / RMII 引脚变成 64 位节拍契约 |
+| `rtl/panel/` | 拨码开关解码成策略，交换机状态编码成指示灯 |
+| `rtl/console/` | ASCII 查询壳：每个 UART 一个自包含端口，外加 hub |
+| `rtl/perips/` | UART、MDIO、88E1111 PHY 管理 |
 | `rtl/mems/` | FWFT FIFO、1R1W RAM、并行寄存器组 |
-| `rtl/common/` | CRC-32、两级同步器、二进制转 BCD、串行比例运算 |
+| `rtl/common/` | CRC-32 与两级同步器 |
 | `tb/` | 自校验测试台；从不综合，CI 也不对其做 lint |
-| `sim/` | 备选运行脚本（Verilator、Questa/ModelSim）与 `.f` 源文件清单；Makefile 仍是权威质量门 |
 | `board/de2_115/quartus_ii/` | Quartus II 工程：板级顶层、引脚、SDC、`build.bat` |
 | `board/vivado/` | 八端口 MII Vivado 模板（状态说明见 §15） |
 | `ci/` | 工具链契约（`check-toolchain.sh`）与工具链镜像定义（`toolchain/Dockerfile`） |
@@ -276,37 +280,38 @@ CI 直接在 Linux 上跑，从不需要 `wsl.sh`。本地运行 `ci/check-toolc
 
 ### 3.2 每个模块及其职责
 
-**交换域**
+**MAC 域**——线路接口所隐含的一切
 
 | 模块 | 文件 | 职责 |
 |---|---|---|
-| `es_switch_core` | `switch/es_switch_core.sv` | 接口无关的数据通路：端口实例、CAM、矩阵、统计聚合、静态参数检查 |
-| `es_switch_gmii_rx` | `switch/es_switch_gmii_rx.sv` | 八位组流转 64 位节拍，附带 FCS 校验 |
+| `es_mac_rx_frame` | `mac/es_mac_rx_frame.sv` | 八位组流转 64 位节拍，附带 FCS 校验 |
+| `es_mac_tx_frame` | `mac/es_mac_tx_frame.sv` | 节拍转合法线帧；FCS 比线上快一个八位组生成 |
+| `es_mac_mii_serdes` | `mac/es_mac_mii_serdes.sv` | MII 半字节与规范八位组流互转 |
+| `es_mac_rmii_serdes` | `mac/es_mac_rmii_serdes.sv` | RMII 2 位块与规范八位组流互转 |
+| `es_mac_gmii` | `mac/es_mac_gmii.sv` | GMII 引脚到节拍契约：成帧、串行化、弹性缓冲 |
+| `es_mac_mii` | `mac/es_mac_mii.sv` | MII 引脚到节拍契约，仅 10/100 Mbit/s |
+| `es_mac_rmii` | `mac/es_mac_rmii.sv` | RMII 引脚到节拍契约，仅 10/100 Mbit/s |
+
+**交换域**——只做交换功能
+
+| 模块 | 文件 | 职责 |
+|---|---|---|
+| `es_switch_core` | `switch/es_switch_core.sv` | 接口无关的数据通路：端口实例、CAM、矩阵、统计聚合、控制台读取端口 |
 | `es_switch_rx_port` | `switch/es_switch_rx_port.sv` | 帧头解析、CAM 查找、入口策略、缓冲、描述符生成 |
 | `es_switch_mac_table` | `switch/es_switch_mac_table.sv` | 共享转发表：`NUM_SETS` x `NUM_WAYS`，并行读，串行化学习队列，老化 |
 | `es_switch_arbiter` | `switch/es_switch_arbiter.sv` | 轮转调度、整帧准入、一对多节拍复制、发送侧计数 |
-| `es_switch_tx_port` | `switch/es_switch_tx_port.sv` | 出口节拍缓冲、每帧长度描述符、发送完成上报 |
-| `es_switch_gmii_tx` | `switch/es_switch_gmii_tx.sv` | 节拍转合法线帧；FCS 比线上快一个八位组生成 |
-| `es_switch_mii_adapter` | `switch/es_switch_mii_adapter.sv` | MII 半字节与规范八位组流互转 |
-| `es_switch_rmii_adapter` | `switch/es_switch_rmii_adapter.sv` | RMII 2 位块与规范八位组流互转 |
-| `es_switch_gmii` | `switch/es_switch_gmii.sv` | 默认顶层：GMII 引脚直通内核 |
-| `es_switch_mii` | `switch/es_switch_mii.sv` | MII 顶层：逐端口适配器，仅 10/100 Mbit/s |
-| `es_switch_rmii` | `switch/es_switch_rmii.sv` | RMII 顶层：逐端口适配器，仅 10/100 Mbit/s |
+| `es_switch_tx_port` | `switch/es_switch_tx_port.sv` | 出口节拍缓冲、每帧长度描述符、交给 MAC 的帧握手 |
+| `es_switch_gmii` | `switch/es_switch_gmii.sv` | 默认顶层：`NUM_PORTS` 个 GMII MAC + 内核 + 面板 |
+| `es_switch_mii` | `switch/es_switch_mii.sv` | MII 顶层：仅 10/100 Mbit/s |
+| `es_switch_rmii` | `switch/es_switch_rmii.sv` | RMII 顶层：仅 10/100 Mbit/s |
 
-**监控与控制台**
+**面板与控制台**
 
 | 模块 | 文件 | 职责 |
 |---|---|---|
-| `es_monitor_core` | `monitor/es_monitor_core.sv` | 原子快照、64 位计数扩展、串行速率计算、CSR 服务 |
-| `es_monitor_cache` | `monitor/es_monitor_cache.sv` | 低优先级 CSR 扫描器：读图像前后各读一次序列字，只有两次一致才发布 |
-| `es_monitor_page` | `monitor/es_monitor_page.sv` | 消抖后的翻页与清表控制；页号在 `NUM_PORTS + 1` 页内回绕 |
-| `es_monitor_display` | `monitor/es_monitor_display.sv` | 数码管与 LCD 字段格式化 |
-| `es_console_core` | `console/es_console_core.sv` | 行组装、命令分发、响应串行化 |
-| `es_console_cmd_help` | `console/es_console_cmd_help.sv` | `help` |
-| `es_console_cmd_status` | `console/es_console_cmd_status.sv` | `status` |
-| `es_console_cmd_port` | `console/es_console_cmd_port.sv` | `port <n>` |
-| `es_console_cmd_mac` | `console/es_console_cmd_mac.sv` | `mac all`、`mac <n>` |
-| `es_console_snapshot` | `console/es_console_snapshot.sv` | 复制快照，使慢速 UART 不会混合两个窗口 |
+| `es_panel` | `panel/es_panel.sv` | 拨码开关到运行时策略；状态到语义化指示灯 |
+| `es_console_port` | `console/es_console_port.sv` | 一个完整控制台：UART、行编辑、解析、分发、响应时序 |
+| `es_console_hub` | `console/es_console_hub.sv` | `NUM_CONSOLE` 个独立端口，只共享转发表读取端口 |
 
 **共享基础设施**
 
@@ -314,16 +319,12 @@ CI 直接在 Linux 上跑，从不需要 `wsl.sh`。本地运行 `ci/check-toolc
 |---|---|---|
 | `es_common_crc32` | `common/es_common_crc32.sv` | 八位组串行 IEEE 802.3 FCS 生成与校验，表由函数计算 |
 | `es_common_sync_2ff` | `common/es_common_sync_2ff.sv` | 单个异步位的两级同步器 |
-| `es_common_bin_to_bcd` | `common/es_common_bin_to_bcd.sv` | 二进制转打包 BCD，供显示使用 |
-| `es_common_ratio` | `common/es_common_ratio.sv` | 串行乘除法，用于 pps 与 bit/s |
 | `es_mems_sync_fifo` | `mems/es_mems_sync_fifo.sv` | FWFT FIFO，带帧粒度回滚与硬冲刷 |
 | `es_mems_ram_1r1w` | `mems/es_mems_ram_1r1w.sv` | 单读单写 RAM |
 | `es_mems_reg_bank` | `mems/es_mems_reg_bank.sv` | 并行寄存器组，逐表项写使能 |
 | `es_perips_uart` | `perips/es_perips_uart.sv` | UART：5-8 数据位、校验、1/2 停止位、RTS/CTS |
-| `es_perips_lcd` | `perips/es_perips_lcd.sv` | HD44780 风格字符 LCD 驱动 |
 | `es_perips_mdio` | `perips/es_perips_mdio.sv` | MDIO 主机 |
 | `es_perips_phy_88e1111` | `perips/es_perips_phy_88e1111.sv` | 88E1111 配置、自协商与状态轮询 |
-| `es_perips_key_debounce` | `perips/es_perips_key_debounce.sv` | 向量按键消抖 |
 
 ### 3.3 声明库如何工作
 
@@ -340,8 +341,9 @@ CI 直接在 Linux 上跑，从不需要 `wsl.sh`。本地运行 `ci/check-toolc
 ```mermaid
 flowchart TD
     U["rtl/es_defs.sv<br/>伞形头文件，编译单元作用域"] --> C["common/es_common_defs.sv"]
+    U --> A["mac/es_mac_defs.sv"]
     U --> P["perips/es_perips_defs.sv"]
-    U --> M["monitor/es_monitor_defs.sv"]
+    U --> N["panel/es_panel_defs.sv"]
     U --> K["console/es_console_defs.sv"]
     U --> S["switch/es_switch_defs.sv"]
     S -->|"使用 common 的 sw_port_w"| C
@@ -369,21 +371,23 @@ flowchart TD
 ```mermaid
 flowchart TD
     B["板级壳<br/>es_switch_de2_115_top, es_switch_vivado_top"] --> W["引脚前端<br/>es_switch_gmii, es_switch_mii, es_switch_rmii"]
+    W --> A["MAC 层<br/>es_mac_gmii, es_mac_mii, es_mac_rmii"]
     W --> R["交换内核<br/>es_switch_core"]
+    W --> N["面板<br/>es_panel"]
     R --> D["数据通路模块<br/>rx_port, mac_table, arbiter, tx_port"]
-    R --> T["监控<br/>es_monitor_core"]
-    B --> P["板载外设<br/>UART、LCD、MDIO、PHY、按键"]
-    P --> K["控制台<br/>es_console_core"]
-    K --> T
+    B --> P["板载外设<br/>UART、MDIO、PHY"]
+    P --> K["控制台 hub + 端口<br/>es_console_hub"]
     D --> L["共享库<br/>mems, common"]
-    T --> L
+    A --> L
 ```
 
-* **内核**对引脚、时钟、PHY 一无所知。它只跟每个端口的一条规范、由时钟使能限定的
-  八位组流打交道。
-* **wrapper** 把物理 MAC 接口适配到这条流上。共有三个，每次构建只展开其中一个。
-* **板级壳**补上板子需要的东西：晶振、复位采样、PHY 管理、显示、按键和 UART。
-* **监控**观察内核并提供只读 CSR；**控制台**是该 CSR 的客户端。两者都无法阻塞转发。
+* **内核**对引脚、时钟、PHY 一无所知。每个端口交给它一条 64 位节拍流，取回整帧。
+* **MAC** 把一种物理线路接口变成那条节拍流：前导码、FCS、帧间隔、符号串并转换，
+  以及 PHY 无法被反压这一点所要求的弹性缓冲。共有三种，每次构建只展开其中一个。
+* **板级壳**补上板子需要的东西：晶振、复位采样、PHY 管理、拨码开关、指示灯和 UART。
+* **面板**是唯一决定「某个拨码位置意味着什么」「某盏灯显示什么」的地方。
+* **控制台端口**通过无状态的逐端口统计读取端口取数。读统计不能阻塞转发，而且每个
+  端口有自己的读取切片，因此一个控制台拖不住另一个。
 
 ### 4.2 一个内核，三种引脚前端
 
@@ -393,7 +397,7 @@ flowchart TD
 | `es_switch_mii` | `mii_rx_dv_i`、`mii_rx_er_i`、`mii_rxd_i`、`mii_tx_en_o`、`mii_tx_er_o`、`mii_txd_o` | 每八位组两个 4 位半字节 | 10 / 100 Mbit/s | 1000 Mbit/s 在展开期被拒绝 |
 | `es_switch_rmii` | `rmii_crs_dv_i`、`rmii_rxd_i`、`rmii_tx_en_o`、`rmii_txd_o` | 每八位组四个 2 位块 | 10 / 100 Mbit/s | 1000 Mbit/s 在展开期被拒绝 |
 
-三种前端转发同样的参数、同样的统计总线、同样的监控端口。`make lint`、`make rtl`、
+三种前端转发同样的参数、同样的统计总线、同样的控制台参数。`make lint`、`make rtl`、
 `make synth` 每次都展开**全部五个**顶层——三个 wrapper 加上两个板级壳——因为从不被
 编译的顶层只会悄悄腐烂。
 
@@ -466,7 +470,7 @@ period = (clk_freq_hz * 8 + baud / 2) / baud;   // 四舍五入，最小为 1
 
 ### 5.1 从八位组到节拍，以及 FCS 校验
 
-`es_switch_gmii_rx` 在一个模块里做三件事：重定时入站八位组流、拼装 64 位节拍、运行 CRC。
+`es_mac_rx_frame` 在一个模块里做三件事：重定时入站八位组流、拼装 64 位节拍、运行 CRC。
 
 **重定时。** 适配器运行一个 `BYTE_PERIOD` 状态的自运行相位计数器，在每个八位组时间的
 **最后一拍**采样。晚采样带来一整拍的保持裕量，不需要 FIFO，也不需要 CDC。计数器自运行，
@@ -748,8 +752,8 @@ timeout_clocks = CAM_AGE_CYCLES * NUM_SETS * NUM_WAYS * (CAM_AGE_LIMIT + 1)
 
 ### 6.5 清表、占用率，以及这张表不是什么
 
-* `cam_flush_i` 使所有表项失效并清零占用计数。监控直接上报清表请求而不计数它，因为它是
-  一次性软件动作，而不是表能观察到的事件。
+* `cam_flush_i` 使所有表项失效并清零占用计数。内核把清表脉冲计入 `CAM_FLUSH`，因为清表
+  是一次性动作，表自身没有可报告的事件。
 * 这张表是**寄存器组**，不是存储器。一个带多个分布式读口、又在 generate 循环里逐表项
   写入的存储器，Icarus 处理不了：写使能与数据都正确，存储就是不落地，学到的表项悄悄
   从不出现。声明为寄存器后，每个读口都是普通的连续赋值。当表足够大时，FPGA 工具会从
@@ -912,15 +916,15 @@ stateDiagram-v2
 
 | 字段 | 长度 | 由谁生成 |
 |---|---|---|
-| 前导码 | 7 个 `0x55` | `es_switch_gmii_tx` |
-| 帧起始定界符 | 1 个 `0xD5` | `es_switch_gmii_tx` |
+| 前导码 | 7 个 `0x55` | `es_mac_tx_frame` |
+| 帧起始定界符 | 1 个 `0xD5` | `es_mac_tx_frame` |
 | 目的 MAC + 源 MAC + 类型/长度 | 14 字节；带 802.1Q 标签时 18 字节 | 载荷，来自入口缓冲 |
 | MAC 客户数据 | 描述符给出的 `len` 个字节，不足 `SW_MIN_PAYLOAD`（46）时补零 | 载荷 |
-| FCS | 4 字节，最低有效字节在先 | `es_switch_gmii_tx` |
-| 帧间隔 | 至少 12 个八位组时间 | `es_switch_gmii_tx` |
+| FCS | 4 字节，最低有效字节在先 | `es_mac_tx_frame` |
+| 帧间隔 | 至少 12 个八位组时间 | `es_mac_tx_frame` |
 
 `len` 是解析器测量出的 MAC 客户数据长度：含帧头，不含 FCS。它受 `MAX_FRAME_LEN` 约束。
-补零路径只在单独使用 `es_switch_gmii_tx` 时才有意义，因为解析器绝不会转发短于
+补零路径只在单独使用 `es_mac_tx_frame` 时才有意义，因为解析器绝不会转发短于
 `SW_MIN_FRAME_LEN` 的帧。
 
 填充**计入 FCS**，因为它在 CRC 吸收八位组之前生成。若在 FCS 之后补填充，每个接收端都会
@@ -978,7 +982,7 @@ sequenceDiagram
     TX->>P3: 前导码、SFD、补齐数据、FCS、IFG
 ```
 
-1. **八位组到达。** `es_switch_gmii_rx` 在自运行相位计数器上采样，随着八位组流过校验
+1. **八位组到达。** `es_mac_rx_frame` 在自运行相位计数器上采样，随着八位组流过校验
    FCS，并组装 64 位节拍。最后一个节拍被刻意保持到下一个八位组或链路空闲，帧尾标记不会
    丢失。
 2. **解析帧头。** 解析器从前一两个节拍（带标签则三个）中拼出目的、源地址，并解析帧长
@@ -994,7 +998,7 @@ sequenceDiagram
 7. **节拍扇出。** 每个载荷节拍在同一拍写入掩码内所有端口。首节拍带标志，出口由此知道
    节拍属于哪个描述符。
 8. **重新串行化。** `es_switch_tx_port` 等到描述符可用且帧间隔已走完，在节拍开始的同一
-   时刻弹出描述符；`es_switch_gmii_tx` 发出前导码、SFD、补齐的客户数据和新算的 FCS。
+   时刻弹出描述符；`es_mac_tx_frame` 发出前导码、SFD、补齐的客户数据和新算的 FCS。
 
 广播与上述流程相同，只是第 6 步的掩码有多个位。矩阵按每份副本的首节拍把它计为 N 份
 ——每收到它的端口各一份。
@@ -1054,8 +1058,9 @@ latency ~= (帧八位组数 / 入口八位组速率)
 
 ## 11. 统计计数器
 
-一条 14 个计数器的只读总线，顶层按端口求和，每计数器 32 位，由 `sw_stat_id_e` 选择。
-计数器按其记录的**事件**命名，而非按恰好拥有它的模块命名。
+一条 14 个计数器的只读总线，每计数器 32 位，由 `sw_stat_id_e` 选择。计数器按其记录的
+**事件**命名，而非按恰好拥有它的模块命名。每个接收端口拥有一组，每个发送端口拥有另一
+组，`es_switch_core` 在内核顶层把它们跨端口求和一次——那正是 `stat_o`。
 
 | ID | 计数器 | 计数位置 | 含义与注意事项 |
 |---|---|---|---|
@@ -1072,7 +1077,7 @@ latency ~= (帧八位组数 / 入口八位组速率)
 | 10 | `CAM_HIT` | mac_table | 解析到端口的查找 |
 | 11 | `CAM_MISS` | mac_table | 落到洪泛的查找 |
 | 12 | `CAM_LEARN` | mac_table | 写入表的插入数 |
-| 13 | `CAM_FLUSH` | core | 直接由冲刷请求线报告，不计数 |
+| 13 | `CAM_FLUSH` | core | 见到的清表请求次数 |
 
 引用这些数字之前值得知道的几件事：
 
@@ -1080,61 +1085,96 @@ latency ~= (帧八位组数 / 入口八位组速率)
   「坏帧」。把两者相加会掩盖你真正面临的问题。
 * **`TX_FRAMES` 数的是副本，不是授权。** 到三个端口的广播是三份副本，按授权计数只会
   报一。
+* **`TX_FRAMES` 数的是准入，不是完成。** 副本进入出口缓冲时计数就推进，因此已排队但
+  还没上线的帧已被计入。完成信号存在于 MAC 内部（`es_mac_tx_frame` 的 `done_o`），
+  但 MAC 之上没有任何东西消费它。
 * **两个端口同拍命中则两个都计。** 计数是对逐端口限定位做 population count，不是顺序
   循环。
-* **`RX_OCTETS` 不含 FCS**，`TX_OCTETS` 不含前导码、FCS 和帧间隔。监控 ABI 另有一套
-  基于发送完成的计数器，它记录的是另一个事件（完成串行化，而不是被接纳），因此两者
-  不能直接比较。
+* **`RX_OCTETS` 不含 FCS**，`TX_OCTETS` 不含前导码、FCS 和帧间隔。
 * **错误类别并不互斥。** 一帧可能既畸形又过短；解析器按固定优先级只增加一个类别。
-
-完整的监控 ABI——每端口 64 位计数、速率、队列/负载快照、PHY 元数据、独立 MAC 表读取
-——见 [`docs/monitor.zh-Hans.md`](docs/monitor.zh-Hans.md)（英文：
-[`docs/monitor.md`](docs/monitor.md)）。
 
 ---
 
-## 12. 监控与串口控制台
+## 12. 读取端口与串口控制台
 
-### 12.1 快照模型
+可观测性不是一个独立子系统。交换内核只暴露**两个读取端口**，控制台就是一个 UART 加上
+驱动这两个端口的时序器。没有采样引擎、没有快照缓冲、也没有后台扫描器：命令打印出来的
+就是那一行取数瞬间计数器里的值。
 
-监控不直接暴露实时计数器。每 `REFRESH_INTERVAL_MS`（默认 500 ms）它：
+### 12.1 两个读取端口：一个共享，一个无状态
 
-1. 捕获原始计数器，并把每个 32 位计数器扩展为 64 位，使长时间窗口内的回绕也被保留；
-2. 通过一个共享的乘除法器串行计算速率；
-3. 带着新的序列号**原子**发布整幅图像。
-
-想要一致视图的读者先读序列字、再读各字段、再读一次序列字，若变化就重试。显示扫描器
-正是这样做的；控制台复制扫描器已经完成的图像，所以慢速 UART 也不会混合两个窗口。
+| 端口 | 方向 | 访问方式 | 为什么是这样 |
+|---|---|---|---|
+| 统计 | `stat_port_i`、`stat_id_i` -> `stat_data_o` | 纯组合，每个控制台一份切片 | 每个控制台有自己的地址与数据切片，因此两个读者不会撞车，也不需要仲裁 |
+| 转发表 | `cam_rd_req_i` -> `cam_rd_valid_o` | 单个寄存读端口，由 hub 授权 | 表是寄存器堆，物理上只有一条读取 mux，读者必须串行化 |
 
 ```mermaid
 flowchart LR
-    C["32 位实时计数器"] --> E["每拍扩展为 64 位"]
-    E --> S["暂存一份样本"]
-    S --> R["串行速率计算<br/>pps、bit/s、负载"]
-    R --> P["发布快照<br/>序列号 +1"]
-    P --> D["显示缓存"]
-    P --> K["控制台快照"]
-    K --> U["UART"]
+    P0["端口 0 计数器"] --> A["统计平面<br/>每端口 32 x SW_STAT_COUNT"]
+    P1["端口 N-1 计数器"] --> A
+    A --> S["求和树<br/>stat_o"]
+    A --> R0["控制台 0<br/>stat_port_i / stat_data_o"]
+    A --> R1["控制台 N<br/>stat_port_i / stat_data_o"]
+    T["转发表"] --> C["寄存读端口"]
+    C --> H["es_console_hub<br/>claim / grant"]
+    H --> R0
+    H --> R1
 ```
 
-任何请求、显示、UART 或管理握手都无法阻塞转发。监控是只读观察者。
+两个端口都是只读的。控制台做的任何事都不能阻塞转发；而统计端口是纯组合的，读计数器也
+不会扰动数据通路。控制台唯一能做的，是在一条响应的两行之间看到计数器变化——只有转发表
+读端口需要更强的保证，而它靠构造保证：一次被授权的遍历只有一次寄存请求。
 
-### 12.2 CSR 映射，一页看完
+### 12.2 命令集
 
-| 区域 | 地址 | 内容 |
+板级壳与 `es_console_port` 接受以下编译期参数：
+
+| 参数 | 默认值 | 允许范围 |
 |---|---|---|
-| 系统记录 | `0x0000_0000` | 状态、端口数、保留字、运行秒数、窗口、序列号、CAM 状态 |
-| 每端口记录 `p` | `0x1000_0000 + p*256` | PHY 状态、队列占用与峰值、负载、14 对计数器、四对速率 |
-| MAC 表项 `i` | `0x2000_0000 + i*16` | MAC[31:0]、MAC[47:32]、端口、有效位 |
-| 实时时间戳 | `0x0000_00f0` / `f4` / `f8` | 实时时钟低/高字与清表代数 |
+| `NUM_CONSOLE` | 1 | 任意 >= 1；每个一路 UART |
+| `UART_BAUD_RATE` | 115200 | 整数分频周期至少 4 拍且误差在 2% 以内的任意速率 |
+| `UART_DATA_BITS` | 8 | UART 支持 5..8；ASCII 控制台要求 7 或 8 |
+| `UART_PARITY` | 无 | 无、奇、偶 |
+| `UART_STOP_BITS` | 1 | 1 或 2 |
+| `UART_FLOW_CONTROL` | 无 | 无或 RTS/CTS（低有效） |
+| `MAC_IF` | GMII | 由 `version` 回显；由实例化 hub 的 wrapper 设置 |
 
-* 值为小字在先：64 位字段占两个连续 32 位字，低字在前。
-* 带字节地址拉高 `mon_req_i`，在 `mon_ready_o` 为高时被接受；`mon_valid_o` 为高时数据
-  才有意义。
-* 普通读一拍响应；MAC 读可能多拍，请求必须遵守 ready。
-* 未映射或未对齐的读返回零。
+命令为小写 ASCII，以 CR、LF 或 CRLF 结尾：
 
-每端口的 PHY 状态字节在 `phy_status_i` 与快照中含义相同：
+```text
+help        version     status      stat
+link        cfg         port <n>
+mac all     mac <n>     mac count
+```
+
+| 命令 | 行数 | 内容 |
+|---|---|---|
+| `help` | 4 | 命令清单，每组一行 |
+| `version` | 4 | `num_ports`、`cam_capacity`、`mac_interface`、`console_port` |
+| `status` | 2 + 4N | 表的占用与容量，然后每端口的链路 / 速率 / `rx_frames` / `tx_frames` |
+| `stat` | `SW_STAT_COUNT` + 2 | §11 的全部计数器（跨端口求和），然后占用与容量 |
+| `link` | N | 每端口一行 `phy_status` |
+| `cfg` | 4 | `flood_mode`、`learning_enable`、`cfg_override`、`cam_capacity` |
+| `port <n>` | 4 + `SW_STAT_COUNT` | `phy_status`、`link_up`、`speed_mbit`、`full_duplex`，然后端口 *n* 自己的计数器 |
+| `mac all` | 可变 | 所有有效表项，每项两行 |
+| `mac <n>` | 可变 | 只列在端口 *n* 上学到的表项 |
+| `mac count` | 2 | `cam_entries`、`cam_capacity` |
+
+* 所有命令都是查询。控制台没有任何写入交换机配置的路径，因此两路控制台不可能对同一份
+  策略给出不同答案；它们报告的，是面板把拨码解码成的结果（见 §15）。
+* 端口号是十进制、从零开始。`port <n>` 与 `mac <n>` 在 *n* >= `NUM_PORTS` 时回一行
+  `ERR command or port`，而不是钳位到合法值。
+* 输出格式为 `标签 = 0x` 后接 16 位十六进制数字，两份 dump 可以直接对齐比较。
+* `port <n>` 与 `stat` 通过统计端口一行读一个计数器：取数在渲染该行前一拍完成，因此
+  32 位计数器不会被打印成「打了一半」的样子。
+* `mac all` / `mac <n>` 通过转发表的读口遍历。每个匹配项两行：`mac_hi_port` 携带地址
+  高 16 位与学习到的端口，`mac_lo` 携带低 32 位。遍历是**实时视图**，不是原子转储——
+  扫描期间表项可能搬移或过期，所以占用数在开头打印一次，`mac count` 里再来一次。
+* 每个口同一时刻只处理一条命令。超过 32 字节的行会被排空到结尾并拒绝；响应期间的输入
+  被丢弃并计数。这两者都不影响其它控制台口。
+* 校验、帧格式与溢出错误与命令错误分开计数，因此坏线缆与坏命令可以区分。
+
+每端口的 PHY 状态字节在 `phy_status_i`、`link` 与 `port <n>` 中含义相同：
 
 | 位 | 含义 |
 |---|---|
@@ -1145,53 +1185,29 @@ flowchart LR
 | 5 | 管理错误 |
 | 7:6 | 保留，为零 |
 
-状态无效的端口没有已知链路容量，其负载读为零；区分「空闲」与「未知」的正是有效位与
-链路位。
-
-重要的语义细节：
-
-* **统计的是发送完成，不是准入。** 监控的发送计数在 MAC 发完最后一个 FCS 八位组时推进，
-  因此排队的副本不会被报成已发送。管理上被禁用的出口完成不计入。
-* **监控的八位组计数来自完成时报出的客户数据长度**（`done_len_o`），因此不含前导码、
-  FCS 与帧间隔。`stat_o` 的 `TX_OCTETS` 数的是注入而不是完成；两者回答的是不同问题。
-* **负载是链路容量的千分比**，RX/TX 分开计算；PHY 报告未知或断链时为零。解读零之前
-  先看有效位与链路位。
-* **队列占用以 64 位节拍为单位**，不是包数，也不包含正在串行化的节拍或描述符槽位。
-* **MAC 列表是实时视图，不是原子转储。** 遍历期间表项可能移动或过期；控制台打印开始/
-  结束时钟与清表代数，使被中断的扫描可见。
-
-### 12.3 控制台
-
-板级壳与 `es_console_core` 接受以下编译期参数：
-
-| 参数 | 默认值 | 允许范围 |
-|---|---|---|
-| `UART_BAUD_RATE` | 115200 | 整数分频周期至少 4 拍且误差在 2% 以内的任意速率 |
-| `UART_DATA_BITS` | 8 | UART 支持 5..8；ASCII 控制台要求 7 或 8 |
-| `UART_PARITY` | 无 | 无、奇、偶 |
-| `UART_STOP_BITS` | 1 | 1 或 2 |
-| `UART_FLOW_CONTROL` | 无 | 无或 RTS/CTS（低有效） |
-
-命令为小写 ASCII，以 CR、LF 或 CRLF 结尾：
-
-```text
-help
-status
-port 0
-mac all
-mac 0
-```
-
-* `status` 报告汇总与每个端口。
-* 端口号是十进制、从零开始。
-* 输出为带字段名的十六进制整数，前缀 `0x`；`_pps`、`_bit_per_second`、`_permille`、
-  `_octets` 表示单位。
-* 同一时刻只处理一条命令。超过 32 字节的行会被排空到结尾并拒绝；忙时输入被丢弃并给出
-  诊断。
-* 校验、帧格式与溢出错误与命令错误分开计数，因此坏线缆与坏命令可以区分。
+状态无效的端口没有已知链路：`link_up`、`speed_mbit`、`full_duplex` 都读为零，区分
+「空闲」与「未知」的正是有效位。
 
 `cts` 只在字符之间检查，绝不在字符内部；处理命令期间 `rts` 撤销。没有流控的上位机应
 等待完整响应后再发送下一条命令。
+
+### 12.3 第二路控制台，以及「热插拔」在这里的含义
+
+`es_console_hub` 例化 `NUM_CONSOLE` 个完整的 `es_console_port`。每个都有自己的 UART、
+行缓冲、解析器、响应时序器和自己的 `rst_ni` 位，并且从不读取别的端口拥有的状态。由此
+带来的性质正是重点：
+
+* 两个人可以同时输入，而看不到对方的字符；
+* 某个口没插线、收到乱码或被单独复位时，**没有任何路径**能拖住邻居——它的 `present_i`
+  为低时既不驱动 `tx_o`，也不申请转发表读取端口；
+* 第三路控制台是一次参数修改，而不是一次重新设计。
+
+唯一共享的资源是转发表读取端口。需要遍历的端口拉起 `cam_claim_o` 并等待 `cam_grant_i`，
+整段遍历持有授权，结束时释放；因为遍历很短且由人驱动，固定优先级就够了。`present_i`
+同样门控申请，因此没插的线缆不会占住端口。
+
+DE2-115 把控制台 0 接到板载 USB-UART，把控制台 1 接到 JP5 排针（见 §15.1），这正是
+「再插一台终端」在这里是真的、而不只是计划。
 
 ---
 
@@ -1209,7 +1225,8 @@ mac 0
 | `RX_FIFO_DEPTH` | 256 | 每入口端口的载荷节拍数；必须 >= `ceil(MAX_FRAME_LEN/8)`，默认值下即 190 |
 | `TX_FIFO_DEPTH` | 256 | 每出口端口的载荷节拍数；同上，默认值下 190 |
 | `TAG_FIFO_DEPTH` | 16 | 每入口端口缓冲的描述符数 |
-| `WF_DEPTH` | 16 | 八位组适配器与解析器之间的弹性节拍 FIFO |
+| `WF_DEPTH` | 16 | 每个端口 MAC 内部的弹性节拍 FIFO，位于八位组适配器与节拍契约之间 |
+| `NUM_CONSOLE` | 1 | 独立控制台读取端口数；配套的 UART 参数见 §12.2 |
 | `FLOOD_MODE` | 1 | 0 = 阻塞未知单播，1 = 洪泛，2 = 未知组播也洪泛 |
 | `LEARNING_EN` | 1 | 源地址学习默认值 |
 | `STALL_LIMIT` | 0 | 队头帧被丢弃前的最长等待周期数；0 表示永不丢弃 |
@@ -1217,7 +1234,6 @@ mac 0
 | `CAM_AGE_EN` | 0 | 老化默认关闭 |
 | `CAM_AGE_CYCLES` | 1 000 000 | 两次老化步进之间的时钟数 |
 | `CAM_AGE_LIMIT` | 4 | 老化倒计时重装值 |
-| `REFRESH_INTERVAL_MS` | 500 | 监控采样间隔，必须为正；三个 wrapper 均转发它 |
 
 `LEN_FIFO_DEPTH`（默认 8）是 `es_switch_tx_port` 的参数，不在顶层内核的参数表中。它是
 一个出口端口描述符 FIFO 能排队的帧数，也是矩阵 `slot_o` 检查所保护的资源。直接实例化
@@ -1289,6 +1305,10 @@ es_switch_mii #(
 前导码和帧起始定界符在接收端由 PHY 剥除、在发送端重新插入，与真实 MAC 完全一致。因此
 八位组流从目的 MAC 的第一个字节开始，以四个 FCS 字节结束。
 
+> **管理性使能。** `link_up_i` 只门控**接收**方向：该位为低的端口在 MAC 里丢掉 PHY 送来
+> 的八位组，因此断链或不兼容的链路永远不会进入转发表。发送方向不门控——一个不再排空的
+> 端口会拖住所有向它洪泛的入口，而把帧发进一条死链是更便宜的失败方式。
+
 > **wrapper 里没有什么。** 没有 `RX_CLK`、`TX_CLK` 或 `REF_CLK` 引脚，也没有 PLL。
 > 适配器是**同步模型**：它们期望一条已经处于 `clk_i` 域的流。捕获真实 PHY 自己的时钟
 > 是板级壳的职责；无法满足单时钟约定的外壳需要在核心外加异步 FIFO——交换机内部无需
@@ -1308,7 +1328,7 @@ es_switch_mii #(
 MII 适配器的接收侧在链路空闲时**停住**窗口计数器，所以每一帧的窗口都从该帧自己的 `DV`
 上升沿开始数——前端或测试台都不必把帧对齐到任何网格。拼装好的八位组呈现整整一个八位组
 时间，比线上晚一个八位组；一个呈现倒计数器让**最后一个**八位组在链路空闲后仍保持完整
-`BYTE_PERIOD`，这正是 `es_switch_gmii_rx` 采样所需的。
+`BYTE_PERIOD`，这正是 `es_mac_rx_frame` 采样所需的。
 
 链路使能期间出现 `RX_ER` 会置起粘滞标志，从该八位组起撤销使能，于是出错帧在适配器处
 被截断，而不是进入矩阵。它随后会作为超短帧或 CRC 错误被下游拒绝，绝不转发。
@@ -1330,7 +1350,9 @@ Quartus II 工程：
 | PHY | 两片 Marvell 88E1111，MDIO 地址 16 与 17 |
 | 复位 | `KEY0`，经两级寄存器采样；启动期间请保持 |
 | 板卡设置 | JP1 必须选择 **MII**；JP7 保持默认 2.5 V |
-| 控制台 | 默认 115200 8N1，无流控 |
+| 控制台 0 | 板载 RS-232，默认 115200 8N1、无流控 |
+| 控制台 1 | `GPIO` 排针 JP5，3.3 V TTL，供 USB-串口模块使用 |
+| 前面板 | `SW[7:0]` 是策略开关，`LEDG[8:0]` + `LEDR[17:0]` 是状态灯 |
 
 **编译与下载。** 安装支持 Cyclone IV E 的 Quartus II 13.0sp1/13.1 Web Edition，然后：
 
@@ -1347,16 +1369,51 @@ GUI 可打开 `ethernet_switch.qpf`；产物为 `output_files/ethernet_switch.so
 
 * **PHY 管理。** 复位后等待 20 ms，逐地址探测 MDIO，仅通告 100 Mbit/s 全双工，重启
   自协商，然后每 100 ms 轮询。`BMSR` 读两次以处理 latch-low 位，再读寄存器 17 确认
-  速率、双工与解析完成。只有在确认 100 Mbit/s 全双工后才允许收发；未知、无应答或不
-  兼容的 PHY 不会被假报为正常。
-* **显示。** `HEX7..4` 显示 RX pps，`HEX3..0` 显示 TX pps；超过 10000 时除以 1000，
-  `LEDG4/5` 指示单位。LCD 上行 RX、下行 TX，六位十进制加 `k` 后缀；没有有效采样时显示
-  横线。
-* **LED。** 绿色：心跳、采样/PHY 就绪、逐端口使能、kpps 单位、页面指示。红色：逐端口
-  活动（保持 100 ms）、端口错误、PHY 管理错误、控制台错误、队列峰值达到 224/256 节拍、
-  以及四条每格 10% 的负载条。
-* **按键。** `KEY0` 保持复位，`KEY1` 清空 MAC 表，`KEY2`/`KEY3` 在汇总与逐端口页面之间
-  循环切换。功能键消抖 20 ms；同时按下两个翻页键不切页。
+  速率、双工与解析完成。只有在确认 100 Mbit/s 全双工后才抬高该端口的管理性**接收**使能
+  （`link_up_i`），因此未知、无应答或不兼容的 PHY 无法把帧送进转发表；发送方向保持使能，
+  因为一个不再排空的端口会拖住所有向它洪泛的入口（§14.1）。
+
+**拨码开关（`SW`）。** 板级顶层只把 `SW[7:0]` 作为 `dip_i` 交给交换机，别的什么都不做；
+含义在 `es_panel` 里解码，所以任何板子只要把开关接到那里，行为就完全一致。
+
+| 开关 | 功能 |
+|---|---|
+| `SW[1:0]` | 洪泛策略：0 = 只转已知单播，1 = 未知单播也洪泛，2 = 未知组播也洪泛，3 = 同 2 |
+| `SW[2]` | 源地址学习使能 |
+| `SW[3]` | **配置覆盖**——该位为低时上面两位被忽略，使用 elaboration 默认值，因此无论其它开关怎么拨，板上电后都处于已知状态 |
+| `SW[4]` | 清空转发表（边沿触发：一直按住也只清一次） |
+| `SW[5]` | 灯测试：全部灯点亮，含每端口灯与全板状态灯 |
+| `SW[17:6]` | 未连接（显式接零，且不进面板的 8 位总线） |
+
+**指示灯。** 绿色是逐端口状态，红色是全板状态与诊断。
+
+| LED | 含义 |
+|---|---|
+| `LEDG[0]` `LEDG[1]` | 端口 0 / 端口 1 链路 |
+| `LEDG[2]` `LEDG[3]` | 端口 0 / 端口 1 活动，保持 100 ms |
+| `LEDG[4]` `LEDG[5]` | 端口 0 / 端口 1 全双工 |
+| `LEDG[6]` `LEDG[7]` | 端口 0 / 端口 1 PHY 管理故障 |
+| `LEDG[8]` | 转发表已满 |
+| `LEDR[1:0]` | 端口 0 速率：`[0]` = 100 Mbit/s，`[1]` = 1000 Mbit/s |
+| `LEDR[3:2]` | 端口 1 速率，编码相同 |
+| `LEDR[7:4]` | 转发表使用率条：25 %、50 %、75 %、100 % |
+| `LEDR[8]` | 转发表非空 |
+| `LEDR[9]` | 至少一个端口有链路 |
+| `LEDR[10]` | **解码后**的洪泛策略 bit 0——只有覆盖位有效时才点亮 |
+| `LEDR[11]` | 解码后的学习使能 |
+| `LEDR[12]` | 配置覆盖生效 |
+| `LEDR[13]` | 本拍有清表请求 |
+| `LEDR[14]` | 心跳，约 4 Hz |
+| `LEDR[15]` `LEDR[16]` | 控制台 0 / 控制台 1 收到非法输入（粘滞） |
+| `LEDR[17]` | 某个接收错误计数器非零 |
+
+`LEDR[10]` 显示**解码后**的策略而不是开关原始位置，这是有意的：当覆盖位关闭时拨动策略
+开关，操作者应当看到「交换机没有按它执行」，而不是一盏与开关一致、却与矩阵不一致的灯。
+
+**按键与控制台。** `KEY0` 保持复位，`KEY[3:1]` 未使用（引脚已显式接零）。控制台 0 是
+RS-232 口；控制台 1 是 JP5 排针上的四个引脚（`GPIO_RXD`、`GPIO_TXD`、`GPIO_CTS_N`、
+`GPIO_RTS_N`），接一个 3.3 V USB-串口模块就得到双控制台交换机。两者连复位都相互独立：
+一个没插或乱码的控制台拖不住另一个，而任何一路都能打印完整命令集（§12.2）。
 
 > **板级的诚实说明。** RX 通路直接采样 PHY 的异步数据，没有异步 FIFO，因此本外壳
 > **不**声称 RX 时钟域穿越已闭合。TX 时钟由负沿分频器产生，SDC 预算（5 ns 建立、5 ns
@@ -1408,13 +1465,10 @@ flowchart LR
 
 各门按「失败速度」排序。请按这个顺序运行：lint 错误比挂死的仿真便宜得多。
 
-`sim/` 提供了一套备选运行脚本，用于「换一个仿真器再看一眼」：`sim/run_lint.sh` 用
-Verilator 对 RTL 与测试台做 lint，`sim/run_verilator.sh <top>` 用 Verilator
-`--binary --timing` 构建并运行单个测试台，`sim/run_questa.sh <top>` 用 Questa/ModelSim
-做同样的事，`sim/run_all.sh` 用其中之一跑完整套。把难缠的失败放到第二个仿真器上复现，
-是区分「设计 bug」与「仿真器怪癖」最快的方法。Makefile 与 CI 仍是权威质量门——注意
-`run_verilator.sh` 带 `-Wno-fatal`，那里的警告会被打印但不会让运行失败；真正让警告
-失败的是 `make lint`。
+`make lint` 是唯一的警告门。想对难缠的失败再要一个意见时，把同一个测试台放到 Verilator
+（`--binary --timing`）或 Questa 上重跑：源码是普通 SystemVerilog，没有厂商原语，唯一的
+include 是 `rtl/` 里的头文件，所以任何能编译 RTL 的仿真器都能编译测试台。这类运行请加
+`-Wno-fatal`——要的是第二个行为意见，不是第二个 lint。
 
 ### 16.2 测试台清单
 
@@ -1427,14 +1481,11 @@ Verilator 对 RTL 与测试台做 lint，`sim/run_verilator.sh <top>` 用 Verila
 | | `sw_rmii_tb` | 双位拼装与串行化符合约定 |
 | | `sw_flood_tb` | 小 CAM 下的多帧洪泛；线速与一个 10 Mbit/s 端口两种形态 |
 | | `sw_uart_tb` | 成帧、校验、停止位、RTS/CTS |
-| | `sw_phy_monitor_tb` | 88E1111 寄存器序列对线级模型 |
-| | `sw_monitor_tb` | 采样算术、32→64 位回绕、MAC 字一致性 |
-| | `sw_monitor_interval_tb` | 非整数采样窗口 |
-| | `sw_monitor_ui_tb` | 1/2/3/5 端口的分页循环、数码管与 LCD 格式 |
+| | `sw_phy_88e1111_tb` | 88E1111 寄存器序列对线级模型 |
 | | `sw_console_tb` | 真实 UART 控制台、命令分发、错误诊断 |
-| | `sw_tx_completion_tb` | 发送完成、填充、禁用出口的排除 |
-| | `sw_shared_tb` | 共享原语（CRC、比例、BCD、分页） |
-| | `check_monitor_params.sh` | 被拒绝的参数组合 |
+| | `sw_panel_tb` | 拨码到策略（含覆盖位门控）、清表一次性请求、PHY 状态与表占用到指示灯、灯测试 |
+| | `sw_tx_completion_tb` | 成帧器的完成脉冲、长度与八位组计数 |
+| | `sw_shared_tb` | 共享原语（1R1W RAM、寄存器组、两级同步器） |
 | `make mii` | `tb_sw_switch_mii` | 两个 100 Mbit/s MII 端口：先洪泛，再双向已知单播，无反射 |
 | `make rmii` | `tb_sw_switch_rmii` | 两个 RMII 端口，同一 50 MHz 时钟下 100 与 10 Mbit/s |
 | `make vivado` | `tb_sw_vivado_top` | 八端口、洪泛到七个、一圈定向帧、复位恢复 |
@@ -1747,19 +1798,28 @@ count <= count + W'(1);
 `localparam`，让位宽只声明一次。每端口量用扁平打包向量，不用解包数组。如果错误取值
 最终会表现为神秘的丢帧，就在 `ifndef SYNTHESIS` 下加一条展开期检查。
 
-**新统计计数器。** 只往 `sw_stat_id_e` 追加一个 ID 并增加 `SW_STAT_COUNT` 是不够的：
-监控的计数块固定是第 8..35 字的 14 对，速率块从第 36 字开始。第 15 个计数器会与速率块
-重叠，所以新增计数器是一次 ABI 变更：同一个提交里要扩展监控字映射、控制台格式化与
-`docs/monitor.md`，并提升 `SW_MON_ABI_VERSION`。每个不拥有新计数器的模块都必须把它
-驱动为零：监控会把接收与发送的逐端口总线按位或起来，`stat_o` 又会跨端口求和，未驱动的
-字段会把其他模块恰好留下的值累加进来。
+**新统计计数器。** 往 `sw_stat_id_e` 追加一个 ID 并增加 `SW_STAT_COUNT` 即可；不再有
+需要扩展的固定字映射，因为控制台按 ID 读计数器、面板按名字读错误计数器。但下面四处必须
+在同一个提交里对齐：
+
+1. **拥有者模块**驱动 `stat_o[32*ID +: 32]`；
+2. **其它所有模块**必须把该字段驱动为零——内核会逐端口求和，未驱动的字段会把邻居留下的
+   值累加进来。`es_switch_rx_port` 与 `es_switch_tx_port` 的 `always_comb` 结尾都已经有
+   补零循环，正是为此；
+3. **`es_switch_core` 的求和**要把新计数器排除在「不拥有它」的那些平面之外——如果它像
+   `TX_FRAMES`、`CAM_HIT` 那样是单实例计数器；
+4. **`sw_console_stat_label`** 需要给它一个名字，否则 `stat` 会打印 `reserved`。行数来自
+   `SW_STAT_COUNT`，所以响应长度会自动跟上。
+
+`SW_STAT_COUNT` 必须 <= 16：`stat_id_i` 只有四位，`es_switch_core` 的展开期检查会拒绝
+更大的集合，而不是让两个计数器别名到同一个地址。
 
 ### 18.8 新手的阅读顺序
 
 1. 本文 §1 与 §4，先建立整体形状。
 2. `rtl/es_defs.sv` 与 `rtl/switch/es_switch_defs.sv`——先掌握词汇。
-3. 按此顺序读 `es_switch_gmii_rx` → `es_switch_rx_port` → `es_switch_arbiter` →
-   `es_switch_tx_port` → `es_switch_gmii_tx`。
+3. 按此顺序读 `es_mac_gmii` → `es_switch_rx_port` → `es_switch_arbiter` →
+   `es_switch_tx_port` → `es_mac_tx_frame`。
 4. 数据通路看懂之后，再读 `es_switch_mac_table`。
 5. 读 `tb/sw_gmii_if.sv` 与 `tb/tb_sw_switch.sv`，理解「正确」意味着什么。
 6. 动任何一行之前，读 `AGENTS.md`。
@@ -1771,7 +1831,7 @@ count <= count + W'(1);
 | 症状 | 最可能的原因 | 去哪里看 |
 |---|---|---|
 | 所有单播都被洪泛，且从不学习 | I/G 位读错位置，所有地址都像组播地址 | `SW_MAC_IG_BIT`（第 40 位）、`sw_is_unicast` |
-| 帧能转发，但每个 FCS 都错 | CRC 残值错、种子错，或填充在 FCS 之后生成 | `es_common_crc32`、`es_switch_gmii_tx` |
+| 帧能转发，但每个 FCS 都错 | CRC 残值错、种子错，或填充在 FCS 之后生成 | `es_common_crc32`、`es_mac_tx_frame` |
 | 50 MHz 核心上 1000 Mbit/s 端口只跑 400 Mbit/s | `BYTE_PERIOD` 把 2.5 拍舍入成 1 | `sw_byte_period`、§4.3 |
 | 同一帧无限重复 | 矩阵寄存描述符的那一拍没有弹出标签 FIFO | `src_tag_rd_en_o`、矩阵中的预取寄存器 |
 | 出口端口几帧后卡死 | 节拍 FIFO 有空间但描述符 FIFO 没有 | `slot_o`、`LEN_FIFO_DEPTH` |
@@ -1796,7 +1856,7 @@ count <= count + W'(1);
 | **CAM** | 内容可寻址存储器；这里指组相联转发表 |
 | **CDC** | 时钟域穿越；本内核没有 |
 | **时钟使能（clock enable）** | 限定同步传输的选通信号，用来代替第二个时钟 |
-| **CSR** | 控制/状态寄存器；这里指只读监控接口 |
+| **DIP** | 板上的拨码开关；`dip_i` 是面板唯一的输入 |
 | **cut-through** | 整帧到齐前就转发；本设计**不**实现 |
 | **展开（elaboration）** | 把参数化 RTL 变成具体实例；参数检查在此运行 |
 | **FCS** | 帧校验序列，帧尾的 32 位 CRC |
@@ -1820,10 +1880,8 @@ count <= count + W'(1);
 | 文档 | 内容 |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | 完整的风格与可移植性契约、工具流程、位宽纪律、测试台规则 |
-| [`docs/monitor.zh-Hans.md`](docs/monitor.zh-Hans.md) | 完整的监控 ABI，逐字逐句 |
-| [`docs/monitor.md`](docs/monitor.md) | 同上，英文版 |
 | [`librelane/README.md`](librelane/README.md) | 运行物理流程、每个配置值的含义、2.4→3.0 迁移 |
-| [`board/de2_115/quartus_ii/README.md`](board/de2_115/quartus_ii/README.md) | 板级引脚、显示、MDIO、控制台、时钟限制 |
+| [`board/de2_115/quartus_ii/README.md`](board/de2_115/quartus_ii/README.md) | 板级引脚、拨码含义、指示灯、MDIO、两路控制台、时钟限制 |
 | `rtl/*/es_*_defs.sv` | 常量，以及解释「为什么取这个值」的注释 |
 
 ## 许可证

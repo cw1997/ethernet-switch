@@ -17,7 +17,8 @@ this design in a way a testbench could not see.
 ## 1. Repository map
 
 ```
-rtl/           the design.  switch/, monitor/, console/, perips/, mems/, common/; es_<domain>_<block>.sv / matching module
+rtl/           the design.  mac/, switch/, panel/, console/, perips/, mems/,
+               common/; es_<domain>_<block>.sv / matching module
 tb/            self-checking testbenches.  Never synthesised, never linted by CI
 board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
                project (board top, pins, constraints, build.bat); its top
@@ -30,19 +31,29 @@ Makefile       every gate; the target list is documented in its own header
 ```
 
 `rtl/es_defs.sv` holds common interface declarations and includes the guarded
-`switch/es_switch_defs.sv`, `monitor/es_monitor_defs.sv` and
+`mac/es_mac_defs.sv`, `switch/es_switch_defs.sv`, `panel/es_panel_defs.sv` and
 `console/es_console_defs.sv` libraries in dependency order. Put new constants
 in the owning library, keeping cross-domain widths/statistics common. All
 libraries remain at compilation-unit scope; the umbrella include preserves
 standalone-module compilation and the existing declaration-only lint policy.
-The switch definitions document **MAC interface selection**: the interface-agnostic
-core (`es_switch_core`) is wrapped by one of three per-interface top modules —
-`es_switch_gmii` (default GMII), `es_switch_mii` and `es_switch_rmii` — and the
-interface in use is chosen by which wrapper is elaborated. `make lint`,
-`make rtl` and `make synth` each run **all five** top modules — the three
-`es_switch_*` wrappers plus board tops `es_switch_de2_115_top` and `es_switch_vivado_top` —
-so changing a wrapper means making it green in all five; a top that is never compiled
-silently rots.
+
+**The datapath has one boundary that matters, and it is a 64-bit beat stream.**
+`rtl/mac/` owns everything the line interface implies - PHY pins, preamble and
+SFD, FCS, inter-frame gap, symbol serialisation and the elastic buffer a PHY
+needs because it cannot be stalled mid-frame. `rtl/switch/` owns the switching
+function: parse, learn, decide, arbitrate, buffer, hand a whole frame to a MAC.
+`es_switch_core` therefore holds no clock-enable, line-rate or symbol-order
+knowledge at all, and compiling it against a different MAC - including a future
+optical one - changes nothing below the boundary.
+
+The interface in use is chosen by which wrapper is elaborated: `es_switch_gmii`
+(default GMII), `es_switch_mii` and `es_switch_rmii` each instantiate one
+`es_mac_*` per port plus the same `es_switch_core` and the same `es_panel`.
+`make lint`, `make rtl` and `make synth` each run **all five** top modules - the
+three `es_switch_*` wrappers plus board tops `es_switch_de2_115_top` and
+`es_switch_vivado_top` - so changing a wrapper means making it green in all
+five; a top that is never compiled silently rots.
+
 
 ## 2. The tool flow, and what each tool rejects
 
@@ -290,11 +301,11 @@ Two narrow, documented exceptions exist:
   `initial` block, and never let one produce a value that a write path depends
   on — see the `WAY_LAST` comment in `es_switch_mac_table.sv` for a design that got
   that wrong.
-- `es_switch_core.sv` and the `es_switch_mii` / `es_switch_rmii` wrappers
-  report elaboration-time parameter checks with `$error` / `$warning` inside
-  `` `ifndef SYNTHESIS ``, because yosys has no implementation for them and
-  aborts on a design that contains one. Keep any new parameter check in that
-  same block.
+- `es_switch_core.sv`, `es_console_port.sv` and the `es_switch_mii` /
+  `es_switch_rmii` wrappers report elaboration-time parameter checks with
+  `$error` / `$warning` inside `` `ifndef SYNTHESIS ``, because yosys has no
+  implementation for them and aborts on a design that contains one. Keep any new
+  parameter check in that same block.
 
 ### 3.5 Naming
 
@@ -472,8 +483,24 @@ this is the short list.
 
 ## Shared RTL domains
 
-`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
-`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
-`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
-The monitor and console retain presentation, command, snapshot and page policy.
-Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.
+`rtl/mac/` owns the line interface: preamble and SFD, FCS, inter-frame gap,
+symbol serialisation, the octet-to-beat packer and the elastic buffer a PHY
+needs because it cannot be stalled. It is the only domain that knows a clock
+enable or a symbol order exists.
+`rtl/switch/` owns the switching function: parse, learn, decide, arbitrate,
+buffer, and hand whole frames to a MAC.
+`rtl/panel/` owns what a board switch position means and what a lamp shows.
+`rtl/console/` owns the command language, one self-contained port per UART.
+`rtl/perips/` owns UART, MDIO and 88E1111 PHY management.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel
+register banks. `rtl/common/` owns the two-stage sampler and CRC-32.
+Source lists use these paths; no ROM initialization or extra pipeline stage is
+introduced.
+
+**Two synthesis hazards that only appear here.** Casting a *variable* to an enum
+type - `sw_console_cmd_e'(some_var)` - is rejected by yosys with "Static cast
+with non constant expression"; compare the plain encoding against the enum's
+constants instead. And an enum-typed function argument has the same problem, so
+the console's table functions take `logic [3:0]` and compare against the
+`sw_console_*_e` members.
+

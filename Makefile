@@ -26,7 +26,10 @@
 #  Tools
 #    Icarus Verilog  the simulator; the RTL and the testbenches are written so
 #                    that it elaborates and runs them without warnings beyond the
-#                    two documented "constant selects" notes in es_switch_mac_table.
+#                    "constant selects" notes it prints for es_common_crc32 and
+#                    es_panel.  Both are `always_*` blocks that write bits of a
+#                    wide vector selected by a constant index; Icarus says it
+#                    will include all bits, which is conservative and harmless.
 #    Verilator       the linter.  It is also the more trustworthy of the two for
 #                    behaviour: Icarus is known to mis-resolve unpacked arrays
 #                    that are indexed with a runtime value, and the RTL avoids
@@ -51,7 +54,7 @@ BUILD    := build
 # `es_switch_core.sv` is the interface-agnostic core; the three
 # `es_switch_*` wrappers (`es_switch_gmii` / `es_switch_mii` / `es_switch_rmii`)
 # are the selectable top modules that adapt a physical MAC interface onto it.
-# All three wrappers and both symbol adapters (`es_switch_mii_adapter` / `es_switch_rmii_adapter`) are
+# All three wrappers and both symbol adapters (`es_mac_mii_serdes` / `es_mac_rmii_serdes`) are
 # compiled for every top: they are include-guarded modules, and compiling them
 # always is what keeps their lint and synthesis coverage independent of which
 # front-end is selected.
@@ -61,33 +64,25 @@ RTL_SRCS := \
   $(RTL_DIR)/common/es_common_sync_2ff.sv \
   $(RTL_DIR)/mems/es_mems_ram_1r1w.sv \
   $(RTL_DIR)/mems/es_mems_reg_bank.sv \
-  $(RTL_DIR)/perips/es_perips_key_debounce.sv \
   $(RTL_DIR)/common/es_common_crc32.sv \
   $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
-  $(RTL_DIR)/switch/es_switch_gmii_rx.sv \
-  $(RTL_DIR)/switch/es_switch_mii_adapter.sv \
-  $(RTL_DIR)/switch/es_switch_rmii_adapter.sv \
-  $(RTL_DIR)/switch/es_switch_rx_port.sv \
-  $(RTL_DIR)/switch/es_switch_arbiter.sv \
-  $(RTL_DIR)/switch/es_switch_mac_table.sv \
-  $(RTL_DIR)/switch/es_switch_gmii_tx.sv \
-  $(RTL_DIR)/switch/es_switch_tx_port.sv \
+  $(RTL_DIR)/mac/es_mac_rx_frame.sv \
+  $(RTL_DIR)/mac/es_mac_tx_frame.sv \
+  $(RTL_DIR)/mac/es_mac_mii_serdes.sv \
+  $(RTL_DIR)/mac/es_mac_rmii_serdes.sv \
+  $(RTL_DIR)/mac/es_mac_gmii.sv \
+  $(RTL_DIR)/mac/es_mac_mii.sv \
+  $(RTL_DIR)/mac/es_mac_rmii.sv \
   $(RTL_DIR)/perips/es_perips_uart.sv \
   $(RTL_DIR)/perips/es_perips_mdio.sv \
   $(RTL_DIR)/perips/es_perips_phy_88e1111.sv \
-  $(RTL_DIR)/monitor/es_monitor_cache.sv \
-  $(RTL_DIR)/monitor/es_monitor_page.sv \
-  $(RTL_DIR)/common/es_common_bin_to_bcd.sv \
-  $(RTL_DIR)/perips/es_perips_lcd.sv \
-  $(RTL_DIR)/monitor/es_monitor_display.sv \
-  $(RTL_DIR)/console/es_console_cmd_help.sv \
-  $(RTL_DIR)/console/es_console_cmd_status.sv \
-  $(RTL_DIR)/console/es_console_cmd_port.sv \
-  $(RTL_DIR)/console/es_console_cmd_mac.sv \
-  $(RTL_DIR)/console/es_console_snapshot.sv \
-  $(RTL_DIR)/console/es_console_core.sv \
-  $(RTL_DIR)/common/es_common_ratio.sv \
-  $(RTL_DIR)/monitor/es_monitor_core.sv \
+  $(RTL_DIR)/panel/es_panel.sv \
+  $(RTL_DIR)/console/es_console_port.sv \
+  $(RTL_DIR)/console/es_console_hub.sv \
+  $(RTL_DIR)/switch/es_switch_rx_port.sv \
+  $(RTL_DIR)/switch/es_switch_arbiter.sv \
+  $(RTL_DIR)/switch/es_switch_mac_table.sv \
+  $(RTL_DIR)/switch/es_switch_tx_port.sv \
   $(RTL_DIR)/switch/es_switch_core.sv \
   $(RTL_DIR)/switch/es_switch_gmii.sv \
   $(RTL_DIR)/switch/es_switch_mii.sv \
@@ -115,7 +110,7 @@ IVFLAGS := -g2012 -I $(RTL_DIR) -I $(TB_DIR)
 
 # Block level testbenches: one top per block, no cross-port models needed.
 # The two symbol-adapter benches are self-contained - they instantiate
-# es_switch_mii_adapter / es_switch_rmii_adapter directly and do not need the SW_IF_* front-end defines.
+# es_mac_mii_serdes / es_mac_rmii_serdes directly and do not need the SW_IF_* front-end defines.
 UNIT_TBS := sw_crc32_tb sw_sync_fifo_tb sw_mac_table_tb sw_mii_tb sw_rmii_tb
 
 # The fabric regression runs in two elaborations of the same testbench: every
@@ -246,12 +241,12 @@ $(BUILD)/sw_mac_table_tb.vvp: $(RTL_HEADERS) $(RTL_DIR)/es_defs.sv $(RTL_DIR)/me
 
 $(BUILD)/sw_mii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mii_tb \
-	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_mii_adapter.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mac/es_mac_mii_serdes.sv \
 	  $(TB_DIR)/sw_mii_tb.sv
 
 $(BUILD)/sw_rmii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_rmii_tb \
-	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/switch/es_switch_rmii_adapter.sv \
+	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mac/es_mac_rmii_serdes.sv \
 	  $(TB_DIR)/sw_rmii_tb.sv
 
 # ---------------------------------------------------------------------------
@@ -343,8 +338,11 @@ $(BUILD)/tb_sw_vivado_top.vvp: $(RTL_HEADERS) $(VIVADO_TOP_SRCS) $(TB_COMMON) \
 # Included declaration edits must invalidate previously compiled simulations.
 $(wildcard $(BUILD)/*.vvp): $(RTL_HEADERS) $(RTL_SRCS)
 
-# Telemetry and console regressions are separate tops with explicit timeouts.
-EXTRA_UNIT_TBS := sw_uart_tb sw_phy_monitor_tb sw_monitor_tb sw_monitor_interval_tb sw_monitor_ui_tb sw_console_tb sw_tx_completion_tb
+# Console, panel and interface regressions are separate tops.  Every one of them
+# has the same shape - a self-checking top with its own $fatal on timeout - so
+# they share one rule instead of a target apiece.
+EXTRA_UNIT_TBS := sw_uart_tb sw_phy_88e1111_tb sw_console_tb sw_tx_completion_tb \
+                  sw_panel_tb
 .PHONY: telemetry-unit
 unit: telemetry-unit
 telemetry-unit: $(addprefix $(BUILD)/,$(addsuffix .vvp,$(EXTRA_UNIT_TBS)))
@@ -353,17 +351,8 @@ telemetry-unit: $(addprefix $(BUILD)/,$(addsuffix .vvp,$(EXTRA_UNIT_TBS)))
 $(BUILD)/sw_uart_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_uart_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -s sw_uart_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_uart_tb.sv
 
-$(BUILD)/sw_phy_monitor_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_phy_monitor_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_phy_monitor_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_phy_monitor_tb.sv
-
-$(BUILD)/sw_monitor_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_monitor_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_tb.sv
-
-$(BUILD)/sw_monitor_interval_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_interval_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_monitor_interval_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_interval_tb.sv
-
-$(BUILD)/sw_monitor_ui_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_monitor_ui_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_monitor_ui_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_monitor_ui_tb.sv
+$(BUILD)/sw_phy_88e1111_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_phy_88e1111_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_phy_88e1111_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_phy_88e1111_tb.sv
 
 $(BUILD)/sw_console_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_console_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -s sw_console_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_console_tb.sv
@@ -371,11 +360,12 @@ $(BUILD)/sw_console_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_console_tb.s
 $(BUILD)/sw_tx_completion_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -s sw_tx_completion_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_tx_completion_tb.sv
 
-.PHONY: shared-unit monitor-params
-unit: shared-unit monitor-params
+$(BUILD)/sw_panel_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_panel_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_panel_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_panel_tb.sv
+
+.PHONY: shared-unit
+unit: shared-unit
 shared-unit: $(BUILD)/sw_shared_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_shared_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_shared_tb.sv $(TB_DIR)/sw_page_reference.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_shared_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_page_reference.sv $(TB_DIR)/sw_shared_tb.sv
-monitor-params: | $(BUILD)
-	bash $(TB_DIR)/check_monitor_params.sh $(IVERILOG) $(BUILD) $(RTL_DIR)
+$(BUILD)/sw_shared_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_shared_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_shared_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_shared_tb.sv

@@ -10,7 +10,6 @@
 `timescale 1ns/1ps
 `include "es_defs.sv"
 `include "switch/es_switch_defs.sv"
-`include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_tx_completion_case #(
   /// Octet period used to check completion timing at multiple link rates.
@@ -25,7 +24,7 @@ module sw_tx_completion_case #(
   logic [7:0] data;
   logic [SW_LEN_W-1:0] length = SW_LEN_W'(64), done_len;
   int octet_clocks = 0, completions = 0, expected_octets = 76, expected_length = 64;
-  es_switch_gmii_tx #(
+  es_mac_tx_frame #(
     .BYTE_PERIOD(BP)
   ) dut (
     .clk_i        (clk),

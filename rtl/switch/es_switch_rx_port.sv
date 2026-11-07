@@ -4,11 +4,13 @@
 //
 //                Responsibilities
 //                ----------------
-//                1. Absorb the canonical octet stream into a small elastic beat
-//                   FIFO.  The octet interface itself is never stalled (a
-//                   mid-frame pause is illegal on GMII, and the MII/RMII symbol
-//                   adapters deliver the same contract), so the parser drains
-//                   this FIFO unconditionally and discards data when it has to.
+//                1. Consume the beat stream produced by the port's MAC.  Each
+//                   beat arrives with its frame-boundary markers and its FCS
+//                   verdict already attached, so this module never sees an
+//                   octet lane, a preamble, an inter-frame gap or a PHY clock,
+//                   and it is identical whichever MAC is instantiated above it.
+//                   The MAC also owns the elastic buffer that absorbs a PHY
+//                   that cannot be stalled mid-frame.
 //
 //                2. Parse the frame header - destination MAC, source MAC, the
 //                   length/EtherType field and an optional 802.1Q / 802.1ad tag -
@@ -72,8 +74,6 @@ module es_switch_rx_port #(
   parameter int unsigned PORT_ID = 0,
   /// MAC address owned by this port; frames sourced from it are not reflected.
   parameter logic [47:0] PORT_MAC = 48'h0,
-  /// `clk_i` cycles per octet time of the canonical octet stream on this port.
-  parameter int unsigned BYTE_PERIOD = 1,
   /// Largest frame accepted, in octets (FCS excluded).
   parameter int unsigned MAX_FRAME_LEN = 1518,
   /// Payload beats buffered per port.  Must be >= ceil(MAX_FRAME_LEN/8) or
@@ -82,22 +82,37 @@ module es_switch_rx_port #(
   /// Frame descriptors buffered per port.  Bounds how many complete frames
   /// may wait for the fabric.
   parameter int unsigned TAG_FIFO_DEPTH = 16,
-  /// Elastic beat FIFO between the octet adapter and the parser.
-  parameter int unsigned WF_DEPTH = 16,
   /// Unknown / group address flooding policy (elaboration-time default).
   parameter logic [1:0] FLOOD_MODE = 2'd1,
   /// Source address learning enable (elaboration-time default).
   parameter logic LEARNING_EN = 1'b1
 ) (
-  /// Clock/reset and administrative link state for this ingress port.
+  /// Clock and active-low synchronous reset for the whole ingress path.
   input var logic clk_i,
   input var logic rst_ni,
-  input var logic link_up_i,  ///< port administratively up
 
-  // ---- canonical octet receive interface (clock-enable qualified) ----------
-  /// Octets are synchronous to clk_i and valid for each BYTE_PERIOD window.
-  input var logic       oct_en_i,
-  input var logic [7:0] oct_d_i,
+  // ---- beat interface from the MAC (FWFT, one beat visible at a time) ------
+  //
+  // The MAC owns everything the PHY interface implies: preamble and SFD
+  // removal, the FCS check, the octet-to-beat packing and the elastic FIFO
+  // that absorbs the fact that a PHY cannot be stalled mid-frame.  What
+  // arrives here is therefore already the interface-agnostic beat stream, so
+  // this module contains no line-rate, symbol-order or PHY-timing knowledge
+  // whatsoever.
+  //
+  // The read side is first-word-fall-through: `valid` and the payload both
+  // describe the head beat in the same clock, and `rd` pops it.  That is the
+  // exact shape the retired in-port FIFO used to present, which is why the
+  // parser below reads it unchanged.
+  /// Head beat, its frame-boundary markers and the FCS verdict.
+  input var logic        rx_beat_valid_i,
+  input var logic [63:0] rx_beat_data_i,
+  input var logic        rx_beat_sof_i,
+  input var logic        rx_beat_eof_i,
+  input var logic        rx_beat_crc_ok_i,
+  input var logic [3:0]  rx_beat_octets_i,
+  /// Pop the head beat.  Driven by the parser's single `pop` expression.
+  output    logic        rx_beat_rd_o,
 
   // ---- CAM lookup interface (answer valid one clock after the request) ------
   /// Destination-address query and one-clock-later lookup result.
@@ -138,8 +153,7 @@ module es_switch_rx_port #(
   output    logic                               tag_empty_o,
 
   // ---- statistics ----------------------------------------------------------
-  /// Per-port counters indexed by sw_stat_id_e, plus buffered beat occupancy.
-  output    logic [31:0] used_o,
+  /// Per-port counters indexed by sw_stat_id_e.
   output    logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
@@ -173,56 +187,24 @@ module es_switch_rx_port #(
   endfunction
 
   // --------------------------------------------------------------------------
-  // 1. Octet adapter and elastic beat FIFO
+  // 1. Beat stream
+  //
+  // The MAC hands over one beat at a time with its frame markers already
+  // attached, so all this stage does is give the fields names.  Continuous
+  // assignments rather than the `wire x = expr;` form, so that every derived
+  // signal in the design is declared the same way and reads the same way.
   // --------------------------------------------------------------------------
-  logic        beat_valid;
-  logic        beat_sof;
-  logic        beat_eof;
-  logic        beat_crc_ok;
-  logic [63:0] beat_data;
-  logic [3:0]  beat_octets;
-
-  es_switch_gmii_rx #(
-    .BYTE_PERIOD (BYTE_PERIOD)
-  ) u_gmii_rx (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .oct_en_i      (oct_en_i & link_up_i),
-    .oct_d_i       (oct_d_i),
-    .beat_valid_o  (beat_valid),
-    .beat_data_o   (beat_data),
-    .beat_sof_o    (beat_sof),
-    .beat_eof_o    (beat_eof),
-    .beat_crc_ok_o (beat_crc_ok),
-    .beat_octets_o (beat_octets)
-  );
-
-  // Elastic beat FIFO word: { valid octets, FCS verdict, eof, sof, data }
-  localparam int unsigned WF_W = 64 + 4 + 3;
-
-  logic            wf_wr_en;
-  logic [WF_W-1:0] wf_wr_data;
-  logic            wf_rd_en;
-  logic [WF_W-1:0] wf_rd_data;
-  logic            wf_empty;
-
-  assign wf_wr_en   = beat_valid;
-  assign wf_wr_data = {beat_octets, beat_crc_ok, beat_eof, beat_sof, beat_data};
-
-  // The elastic FIFO word, unpacked into named fields.  Continuous assignments
-  // rather than the `wire x = expr;` form, so that every derived signal in the
-  // design is declared the same way and reads the same way.
   logic [63:0] w_data;
   logic        w_sof;
   logic        w_eof;
   logic        w_crcok;
   logic [3:0]  w_oct;
 
-  assign w_data  = wf_rd_data[63:0];
-  assign w_sof   = wf_rd_data[64];
-  assign w_eof   = wf_rd_data[65];
-  assign w_crcok = wf_rd_data[66];
-  assign w_oct   = wf_rd_data[67 +: 4];
+  assign w_data  = rx_beat_data_i;
+  assign w_sof   = rx_beat_sof_i;
+  assign w_eof   = rx_beat_eof_i;
+  assign w_crcok = rx_beat_crc_ok_i;
+  assign w_oct   = rx_beat_octets_i;
 
   // --------------------------------------------------------------------------
   // 2. Parser state machine
@@ -273,7 +255,7 @@ module es_switch_rx_port #(
   // The address must be presented in the very clock in which the request is
   // asserted, so it is taken combinationally from the beat FIFO head.
   // --------------------------------------------------------------------------
-  assign cam_req_o = (state_q == S_IDLE) && !wf_empty && w_sof;
+  assign cam_req_o = (state_q == S_IDLE) && rx_beat_valid_i && w_sof;
   assign cam_mac_o = w_data[63:16];
 
   // Registered CAM answer: the CAM needs one clock to respond, and the header
@@ -535,12 +517,12 @@ module es_switch_rx_port #(
   always_comb begin
     case (state_q)
       S_DEC, S_PRE: pop = 1'b0;
-      S_BODY:       pop = !wf_empty && !data_full;
-      default:      pop = !wf_empty;
+      S_BODY:       pop = rx_beat_valid_i && !data_full;
+      default:      pop = rx_beat_valid_i;
     endcase
   end
 
-  assign wf_rd_en = pop;
+  assign rx_beat_rd_o = pop;
 
   // --------------------------------------------------------------------------
   // 10. Frame tag assembly
@@ -871,13 +853,16 @@ module es_switch_rx_port #(
 
   // --------------------------------------------------------------------------
   // 13. Storage instances
+  //
+  // Only the payload and descriptor buffers live here now.  The elastic beat
+  // FIFO that used to sit in front of the parser moved into the MAC, because
+  // it is the PHY's inability to be stalled that forces a buffer to exist and
+  // that is a property of the line interface, not of the switch.
   // --------------------------------------------------------------------------
-  logic [sw_tx_free_width(RX_FIFO_DEPTH):0] data_free;
   logic        data_rd_en;
   logic [63:0] data_rd_data;
 
   assign data_rd_en = rd_en_i;
-  assign used_o     = 32'(RX_FIFO_DEPTH) - 32'(data_free);
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
@@ -892,7 +877,7 @@ module es_switch_rx_port #(
     .wr_en_i    (data_wr_en),
     .wr_data_i  (data_wr_data),
     .full_o     (data_full),
-    .free_o     (data_free),
+    .free_o     (),
     .rd_en_i    (data_rd_en),
     .rd_data_o  (data_rd_data),
     .empty_o    (empty_o)
@@ -900,26 +885,6 @@ module es_switch_rx_port #(
   /* verilator lint_on PINCONNECTEMPTY */
 
   assign rd_data_o = data_rd_data;
-
-  /* verilator lint_off PINCONNECTEMPTY */
-  es_mems_sync_fifo #(
-    .WIDTH (WF_W),
-    .DEPTH (WF_DEPTH)
-  ) u_wf (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .undo_i     (1'b0),
-    .undo_cnt_i ('0),
-    .flush_i    (1'b0),
-    .wr_en_i    (wf_wr_en),
-    .wr_data_i  (wf_wr_data),
-    .full_o     (),  // the parser drains this FIFO unconditionally
-    .free_o     (),
-    .rd_en_i    (wf_rd_en),
-    .rd_data_o  (wf_rd_data),
-    .empty_o    (wf_empty)
-  );
-  /* verilator lint_on PINCONNECTEMPTY */
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(

@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_mii_adapter.sv
+//  File        : es_mac_mii_serdes.sv
 //  Description : MII symbol adapter: converts the 4-bit nibble-serial MII pins
 //                into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the MII pins.
@@ -25,7 +25,7 @@
 //                    idle clock,
 //                  * the octet stream starts with the destination MAC: the PHY
 //                    has already removed the preamble, as a real MII MAC
-//                    expects (the same convention as es_switch_gmii_rx).
+//                    expects (the same convention as es_mac_rx_frame).
 //
 //                BYTE_PERIOD must be an even number of clocks - two whole
 //                nibble windows have to fit into every octet time - and at
@@ -38,7 +38,7 @@
 //                The nibble window counter *parks* while the link is idle and
 //                therefore counts every frame's windows from that frame's own
 //                DV rise - no front-end or testbench has to land a frame on
-//                any particular grid, exactly as es_switch_gmii_rx asks nothing
+//                any particular grid, exactly as es_mac_rx_frame asks nothing
 //                of the phase of an incoming frame.  The low nibble is sampled
 //                at the end of the first half of every octet time and the high
 //                nibble at the end of the second.
@@ -50,7 +50,7 @@
 //                frame has no sampling boundary left to end its presentation
 //                window - the down-counter is what keeps the canonical stream
 //                stable for a full BYTE_PERIOD after the link went idle, which
-//                is what es_switch_gmii_rx samples on.  A presentation window is
+//                is what es_mac_rx_frame samples on.  A presentation window is
 //                always exactly BYTE_PERIOD long, so the octet rate reaching
 //                the core is unaffected by the latency.
 //
@@ -63,21 +63,21 @@
 //
 //                Transmit path
 //                -------------
-//                The canonical octet stream is produced by es_switch_gmii_tx,
+//                The canonical octet stream is produced by es_mac_tx_frame,
 //                which only ever updates its octet on an octet boundary of the
 //                grid that every module on clk_i derives from reset.  Splitting
 //                it into nibbles is therefore a pure combinational part-select
 //                driven by a *free-running* window counter: the low nibble is
 //                on the pins during the first half of every octet time, the
 //                high nibble during the second.  The enable is passed through
-//                combinationally for the same reason es_switch_gmii_tx drives
+//                combinationally for the same reason es_mac_tx_frame drives
 //                its own enable combinationally - a registered enable would be
 //                one clock late and clip the first nibble.
 //
 //                The transmit counter cannot be shared with the receive
 //                counter: the receive one parks on the idle link, which would
 //                drag the transmit part-select boundaries off the
-//                es_switch_gmii_tx grid during every inter-frame gap.
+//                es_mac_tx_frame grid during every inter-frame gap.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -85,8 +85,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_MII_ADAPTER_SV
-`define ES_SWITCH_MII_ADAPTER_SV
+`ifndef ES_MAC_MII_SERDES_SV
+`define ES_MAC_MII_SERDES_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -98,7 +98,7 @@
 `include "switch/es_switch_defs.sv"
 `default_nettype none
 
-module es_switch_mii_adapter #(
+module es_mac_mii_serdes #(
   /// `clk_i` cycles per octet time of the canonical octet stream.  Must be an
   /// even number >= 2: every octet time carries exactly two nibble windows.
   parameter int unsigned BYTE_PERIOD = 2
@@ -152,7 +152,7 @@ module es_switch_mii_adapter #(
   initial begin
     if ((BYTE_PERIOD < 2) || ((BYTE_PERIOD % 2) != 0)) begin
       $error(
-          "es_switch_mii_adapter: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
+          "es_mac_mii_serdes: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
           BYTE_PERIOD);
     end
   end
@@ -271,18 +271,18 @@ module es_switch_mii_adapter #(
   end
 
   // `oct_d_i` only ever changes on an octet boundary of the same grid
-  // (guaranteed by es_switch_gmii_tx), so the half flag alone decides which
+  // (guaranteed by es_mac_tx_frame), so the half flag alone decides which
   // nibble is on the pins.  No register in this path: a registered nibble would
   // lag the combinationally driven enable and shift the first nibble window.
   assign mii_tx_en_o = oct_en_i;
   assign mii_txd_o   = !tx_half ? oct_d_i[3:0] : oct_d_i[7:4];
   assign mii_tx_er_o = 1'b0;
 
-endmodule : es_switch_mii_adapter
+endmodule : es_mac_mii_serdes
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_MII_ADAPTER_SV
+`endif  // ES_MAC_MII_SERDES_SV

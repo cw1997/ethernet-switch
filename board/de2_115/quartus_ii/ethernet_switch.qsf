@@ -44,41 +44,6 @@ set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-ST
 # repository Makefile uses.  es_defs.sv is included by every file, so its
 # location only matters for the include path above.
 
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_help.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_status.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_mac.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_snapshot.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_uart.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_cache.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_bin_to_bcd.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_display.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_lcd.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_mdio.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/monitor/es_monitor_page.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_phy_88e1111.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_ratio.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_arbiter.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_crc32.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii_rx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii_tx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mac_table.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii_adapter.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii_adapter.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rx_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_sync_fifo.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_tx_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE hdl/es_switch_de2_115_top.sv
 
 # ---- board clock, buttons, LEDs ------------------------------------------------
 set_location_assignment PIN_Y2  -to CLOCK_50
@@ -176,10 +141,143 @@ set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+
+
+# ---- RTL sources ------------------------------------------------------------
+# Declaration libraries first, then leaves, then the composition roots. Quartus
+# resolves `include through SEARCH_PATH, so this order is for the reader, not
+# for the tool.
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/panel/es_panel_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_defs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_sync_2ff.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_crc32.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_ram_1r1w.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_reg_bank.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_key_debounce.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mems/es_mems_sync_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rx_frame.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_tx_frame.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_mii_serdes.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rmii_serdes.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_gmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_mii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_uart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_mdio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_phy_88e1111.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/panel/es_panel.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_hub.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rx_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_arbiter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mac_table.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_tx_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_gmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_mii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rmii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE hdl/es_switch_de2_115_top.sv
 
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_defs.sv
+# ---- slide switches (panel configuration) ------------------------------------
+# Pin numbers from the DE2-115 User Manual, Table 4-1.  JP7 must select 2.5 V.
+set_location_assignment PIN_AB28 -to SW[0]
+set_location_assignment PIN_AC28 -to SW[1]
+set_location_assignment PIN_AC27 -to SW[2]
+set_location_assignment PIN_AD27 -to SW[3]
+set_location_assignment PIN_AB27 -to SW[4]
+set_location_assignment PIN_AC26 -to SW[5]
+set_location_assignment PIN_AD26 -to SW[6]
+set_location_assignment PIN_AB26 -to SW[7]
+set_location_assignment PIN_AC25 -to SW[8]
+set_location_assignment PIN_AB25 -to SW[9]
+set_location_assignment PIN_AC24 -to SW[10]
+set_location_assignment PIN_AB24 -to SW[11]
+set_location_assignment PIN_AB23 -to SW[12]
+set_location_assignment PIN_AA24 -to SW[13]
+set_location_assignment PIN_AA23 -to SW[14]
+set_location_assignment PIN_AA22 -to SW[15]
+set_location_assignment PIN_Y24 -to SW[16]
+set_location_assignment PIN_Y23 -to SW[17]
+
+# ---- red LEDs (panel status) ------------------------------------------------
+# Table 4-3.  LEDR[n] sits directly above SW[n] on the board.
+set_location_assignment PIN_G19 -to LEDR[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[0]
+set_location_assignment PIN_F19 -to LEDR[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[1]
+set_location_assignment PIN_E19 -to LEDR[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[2]
+set_location_assignment PIN_F21 -to LEDR[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[3]
+set_location_assignment PIN_F18 -to LEDR[4]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[4]
+set_location_assignment PIN_E18 -to LEDR[5]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[5]
+set_location_assignment PIN_J19 -to LEDR[6]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[6]
+set_location_assignment PIN_H19 -to LEDR[7]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[7]
+set_location_assignment PIN_J17 -to LEDR[8]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[8]
+set_location_assignment PIN_G17 -to LEDR[9]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[9]
+set_location_assignment PIN_J15 -to LEDR[10]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[10]
+set_location_assignment PIN_H16 -to LEDR[11]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[11]
+set_location_assignment PIN_J16 -to LEDR[12]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[12]
+set_location_assignment PIN_H17 -to LEDR[13]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[13]
+set_location_assignment PIN_F15 -to LEDR[14]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[14]
+set_location_assignment PIN_G15 -to LEDR[15]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[15]
+set_location_assignment PIN_G16 -to LEDR[16]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[16]
+set_location_assignment PIN_H15 -to LEDR[17]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[17]
+
+# ---- green LEDs (per-port link / activity / duplex / fault) ------------------
+set_location_assignment PIN_E21 -to LEDG[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[0]
+set_location_assignment PIN_E22 -to LEDG[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[1]
+set_location_assignment PIN_E25 -to LEDG[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[2]
+set_location_assignment PIN_E24 -to LEDG[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[3]
+set_location_assignment PIN_H21 -to LEDG[4]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[4]
+set_location_assignment PIN_G20 -to LEDG[5]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[5]
+set_location_assignment PIN_G22 -to LEDG[6]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[6]
+set_location_assignment PIN_G21 -to LEDG[7]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[7]
+set_location_assignment PIN_F17 -to LEDG[8]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[8]
+
+# ---- remaining push-buttons ------------------------------------------------
+set_location_assignment PIN_N21 -to KEY[2]
+set_location_assignment PIN_R24 -to KEY[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[3]
+
+# ---- console 1 on the JP5 expansion header ---------------------------------
+# 3.3 V TTL, so it needs a USB-serial adapter rather than a second RS-232 port.
+set_location_assignment PIN_AB22 -to GPIO_RXD
+set_location_assignment PIN_AC15 -to GPIO_CTS_N
+set_location_assignment PIN_AB21 -to GPIO_TXD
+set_location_assignment PIN_Y17  -to GPIO_RTS_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO_RXD
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO_CTS_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO_TXD
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO_RTS_N
+
+# ---- IO standards for the switch inputs ------------------------------------
+set_instance_assignment -name IO_STANDARD "2.5 V" -to SW[*]

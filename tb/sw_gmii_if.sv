@@ -68,7 +68,7 @@ module sw_gmii_if
   // ==========================================================================
   // Octet-period pacing: one octet is launched on the first clock of an octet
   // time and held for BYTE_PERIOD clocks, which is exactly the contract stated
-  // in es_switch_gmii_rx (the adapter samples on the last cycle of the window).
+  // in es_mac_rx_frame (the adapter samples on the last cycle of the window).
   //
   // The receive pins are held idle whenever the link is administratively down,
   // so a disabled port stays silent no matter what a test drives.

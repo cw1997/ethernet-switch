@@ -642,7 +642,7 @@ module es_switch_arbiter #(
   assign busy_o = xfer_active || grant_now;
   genvar gm;
   generate
-    for (gm = 0; gm < NUM_PORTS; gm++) begin : g_monitor_stall
+    for (gm = 0; gm < NUM_PORTS; gm++) begin : g_stall_attr
       // Attribute a discarded head frame to its ingress, not every blocked destination.
       assign stalled_o[gm] = stall_fire && (stall_idx == PW'(gm));
     end

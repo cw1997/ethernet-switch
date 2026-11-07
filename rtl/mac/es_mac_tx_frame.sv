@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_gmii_tx.sv
+//  File        : es_mac_tx_frame.sv
 //  Description : Canonical octet-stream transmit adapter.
 //
 //                Consumes the 64-bit beat stream produced by the switching
@@ -7,7 +7,7 @@
 //
 //                  preamble (7 x 0x55) | SFD (0xD5) | MAC client data | FCS
 //
-//                Clock-enable contract (identical to es_switch_gmii_rx)
+//                Clock-enable contract (identical to es_mac_rx_frame)
 //                -------------------------------------------------------
 //                `oct_en_o` is asserted for a whole octet time and `oct_d_o` is
 //                only updated on the last clock of that window, so the octet on
@@ -43,8 +43,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_GMII_TX_SV
-`define ES_SWITCH_GMII_TX_SV
+`ifndef ES_MAC_TX_FRAME_SV
+`define ES_MAC_TX_FRAME_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -60,7 +60,7 @@
 // through the include above and are visible at compilation-unit scope, which is
 // what lets them appear in a parameter default and in a port range.  See
 // es_defs.sv for why a package cannot be used here.
-module es_switch_gmii_tx #(
+module es_mac_tx_frame #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1,
   /// Inter-frame gap in octet times; 802.3 requires at least 12.
@@ -507,11 +507,11 @@ module es_switch_gmii_tx #(
     end
   end
 
-endmodule : es_switch_gmii_tx
+endmodule : es_mac_tx_frame
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_GMII_TX_SV
+`endif  // ES_MAC_TX_FRAME_SV

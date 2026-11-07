@@ -5,7 +5,7 @@
 //                Everything here is a compilation-unit item that more than one
 //                domain needs: the CRC-32 formulation used by both the receive
 //                and the transmit path, the hexadecimal formatter shared by the
-//                console pages, and the port-index width every packed
+//                console, and the port-index width every packed
 //                port-mask relies on.
 // ============================================================================
 `timescale 1ns/1ps

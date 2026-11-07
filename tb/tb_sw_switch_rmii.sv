@@ -53,21 +53,32 @@ module tb_sw_switch_rmii;
     .CLK_FREQ_HZ (CLK_HZ),
     .PORT_SPEED  (SPEEDS)
   ) u_dut (
-    .phy_status_i  ('0),
-    .mon_req_i     (1'b0),
-    .mon_addr_i    (32'd0),
     .clk_i         (clk),
     .rst_ni        (rst_n),
     .link_up_i     (link_up),
-    .flood_mode_i  (2'd1),
-    .learning_en_i (1'b1),
-    .cfg_ovr_i     (1'b0),
-    .cam_flush_i   (1'b0),
+    .dip_i         (8'd0),
     .rmii_crs_dv_i (rmii_crs_dv_i),
     .rmii_rxd_i    (rmii_rxd_i),
     .rmii_tx_en_o  (rmii_tx_en_o),
     .rmii_txd_o    (rmii_txd_o),
-    .stat_o        (stat_o)
+    .stat_o        (stat_o),
+    .stat_port_i   ('0),
+    .stat_id_i     ('0),
+    .stat_data_o   (),
+    .cam_rd_req_i  (1'b0),
+    .cam_rd_index_i(32'd0),
+    .cam_rd_valid_o(),
+    .cam_rd_entry_o(),
+    .cam_entries_o (),
+    .led_link_o    (),
+    .led_act_o     (),
+    .led_speed_o   (),
+    .led_duplex_o  (),
+    .led_fault_o   (),
+    .led_stat_o    (),
+    .cfg_flood_mode_o  (),
+    .cfg_learning_en_o (),
+    .cfg_ovr_o     ()
   );
 
   // ---- per-port RMII PHY models ----------------------------------------------

@@ -122,8 +122,12 @@ Vivado 在 `default_nettype none` 下要求显式声明输入端口种类。因�
 
 ## Shared RTL domains
 
-`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mac/` owns the line interfaces: GMII, MII and RMII pins to the 64-bit beat
+contract, including preamble, FCS, inter-frame gap and the elastic beat buffer.
+`rtl/switch/` owns the interface-agnostic switching function only.
+`rtl/panel/` owns what a board switch position means and what a lamp shows.
+`rtl/console/` owns the ASCII queries, one self-contained port per UART.
+`rtl/perips/` owns UART, MDIO and 88E1111 PHY management.
 `rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
-`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
-The monitor and console retain presentation, command, snapshot and page policy.
+`rtl/common/` owns the two-stage sampler and CRC-32.
 Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

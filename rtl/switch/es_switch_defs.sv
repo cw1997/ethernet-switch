@@ -31,7 +31,7 @@
 //   es_switch_rmii     RMII pins, four 2-bit chunks per octet (`rmii_*`)
 //
 // All three wrap the same core: the MII/RMII pin groups are adapted onto the
-// canonical octet stream by es_switch_mii_adapter / es_switch_rmii_adapter, so
+// canonical octet stream by es_mac_mii_serdes / es_mac_rmii_serdes, so
 // the datapath, the CAM and the statistics map never see a difference.  Both
 // narrow interfaces are 10/100 Mbit/s front-ends only - a port configured for
 // 1000 Mbit/s is rejected at elaboration time in those wrappers.
@@ -56,7 +56,7 @@ localparam int unsigned SW_IFG_OCTETS    = 12;    ///< minimum inter-frame gap
 localparam int unsigned SW_BEAT_BYTES = 8;
 
 // `SW_LEN_W`, the width of a frame length field, is declared in es_defs.sv
-// because telemetry shares it with the forwarding datapath.
+// because the MAC beat stream shares it with the forwarding datapath.
 
 // ============================================================================
 // 3.  EtherType values recognised by the receive parser

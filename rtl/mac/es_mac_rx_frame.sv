@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_gmii_rx.sv
+//  File        : es_mac_rx_frame.sv
 //  Description : Canonical octet-stream receive adapter.
 //
 //                Converts the octet-serial, clock-enable qualified receive
@@ -39,8 +39,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_GMII_RX_SV
-`define ES_SWITCH_GMII_RX_SV
+`ifndef ES_MAC_RX_FRAME_SV
+`define ES_MAC_RX_FRAME_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -54,7 +54,7 @@
 
 // The shared declarations arrive through the include above and are visible at
 // compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
-module es_switch_gmii_rx #(
+module es_mac_rx_frame #(
   /// `clk_i` cycles per octet time of the canonical octet stream (see header).
   parameter int unsigned BYTE_PERIOD = 1
 ) (
@@ -313,11 +313,11 @@ module es_switch_gmii_rx #(
     end
   end
 
-endmodule : es_switch_gmii_rx
+endmodule : es_mac_rx_frame
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_GMII_RX_SV
+`endif  // ES_MAC_RX_FRAME_SV

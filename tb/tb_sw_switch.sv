@@ -145,6 +145,15 @@ module tb_sw_switch;
   logic                        cfg_ovr;
   logic                        cam_flush;
 
+  /// Board switch positions.  The wrapper's run-time policy is decoded from
+  /// these by the panel, so driving a DIP bit here exercises the same path a
+  /// real board would: bit 3 = override enable, bit 2 = learning, bits 1:0 =
+  /// flooding policy, bit 4 = table flush.  With the override bit low the
+  /// elaboration-time defaults apply, which is how the switch powers up.
+  localparam int unsigned DIP_W = 8;
+  logic [DIP_W-1:0] dip;
+  assign dip = {{(DIP_W-5){1'b0}}, cam_flush, cfg_ovr, learning_en, flood_mode};
+
   logic [       NUM_PORTS-1:0] gmii_rx_en;
   logic [     NUM_PORTS*8-1:0] gmii_rx_d;
   logic [       NUM_PORTS-1:0] gmii_tx_en;
@@ -166,21 +175,32 @@ module tb_sw_switch;
     .CAM_WAYS       (CAM_WAYS),
     .CAM_AGE_EN     (1'b0)
   ) u_dut (
-    .phy_status_i   ('0),
-    .mon_req_i      (1'b0),
-    .mon_addr_i     (32'd0),
     .clk_i          (clk_i),
     .rst_ni         (rst_ni),
     .link_up_i      (link_up),
-    .flood_mode_i   (flood_mode),
-    .learning_en_i  (learning_en),
-    .cfg_ovr_i      (cfg_ovr),
-    .cam_flush_i    (cam_flush),
+    .dip_i          (dip),
     .gmii_rx_en_i   (gmii_rx_en),
     .gmii_rx_data_i (gmii_rx_d),
     .gmii_tx_en_o   (gmii_tx_en),
     .gmii_tx_data_o (gmii_tx_d),
-    .stat_o         (stat)
+    .stat_o         (stat),
+    .stat_port_i    ('0),
+    .stat_id_i      ('0),
+    .stat_data_o    (),
+    .cam_rd_req_i   (1'b0),
+    .cam_rd_index_i (32'd0),
+    .cam_rd_valid_o (),
+    .cam_rd_entry_o (),
+    .cam_entries_o  (),
+    .led_link_o     (),
+    .led_act_o      (),
+    .led_speed_o    (),
+    .led_duplex_o   (),
+    .led_fault_o    (),
+    .led_stat_o     (),
+    .cfg_flood_mode_o  (),
+    .cfg_learning_en_o (),
+    .cfg_ovr_o      ()
   );
 
   // ==========================================================================

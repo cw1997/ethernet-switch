@@ -10,7 +10,6 @@
 `timescale 1ns/1ps
 `include "es_defs.sv"
 `include "switch/es_switch_defs.sv"
-`include "monitor/es_monitor_defs.sv"
 `include "console/es_console_defs.sv"
 module sw_uart_case #(
   /// UART character width, parity mode, stop-bit count, and flow-control mode.

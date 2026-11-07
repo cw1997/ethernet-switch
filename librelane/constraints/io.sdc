@@ -54,10 +54,17 @@ create_clock -name core_clk -period 10.000 [get_ports {clk_i}]
 # Naming the ports is portable across every timer, states exactly what is
 # constrained instead of what is not, and fails loudly if a port is renamed -
 # which a wildcard would not.
-set data_inputs [get_ports {rst_ni learning_en_i cfg_ovr_i cam_flush_i \
-                            link_up_i[*] flood_mode_i[*] \
-                            gmii_rx_en_i[*] gmii_rx_data_i[*]}]
-set data_outputs [get_ports {gmii_tx_en_o[*] gmii_tx_data_o[*] stat_o[*]}]
+set data_inputs [get_ports {rst_ni link_up_i[*] \
+                            gmii_rx_en_i[*] gmii_rx_data_i[*] \
+                            phy_status_i[*] dip_i[*] \
+                            stat_port_i[*] stat_id_i[*] \
+                            cam_rd_req_i cam_rd_index_i[*]}]
+set data_outputs [get_ports {gmii_tx_en_o[*] gmii_tx_data_o[*] stat_o[*] \
+                             stat_data_o[*] cam_rd_valid_o cam_rd_entry_o[*] \
+                             cam_entries_o[*] \
+                             led_link_o[*] led_act_o[*] led_speed_o[*] \
+                             led_duplex_o[*] led_fault_o[*] led_stat_o[*] \
+                             cfg_flood_mode_o[*] cfg_learning_en_o cfg_ovr_o}]
 
 # ---------------------------------------------------------------------------
 # Input timing

@@ -4,18 +4,24 @@
 //
 //                The fabric queues a frame as a run of 64-bit beats plus a
 //                length descriptor.  This module buffers the beats in an egress
-//                FIFO, hands them to the octet serialiser one frame at a time
-//                and keeps the statistics.
+//                FIFO, offers each complete frame to the port's MAC one at a
+//                time and keeps the statistics.
 //
 //                The length descriptor has its own small FIFO, written once per
 //                frame (qualified by `wr_fr_i`) while *all* beats of that frame
 //                share one `wr_en_i` pulse each.  The descriptor is popped at
-//                the moment the frame is handed over to the serialiser, so the
-//                two streams cannot drift apart.
+//                the moment the frame is handed over to the MAC, so the two
+//                streams cannot drift apart.
 //
 //                The fabric guarantees that the complete frame fits into the
 //                egress FIFO before it starts writing it, which is what lets
-//                the serialiser run without a single stall.
+//                the MAC serialiser run without a single stall.
+//
+//                The frame handshake (`tx_fr_valid_o` / `tx_fr_ready_i`) plus
+//                the beat stream (`tx_beat_valid_o` / `tx_beat_data_o` /
+//                `tx_beat_rd_i`) carry everything the MAC needs: how long the
+//                frame is and which beats belong to it.  Preamble, SFD,
+//                padding, FCS and the inter-frame gap are the MAC's business.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -41,8 +47,6 @@
 // them appear in a port range.  See es_defs.sv for why a package cannot be used
 // here.
 module es_switch_tx_port #(
-  /// Core-clock cycles per output octet on this port.
-  parameter int unsigned BYTE_PERIOD    = 1,
   /// Egress payload capacity in 64-bit beats.
   parameter int unsigned TX_FIFO_DEPTH  = 256,
   /// Number of queued frame-length descriptors.
@@ -58,10 +62,27 @@ module es_switch_tx_port #(
   input var logic [SW_LEN_W-1:0] wr_len_i,  ///< valid together with `wr_fr_i`
   input var logic                wr_fr_i,   ///< this beat starts a new frame
 
-  // ---- canonical octet transmit interface ----------------------------------
-  /// Clock-enable-qualified octet stream consumed by the MAC front-end.
-  output    logic        oct_en_o,
-  output    logic [7:0]  oct_d_o,
+  // ---- frame and beat handshake to the MAC ---------------------------------
+  //
+  // One frame is offered at a time: `tx_fr_valid_o` stays asserted with the
+  // frame's length until the MAC answers with `tx_fr_ready_i` in the same
+  // clock, and that single coincident cycle is the start of the frame.  The
+  // MAC then pulls the frame's beats with `tx_beat_rd_i` at whatever the line
+  // rate allows.
+  //
+  // `tx_fr_ready_i` may only ever be a registered "not busy" flag inside the
+  // MAC.  If it were derived combinationally from the beat stream - from
+  // `tx_beat_valid_o`, say - then valid/ready/descriptor-empty would form a
+  // loop through two modules, which Verilator reports as UNOPTFLAT and which
+  // yosys turns into a latch.
+  /// Head frame offered to the MAC, and its length in octets (FCS excluded).
+  output    logic                     tx_fr_valid_o,
+  output    logic [SW_LEN_W-1:0]      tx_fr_len_o,
+  input  var logic                    tx_fr_ready_i,
+  /// Head payload beat of the frame in progress, and its pop.
+  output    logic                     tx_beat_valid_o,
+  output    logic [63:0]              tx_beat_data_o,
+  input  var logic                    tx_beat_rd_i,
 
   // ---- egress capacity (consumed by the arbiter) ---------------------------
   // Two separate limits, because there are two separate buffers, and reporting
@@ -88,50 +109,36 @@ module es_switch_tx_port #(
   output    logic                                     slot_o,  ///< a whole frame still fits
 
   // ---- status / statistics -------------------------------------------------
-  /// Frame completion, completed length, and per-port counters.
-  output    logic                        done_o,
-  output    logic [SW_LEN_W-1:0]         done_len_o,
+  /// Per-port counters indexed by sw_stat_id_e.
   output    logic [32*SW_STAT_COUNT-1:0] stat_o);
 
   // --------------------------------------------------------------------------
   // Queues and handshakes
   // --------------------------------------------------------------------------
-  logic                tx_busy;   ///< the serialiser is inside a frame
   logic                len_empty; ///< no frame descriptor queued
   logic [SW_LEN_W-1:0] len_data;  ///< FWFT head of the descriptor FIFO
   logic                data_empty;  ///< no payload beat queued
   logic [63:0]         data_rd_data;  ///< FWFT head of the egress beat FIFO
-  logic                beat_rd;       ///< pop the head payload beat
   /// Free space in the length-descriptor FIFO.  Its width is whatever that FIFO
   /// needs; only "is it non-zero" is used, so it is reduced to one bit here.
   logic [sw_tx_free_width(LEN_FIFO_DEPTH):0] len_free;
 
   assign slot_o = (len_free != '0);
 
-  // A new frame is started as soon as a descriptor is available and the
-  // serialiser has finished the inter-frame gap of the previous one.
+  // A frame starts on the single clock where a descriptor is available and the
+  // MAC accepts it.  Before the MAC layer was extracted this read
+  // `!len_empty && !tx_busy`, with `tx_busy` the serialiser's own register
+  // inside this module; `tx_fr_ready_i` is the same register seen through a
+  // port, so the two forms are equivalent cycle for cycle.  What must not
+  // happen is `tx_fr_ready_i` being derived from the beat stream: that would
+  // close a loop through the MAC (see the port comment).
   logic fr_start;
-  assign fr_start = !len_empty && !tx_busy;
+  assign fr_start = tx_fr_valid_o && tx_fr_ready_i;
 
-  // --------------------------------------------------------------------------
-  // Octet serialiser
-  // --------------------------------------------------------------------------
-  es_switch_gmii_tx #(
-    .BYTE_PERIOD (BYTE_PERIOD)
-  ) u_gmii_tx (
-    .clk_i        (clk_i),
-    .rst_ni       (rst_ni),
-    .fr_start_i   (fr_start),
-    .fr_len_i     (len_data),
-    .tx_busy_o    (tx_busy),
-    .done_o       (done_o),
-    .done_len_o   (done_len_o),
-    .beat_valid_i (!data_empty),
-    .beat_data_i  (data_rd_data),
-    .beat_rd_o    (beat_rd),
-    .oct_en_o     (oct_en_o),
-    .oct_d_o      (oct_d_o)
-  );
+  assign tx_fr_valid_o   = !len_empty;
+  assign tx_fr_len_o     = len_data;
+  assign tx_beat_valid_o = !data_empty;
+  assign tx_beat_data_o  = data_rd_data;
 
   // --------------------------------------------------------------------------
   // Egress beat FIFO
@@ -150,7 +157,7 @@ module es_switch_tx_port #(
     .wr_data_i  (wr_data_i),
     .full_o     (),  // the fabric guarantees the whole frame fits
     .free_o     (free_o),
-    .rd_en_i    (beat_rd),
+    .rd_en_i    (tx_beat_rd_i),
     .rd_data_o  (data_rd_data),
     .empty_o    (data_empty)
   );

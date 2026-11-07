@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_rmii_adapter.sv
+//  File        : es_mac_rmii_serdes.sv
 //  Description : RMII symbol adapter: converts the 2-bit chunk-serial RMII
 //                pins into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the RMII pins.
@@ -28,7 +28,7 @@
 //                    nothing else,
 //                  * the octet stream starts with the destination MAC: the PHY
 //                    has already removed the preamble, as a real MAC expects
-//                    (the same convention as es_switch_gmii_rx).
+//                    (the same convention as es_mac_rx_frame).
 //
 //                BYTE_PERIOD must be a multiple of 4 - four whole chunk
 //                windows have to fit into every octet time.  1000 Mbit/s would
@@ -52,7 +52,7 @@
 //                The chunk window counter *parks* while the link is idle and
 //                therefore counts every frame's windows from that frame's own
 //                CRS_DV rise - no front-end or testbench has to land a frame
-//                on any particular grid, exactly as es_switch_gmii_rx asks
+//                on any particular grid, exactly as es_mac_rx_frame asks
 //                nothing of the phase of an incoming frame.  One chunk is
 //                sampled at the end of every window; after the fourth, the
 //                assembled octet is presented for one full octet time, one octet
@@ -63,28 +63,28 @@
 //                so the *last* octet of a frame has no sampling boundary left
 //                to end its presentation window - the down-counter is what
 //                keeps the canonical stream stable for a full BYTE_PERIOD
-//                after the link went idle, which is what es_switch_gmii_rx
+//                after the link went idle, which is what es_mac_rx_frame
 //                samples on.  A presentation window is always exactly
 //                BYTE_PERIOD long, so the octet rate reaching the core is
 //                unaffected by the latency.
 //
 //                Transmit path
 //                -------------
-//                The canonical octet stream is produced by es_switch_gmii_tx,
+//                The canonical octet stream is produced by es_mac_tx_frame,
 //                which only ever updates its octet on an octet boundary of the
 //                grid that every module on clk_i derives from reset.  Splitting
 //                it into chunks is therefore a pure combinational part-select
 //                driven by a *free-running* window counter: chunk k is on the
 //                pins during the k-th quarter of every octet time.  The enable
 //                is passed through combinationally for the same reason
-//                es_switch_gmii_tx drives its own enable combinationally - a
+//                es_mac_tx_frame drives its own enable combinationally - a
 //                registered enable would be one clock late and clip the first
 //                chunk.
 //
 //                The transmit counter cannot be shared with the receive
 //                counter: the receive one parks on the idle link, which would
 //                drag the transmit part-select boundaries off the
-//                es_switch_gmii_tx grid during every inter-frame gap.
+//                es_mac_tx_frame grid during every inter-frame gap.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -92,8 +92,8 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_RMII_ADAPTER_SV
-`define ES_SWITCH_RMII_ADAPTER_SV
+`ifndef ES_MAC_RMII_SERDES_SV
+`define ES_MAC_RMII_SERDES_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -105,7 +105,7 @@
 `include "switch/es_switch_defs.sv"
 `default_nettype none
 
-module es_switch_rmii_adapter #(
+module es_mac_rmii_serdes #(
   /// `clk_i` cycles per octet time of the canonical octet stream.  Must be a
   /// multiple of 4: every octet time carries exactly four 2-bit chunk windows.
   parameter int unsigned BYTE_PERIOD = 4
@@ -158,7 +158,7 @@ module es_switch_rmii_adapter #(
   initial begin
     if ((BYTE_PERIOD < 4) || ((BYTE_PERIOD % 4) != 0)) begin
       $error(
-          "es_switch_rmii_adapter: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
+          "es_mac_rmii_serdes: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
           BYTE_PERIOD);
     end
   end
@@ -270,7 +270,7 @@ module es_switch_rmii_adapter #(
   end
 
   // `oct_d_i` only ever changes on an octet boundary of the same grid
-  // (guaranteed by es_switch_gmii_tx), so the chunk index alone decides which
+  // (guaranteed by es_mac_tx_frame), so the chunk index alone decides which
   // pair of bits is on the pins.  No register in this path: a registered chunk
   // would lag the combinationally driven enable and shift the first chunk
   // window.  Continuous assignment rather than an always_comb case: a constant
@@ -281,11 +281,11 @@ module es_switch_rmii_adapter #(
                         (tx_cidx == 2'd1) ? oct_d_i[3:2] :
                         (tx_cidx == 2'd2) ? oct_d_i[5:4] : oct_d_i[7:6];
 
-endmodule : es_switch_rmii_adapter
+endmodule : es_mac_rmii_serdes
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // ES_SWITCH_RMII_ADAPTER_SV
+`endif  // ES_MAC_RMII_SERDES_SV

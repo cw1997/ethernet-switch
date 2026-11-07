@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_phy_monitor_tb.sv
+//  File        : sw_phy_88e1111_tb.sv
 //  Description : Clause-22 PHY discovery and link-policy regression.
 //
 //                An independent MDC-edge model decodes management commands and drives read
@@ -8,7 +8,7 @@
 // ============================================================================
 // A wire-level Clause 22 PHY model, rather than calls into manager internals.
 `timescale 1ns/1ps
-module sw_phy_monitor_tb;
+module sw_phy_88e1111_tb;
   logic clk = 0, rst = 0;
   always #5 clk = ~clk;
   logic mdc, out_pin, oe, mdio = 1, enabled;
@@ -110,7 +110,7 @@ module sw_phy_monitor_tb;
     present = 1;
     repeat (60000) @(negedge clk);
     check(enabled, "management retries and recovers");
-    $display("sw_phy_monitor_tb: %0d checks %0d errors", checks, errors);
+    $display("sw_phy_88e1111_tb: %0d checks %0d errors", checks, errors);
     if (errors) $fatal(1, "PHY failed");
     $finish;
   end

@@ -84,6 +84,11 @@ module sw_switch_param_tb;
   logic [     NUM_PORTS*8-1:0] gmii_tx_data;
   logic [32*SW_STAT_COUNT-1:0] stat_bus;
 
+  /// Board switch positions; all zero leaves the core on its elaboration-time
+  /// defaults, which is what this parameter-focused regression wants.
+  logic [7:0] dip;
+  assign dip = 8'd0;
+
   es_switch_gmii #(
     .NUM_PORTS      (NUM_PORTS),
     .CLK_FREQ_HZ    (CLK_FREQ_HZ),
@@ -95,16 +100,10 @@ module sw_switch_param_tb;
     .CAM_SETS       (32),
     .CAM_WAYS       (2)
   ) u_dut (
-    .phy_status_i   ('0),
-    .mon_req_i      (1'b0),
-    .mon_addr_i     (32'd0),
     .clk_i          (clk),
     .rst_ni         (rst_n),
     .link_up_i      (link_up),
-    .flood_mode_i   (flood_mode),
-    .learning_en_i  (learning_en),
-    .cfg_ovr_i      (cfg_ovr),
-    .cam_flush_i    (cam_flush),
+    .dip_i          (dip),
     .gmii_rx_en_i   (gmii_rx_en),
     .gmii_rx_data_i (gmii_rx_data),
     .gmii_tx_en_o   (gmii_tx_en),

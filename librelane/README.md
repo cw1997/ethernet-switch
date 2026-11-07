@@ -3,13 +3,15 @@
 Physical implementation of `es_switch_gmii` (the GMII top of the switch) down
 to a GDSII, with LibreLane 3.0 and the open-source `sky130A` PDK.
 
-## Telemetry source additions
+## Source additions
 
-`VERILOG_FILES` also includes `rtl/common/es_common_ratio.sv` and `rtl/monitor/es_monitor_core.sv` for the
-core telemetry ABI. No flow variable was added or renamed; the pinned LibreLane
-configuration keys are unchanged. UART/LCD/MDIO peripherals are outside the ASIC
-source set. The new CSR and PHY-metadata pins increase interface and monitoring
-state; rerun placement, routing and timing rather than reusing old physical results.
+`VERILOG_FILES` lists the RTL in dependency order and stops at `es_switch_gmii`:
+the GMII MAC (`rtl/mac/`) and the panel are in the set because that wrapper
+instantiates them, while the console, the UART/MDIO/88E1111 peripherals and the
+MII/RMII front-ends are outside it - the ASIC build has no board and no UART.
+No flow variable was added or renamed; the pinned LibreLane configuration keys
+are unchanged. Rerun placement, routing and timing rather than reusing old
+physical results.
 
 ## Layout
 
@@ -259,12 +261,12 @@ The frontend is the whole of the problem, and it is a single fast command.  To
 confirm the RTL is flow-readable without downloading the image:
 
     yosys -p 'read_verilog -defer -noautowire -sv -I rtl \
-              rtl/es_defs.sv rtl/common/es_common_crc32.sv rtl/mems/es_mems_sync_fifo.sv \
-              rtl/switch/es_switch_gmii_rx.sv rtl/switch/es_switch_mii.sv rtl/switch/es_switch_rmii.sv \
-              rtl/switch/es_switch_rx_port.sv rtl/switch/es_switch_arbiter.sv \
-              rtl/switch/es_switch_mac_table.sv rtl/switch/es_switch_gmii_tx.sv rtl/switch/es_switch_tx_port.sv \
-              rtl/switch/es_switch_core.sv rtl/switch/es_switch_gmii.sv \
-              rtl/switch/es_switch_mii.sv rtl/switch/es_switch_rmii.sv; \
+              rtl/es_defs.sv rtl/common/es_common_sync_2ff.sv rtl/mems/es_mems_ram_1r1w.sv \
+              rtl/mems/es_mems_reg_bank.sv rtl/common/es_common_crc32.sv rtl/mems/es_mems_sync_fifo.sv \
+              rtl/mac/es_mac_rx_frame.sv rtl/mac/es_mac_tx_frame.sv rtl/mac/es_mac_gmii.sv \
+              rtl/panel/es_panel.sv rtl/switch/es_switch_mac_table.sv rtl/switch/es_switch_rx_port.sv \
+              rtl/switch/es_switch_tx_port.sv rtl/switch/es_switch_arbiter.sv \
+              rtl/switch/es_switch_core.sv rtl/switch/es_switch_gmii.sv; \
             hierarchy -check -top es_switch_gmii; \
             synth -top es_switch_gmii -flatten; stat'
 
@@ -359,19 +361,21 @@ quote is the post-CTS one, not this.
 ## RTL namespace migration (2026-11-06)
 
 The design name changes from `sw_switch_gmii` to `es_switch_gmii`.
-Sources move to `rtl/switch/`, `rtl/monitor/` and `rtl/console/`; the
-compilation-unit umbrella becomes `rtl/es_defs.sv`. `VERILOG_FILES` and
-CI GDS collection use these new paths/names, including the distinct
-`es_switch_mii_adapter` and `es_switch_rmii_adapter` modules. The default
-remains four ports. No physical-flow variable keys or sizing settings change.
+Sources move to `rtl/switch/` and `rtl/console/`; the compilation-unit umbrella
+becomes `rtl/es_defs.sv`. `VERILOG_FILES` and CI GDS collection use these new
+paths/names. The default remains four ports. No physical-flow variable keys or sizing settings change.
 Earlier area/timing/GDS measurements describe the old `sw_switch_gmii`
 revision and are not measurements of this refactor.
 
 
 ## Shared RTL domains
 
-`rtl/perips/` owns UART, LCD, MDIO, 88E1111 PHY management and vector key debounce.
+`rtl/mac/` owns the line interfaces: GMII, MII and RMII pins to the 64-bit beat
+contract, including preamble, FCS, inter-frame gap and the elastic beat buffer.
+`rtl/switch/` owns the interface-agnostic switching function only.
+`rtl/panel/` owns what a board switch position means and what a lamp shows.
+`rtl/console/` owns the ASCII queries, one self-contained port per UART.
+`rtl/perips/` owns UART, MDIO and 88E1111 PHY management.
 `rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
-`rtl/common/` owns the two-stage sampler, serial ratio engine, binary-to-BCD conversion and CRC-32.
-The monitor and console retain presentation, command, snapshot and page policy.
+`rtl/common/` owns the two-stage sampler and CRC-32.
 Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.

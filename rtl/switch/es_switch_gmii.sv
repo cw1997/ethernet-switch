@@ -1,18 +1,24 @@
 // ============================================================================
 //  File        : es_switch_gmii.sv
-//  Description : Top-level GMII front-end wrapper around the interface-agnostic
-//                switch core (`es_switch_core`).  GMII is octet-aligned - one
-//                8-bit octet per octet time - so the physical pins already
-//                carry the canonical octet stream and this wrapper simply
-//                passes them through to the core; no symbol adapter is needed.
+//  Description : GMII switch: one `es_mac_gmii` per port, the
+//                interface-agnostic `es_switch_core`, and the board panel.
 //
-//                Selecting this module as the elaborated top connects the
-//                switch to a GMII PHY.  For the MII / RMII pin front-ends use
-//                `es_switch_mii` / `es_switch_rmii` instead; the switching
-//                datapath behind all three is identical.
+//                This is the composition root for a GMII design.  Selecting it
+//                as the elaborated top attaches the switch to GMII PHYs; for
+//                MII or RMII use `es_switch_mii` / `es_switch_rmii`.  The
+//                switching datapath behind all three is the same module, and the
+//                only thing that differs is which MAC leaf is instantiated - so
+//                a new line interface, an optical one included, needs no change
+//                below this level.
 //
-//                See es_switch_core.sv for the parameter encoding and the
-//                octet-stream contract.
+//                The panel is instantiated here rather than in a board shell
+//                because the status it shows and the configuration it decodes
+//                are properties of the switch, not of a particular board: the
+//                board wires `dip_i` to its switches and the `led_*` groups to
+//                its lamps, and performs no decoding of its own.
+//
+//                See es_switch_core.sv for the parameter encoding and the beat
+//                contract, and rtl/mac/es_mac_defs.sv for the boundary itself.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -30,17 +36,22 @@
 `default_nettype none
 
 `include "es_defs.sv"
+`include "mac/es_mac_defs.sv"
 `include "switch/es_switch_defs.sv"
+`include "panel/es_panel_defs.sv"
 `default_nettype none
 
 module es_switch_gmii #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
   parameter int unsigned NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
-  /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
-  /// (125 MHz for full line rate); a slower core simply stretches the octet
-  /// clock enables and loses line rate, nothing else.
+  /// Core clock frequency in Hz.  Determines each port's octet clock enable;
+  /// 125 MHz carries 1000BASE-T at line rate, a slower clock simply stretches
+  /// the enable and loses line rate.
   parameter int unsigned CLK_FREQ_HZ = 125_000_000,
+  /// Number of independent console statistic read ports.  Each console needs
+  /// one; the ports share nothing, so this is a width multiplier only.
+  parameter int unsigned NUM_CONSOLE = 1,
   /// Per-port MAC addresses, 48 bits per port, port p at bits [48*p +: 48].
   /// A port left at all zero gets the locally administered address
   /// 02:00:00:00:00:<p>.
@@ -49,8 +60,6 @@ module es_switch_gmii #(
   /// 0 = 10 Mbit/s, 1 = 100 Mbit/s, 2 = 1000 Mbit/s, 3 = administratively
   /// down.  Defaults to 1000 Mbit/s on every port.
   parameter logic [NUM_PORTS*2-1:0] PORT_SPEED = {NUM_PORTS{2'd2}},
-  /// Telemetry publication interval in milliseconds, rounded up to a clock.
-  parameter int unsigned REFRESH_INTERVAL_MS = 500,
 
   // ---- buffer sizing -------------------------------------------------------
   /// Payload beats buffered per ingress port.  Must be >= ceil(MAX_FRAME_LEN/8)
@@ -61,7 +70,7 @@ module es_switch_gmii #(
   parameter int unsigned TX_FIFO_DEPTH  = 256,
   /// Frame descriptors buffered per ingress port.
   parameter int unsigned TAG_FIFO_DEPTH = 16,
-  /// Elastic beat FIFO between the octet adapter and the parser.
+  /// Elastic beat FIFO inside each port's MAC.
   parameter int unsigned WF_DEPTH       = 16,
 
   // ---- switching fabric ----------------------------------------------------
@@ -93,12 +102,13 @@ module es_switch_gmii #(
   input var logic rst_ni,
 
   // ---- control -------------------------------------------------------------
-  /// Link enable and forwarding policy; cfg_ovr_i selects run-time overrides.
+  /// Administrative receive enable, one bit per port.  A port with this bit low
+  /// does not accept octets from its PHY, which is how a board keeps a dead or
+  /// incompatible link out of the forwarding table.  Transmit is deliberately
+  /// *not* gated: a port that stopped draining would stall every ingress that
+  /// floods to it, and a frame sent into a dead link is cheaper than a wedged
+  /// fabric.
   input var logic [NUM_PORTS-1:0] link_up_i,
-  input var logic [1:0]           flood_mode_i,
-  input var logic                 learning_en_i,
-  input var logic                 cfg_ovr_i,
-  input var logic                 cam_flush_i,
 
   // ---- GMII front-end pins -------------------------------------------------
   /// Packed GMII buses map port zero to the least-significant slice.
@@ -107,65 +117,208 @@ module es_switch_gmii #(
   output    logic [NUM_PORTS-1:0]   gmii_tx_en_o,
   output    logic [NUM_PORTS*8-1:0] gmii_tx_data_o,
 
-  // Telemetry PHY metadata is independent of the administrative link enable.
-  /// PHY status and monitor bus use the same packed port ordering.
+  /// PHY status bytes, one per port, as produced by the board's management
+  /// block.  Used for the panel's link / speed / duplex lamps only; it never
+  /// gates the datapath.
   input var logic [NUM_PORTS*8-1:0] phy_status_i,
-  input var logic                   mon_req_i,
-  input var logic [31:0]            mon_addr_i,
-  output    logic                   mon_ready_o,
-  output    logic                   mon_valid_o,
-  output    logic [31:0]            mon_data_o,
+
+  // ---- console read ports --------------------------------------------------
+  /// See `es_switch_core`: `NUM_CONSOLE` stateless statistic readers plus one
+  /// shared forwarding-table read port.
+  input var logic [NUM_CONSOLE*sw_port_w(NUM_PORTS)-1:0] stat_port_i,
+  input var logic [NUM_CONSOLE*4-1:0]                    stat_id_i,
+  output    logic [NUM_CONSOLE*32-1:0]                   stat_data_o,
+  input var logic        cam_rd_req_i,
+  input var logic [31:0] cam_rd_index_i,
+  output    logic        cam_rd_valid_o,
+  output    logic [127:0] cam_rd_entry_o,
+  output    logic [31:0] cam_entries_o,
+
+  // ---- panel ---------------------------------------------------------------
+  /// Board switches, decoded into the run-time configuration and the panel mode.
+  input var logic [SW_PANEL_DIP_W-1:0] dip_i,
+  /// Semantic status lamps.  The board maps these to its physical LEDs; it must
+  /// not re-derive any of them.
+  output logic [NUM_PORTS-1:0]   led_link_o,
+  output logic [NUM_PORTS-1:0]   led_act_o,
+  output logic [NUM_PORTS*2-1:0] led_speed_o,
+  output logic [NUM_PORTS-1:0]   led_duplex_o,
+  output logic [NUM_PORTS-1:0]   led_fault_o,
+  output logic [15:0]            led_stat_o,
+  /// Configuration actually in force.  Exported so that a console reports what
+  /// the switch is doing rather than re-decoding the board switches itself.
+  output logic [1:0]             cfg_flood_mode_o,
+  output logic                   cfg_learning_en_o,
+  output logic                   cfg_ovr_o,
 
   // ---- observability -------------------------------------------------------
-  /// Packed 32-bit counters indexed by sw_stat_id_e for each port.
+  /// Packed aggregate 32-bit counters indexed by sw_stat_id_e.
   output logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
   // --------------------------------------------------------------------------
-  // Switch core
-  //
-  // GMII is octet-aligned: the pins already carry the canonical octet stream,
-  // so they are passed straight through to the interface-agnostic core and the
-  // only thing this wrapper contributes is the pin naming.
+  // Port buses between the MACs and the core
   // --------------------------------------------------------------------------
+  logic [NUM_PORTS-1:0]    rx_beat_valid;
+  logic [NUM_PORTS*64-1:0] rx_beat_data;
+  logic [NUM_PORTS-1:0]    rx_beat_sof;
+  logic [NUM_PORTS-1:0]    rx_beat_eof;
+  logic [NUM_PORTS-1:0]    rx_beat_crc_ok;
+  logic [NUM_PORTS*4-1:0]  rx_beat_octets;
+  logic [NUM_PORTS-1:0]    rx_beat_rd;
+
+  logic [NUM_PORTS-1:0]          tx_fr_valid;
+  logic [NUM_PORTS*SW_LEN_W-1:0] tx_fr_len;
+  logic [NUM_PORTS-1:0]          tx_fr_ready;
+  logic [NUM_PORTS-1:0]          tx_beat_valid;
+  logic [NUM_PORTS*64-1:0]       tx_beat_data;
+  logic [NUM_PORTS-1:0]          tx_beat_rd;
+
+  /// Recent line activity per port, for the panel's activity lamps.
+  logic [NUM_PORTS-1:0] port_active;
+
+  // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and a
+  // bare module-level `for`; every loop carries an explicit
+  // `generate`/`endgenerate` wrapper (AGENTS.md 2.4).
+  genvar g;
+
+  generate
+    for (g = 0; g < NUM_PORTS; g++) begin : g_port
+      localparam int unsigned BP_G =
+          sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+
+      es_mac_gmii #(
+        .BYTE_PERIOD (BP_G),
+        .WF_DEPTH    (WF_DEPTH)
+      ) u_mac (
+        .clk_i            (clk_i),
+        .rst_ni           (rst_ni),
+        .link_up_i        (link_up_i[g]),
+        .gmii_rx_en_i     (gmii_rx_en_i[g]),
+        .gmii_rx_d_i      (gmii_rx_data_i[g*8 +: 8]),
+        .gmii_tx_en_o     (gmii_tx_en_o[g]),
+        .gmii_tx_d_o      (gmii_tx_data_o[g*8 +: 8]),
+        .rx_beat_valid_o  (rx_beat_valid[g]),
+        .rx_beat_data_o   (rx_beat_data[g*64 +: 64]),
+        .rx_beat_sof_o    (rx_beat_sof[g]),
+        .rx_beat_eof_o    (rx_beat_eof[g]),
+        .rx_beat_crc_ok_o (rx_beat_crc_ok[g]),
+        .rx_beat_octets_o (rx_beat_octets[g*4 +: 4]),
+        .rx_beat_rd_i     (rx_beat_rd[g]),
+        .tx_fr_valid_i    (tx_fr_valid[g]),
+        .tx_fr_len_i      (tx_fr_len[g*SW_LEN_W +: SW_LEN_W]),
+        .tx_fr_ready_o    (tx_fr_ready[g]),
+        .tx_beat_valid_i  (tx_beat_valid[g]),
+        .tx_beat_data_i   (tx_beat_data[g*64 +: 64]),
+        .tx_beat_rd_o     (tx_beat_rd[g])
+      );
+
+      // Activity is a property of the line, so it is taken from the PHY-facing
+      // pins rather than from a counter: a port that is receiving damaged
+      // frames still shows traffic, which is exactly what a switch lamp means.
+      assign port_active[g] = gmii_rx_en_i[g] | gmii_tx_en_o[g];
+    end
+  endgenerate
+
+  // --------------------------------------------------------------------------
+  // Switching fabric
+  //
+  // The core's run-time control comes from the panel and from nowhere else: the
+  // board's switch positions are the one description of what the operator asked
+  // for, and duplicating that path as separate top-level ports would create two
+  // sources of truth for the same policy.
+  // --------------------------------------------------------------------------
+  logic [1:0] panel_flood_mode;
+  logic       panel_learning_en;
+  logic       panel_cfg_ovr;
+  logic       panel_cam_flush;
+
+  // The decoded configuration is an output as well as an internal signal: the
+  // console asks the switch what its policy is, so a second decoder in a board
+  // file could never drift out of step with this one.
+  assign cfg_flood_mode_o  = panel_flood_mode;
+  assign cfg_learning_en_o = panel_learning_en;
+  assign cfg_ovr_o         = panel_cfg_ovr;
+
   es_switch_core #(
-    .NUM_PORTS           (NUM_PORTS),
-    .CLK_FREQ_HZ         (CLK_FREQ_HZ),
-    .PORT_MAC            (PORT_MAC),
-    .PORT_SPEED          (PORT_SPEED),
-    .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
-    .RX_FIFO_DEPTH       (RX_FIFO_DEPTH),
-    .TX_FIFO_DEPTH       (TX_FIFO_DEPTH),
-    .TAG_FIFO_DEPTH      (TAG_FIFO_DEPTH),
-    .WF_DEPTH            (WF_DEPTH),
-    .MAX_FRAME_LEN       (MAX_FRAME_LEN),
-    .FLOOD_MODE          (FLOOD_MODE),
-    .LEARNING_EN         (LEARNING_EN),
-    .STALL_LIMIT         (STALL_LIMIT),
-    .CAM_SETS            (CAM_SETS),
-    .CAM_WAYS            (CAM_WAYS),
-    .CAM_AGE_EN          (CAM_AGE_EN),
-    .CAM_AGE_CYCLES      (CAM_AGE_CYCLES),
-    .CAM_AGE_LIMIT       (CAM_AGE_LIMIT)
+    .NUM_PORTS      (NUM_PORTS),
+    .NUM_CONSOLE    (NUM_CONSOLE),
+    .PORT_MAC       (PORT_MAC),
+    .RX_FIFO_DEPTH  (RX_FIFO_DEPTH),
+    .TX_FIFO_DEPTH  (TX_FIFO_DEPTH),
+    .TAG_FIFO_DEPTH (TAG_FIFO_DEPTH),
+    .MAX_FRAME_LEN  (MAX_FRAME_LEN),
+    .FLOOD_MODE     (FLOOD_MODE),
+    .LEARNING_EN    (LEARNING_EN),
+    .STALL_LIMIT    (STALL_LIMIT),
+    .CAM_SETS       (CAM_SETS),
+    .CAM_WAYS       (CAM_WAYS),
+    .CAM_AGE_EN     (CAM_AGE_EN),
+    .CAM_AGE_CYCLES (CAM_AGE_CYCLES),
+    .CAM_AGE_LIMIT  (CAM_AGE_LIMIT)
   ) u_core (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .link_up_i     (link_up_i),
-    .flood_mode_i  (flood_mode_i),
-    .learning_en_i (learning_en_i),
-    .cfg_ovr_i     (cfg_ovr_i),
-    .cam_flush_i   (cam_flush_i),
-    .rx_oct_en_i   (gmii_rx_en_i),
-    .rx_oct_data_i (gmii_rx_data_i),
-    .tx_oct_en_o   (gmii_tx_en_o),
-    .tx_oct_data_o (gmii_tx_data_o),
-    .phy_status_i  (phy_status_i),
-    .mon_req_i     (mon_req_i),
-    .mon_addr_i    (mon_addr_i),
-    .mon_ready_o   (mon_ready_o),
-    .mon_valid_o   (mon_valid_o),
-    .mon_data_o    (mon_data_o),
-    .stat_o        (stat_o)
+    .clk_i           (clk_i),
+    .rst_ni          (rst_ni),
+    // The board's control pins and the panel's decoded configuration are wired
+    // together: the panel is the only thing that knows how a switch position
+    // maps onto a policy, so its outputs drive the core and the raw pins stay
+    // unused at this level.
+    .flood_mode_i    (panel_flood_mode),
+    .learning_en_i   (panel_learning_en),
+    .cfg_ovr_i       (panel_cfg_ovr),
+    .cam_flush_i     (panel_cam_flush),
+    .rx_beat_valid_i (rx_beat_valid),
+    .rx_beat_data_i  (rx_beat_data),
+    .rx_beat_sof_i   (rx_beat_sof),
+    .rx_beat_eof_i   (rx_beat_eof),
+    .rx_beat_crc_ok_i(rx_beat_crc_ok),
+    .rx_beat_octets_i(rx_beat_octets),
+    .rx_beat_rd_o    (rx_beat_rd),
+    .tx_fr_valid_o   (tx_fr_valid),
+    .tx_fr_len_o     (tx_fr_len),
+    .tx_fr_ready_i   (tx_fr_ready),
+    .tx_beat_valid_o (tx_beat_valid),
+    .tx_beat_data_o  (tx_beat_data),
+    .tx_beat_rd_i    (tx_beat_rd),
+    .stat_port_i     (stat_port_i),
+    .stat_id_i       (stat_id_i),
+    .stat_data_o     (stat_data_o),
+    .cam_rd_req_i    (cam_rd_req_i),
+    .cam_rd_index_i  (cam_rd_index_i),
+    .cam_rd_valid_o  (cam_rd_valid_o),
+    .cam_rd_entry_o  (cam_rd_entry_o),
+    .cam_entries_o   (cam_entries_o),
+    .stat_o          (stat_o)
+  );
+
+  // --------------------------------------------------------------------------
+  // Panel: switch positions in, semantic lamps out
+  // --------------------------------------------------------------------------
+  es_panel #(
+    .NUM_PORTS    (NUM_PORTS),
+    .CAM_CAPACITY (CAM_SETS * CAM_WAYS)
+  ) u_panel (
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .dip_i          (dip_i),
+    .link_up_i      (link_up_i),
+    .phy_status_i   (phy_status_i),
+    .port_active_i  (port_active),
+    .rx_crc_err_i   (stat_o[32*int'(SW_STAT_RX_CRC_ERR)  +: 32]),
+    .rx_runt_i      (stat_o[32*int'(SW_STAT_RX_RUNT)     +: 32]),
+    .rx_oversize_i  (stat_o[32*int'(SW_STAT_RX_OVERSIZE) +: 32]),
+    .rx_overflow_i  (stat_o[32*int'(SW_STAT_RX_OVERFLOW) +: 32]),
+    .cam_entries_i  (cam_entries_o),
+    .flood_mode_o   (panel_flood_mode),
+    .learning_en_o  (panel_learning_en),
+    .cfg_ovr_o      (panel_cfg_ovr),
+    .cam_flush_o    (panel_cam_flush),
+    .led_link_o     (led_link_o),
+    .led_act_o      (led_act_o),
+    .led_speed_o    (led_speed_o),
+    .led_duplex_o   (led_duplex_o),
+    .led_fault_o    (led_fault_o),
+    .led_stat_o     (led_stat_o)
   );
 
 endmodule : es_switch_gmii

@@ -23,7 +23,7 @@
 `default_nettype none
 
 `include "es_defs.sv"
-`include "console/es_console_defs.sv"
+`include "perips/es_perips_defs.sv"
 `default_nettype none
 
 module es_perips_uart #(
