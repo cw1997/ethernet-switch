@@ -115,6 +115,13 @@ module sw_console_tb;
       if (text.substr(i, i + needle.len() - 1) == needle) found = 1;
     return found;
   endfunction
+  // Return the first matching offset so the wire transcript can verify order,
+  // independently of the command engine's internal line or state numbering.
+  function automatic int position(input string text, input string needle);
+    for (int i = 0; i + needle.len() <= text.len(); i++)
+      if (text.substr(i, i + needle.len() - 1) == needle) return i;
+    return -1;
+  endfunction
   task check(input bit ok, input string label);
     checks++;
     if (ok) $display("PASS console %s", label);
@@ -214,6 +221,21 @@ module sw_console_tb;
     check(contains(transcript, "mac_start_clock") && contains(transcript, "mac_end_clock"
           ) && contains(transcript, "mac_end_flushes"),
           "live traversal timestamps and flush generation");
+    transcript = "";
+    // The unfiltered form must include the entry even though its owner is port 1.
+    send("mac all\015");
+    settle();
+    check(contains(transcript, "mac_address=0x0000021122334455") &&
+          contains(transcript, "mac_port=0x0000000000000001") &&
+          contains(transcript, "mac_start_clock") && contains(transcript, "mac_end_clock"),
+          "MAC all enumerates entries with traversal metadata");
+    check(position(transcript, "mac_start_clock") >= 0 &&
+          position(transcript, "mac_start_clock") < position(transcript, "mac_start_flushes") &&
+          position(transcript, "mac_start_flushes") < position(transcript, "mac_address") &&
+          position(transcript, "mac_address") < position(transcript, "mac_port") &&
+          position(transcript, "mac_port") < position(transcript, "mac_end_clock") &&
+          position(transcript, "mac_end_clock") < position(transcript, "mac_end_flushes"),
+          "MAC metadata and entries preserve wire order");
     transcript = "";
     send("mac 0\015");
     settle();

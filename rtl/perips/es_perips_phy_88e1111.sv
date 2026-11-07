@@ -3,8 +3,9 @@
 //  Description : Marvell 88E1111 Clause-22 discovery and status polling.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Advertises 100 Mbit/s full duplex only. Status remains unknown until a complete
-//                successful poll; latch-low link status requires two BMSR reads.
+//                Advertises 100 Mbit/s full duplex only. Status remains unknown
+//                until a complete successful poll; latch-low link status
+//                requires two BMSR reads.
 //  Interface   : CLK_FREQ_HZ is the core frequency; POLL_INTERVAL_MS and
 //                RESET_WAIT_MS are clock-counted milliseconds. mdio_oe_o controls
 //                the external tri-state buffer. status_o packs validity, link,
@@ -28,6 +29,8 @@ module es_perips_phy_88e1111 #(
 ) (
   input var logic clk_i, rst_ni, mdio_i,
   output logic mdc_o, mdio_o, mdio_oe_o,
+  // Bits 0..5: valid, link, duplex, two-bit speed, management error.
+  // The board may enable its MII path only for a valid 100-Mbit full-duplex link.
   output logic [7:0] status_o,
   output logic enabled_o
 );
@@ -43,6 +46,7 @@ module es_perips_phy_88e1111 #(
     S_WAIT
   } state_e;
   state_e state_q;
+  // Delays are measured in core clocks and rounded up from milliseconds.
   logic [63:0] delay_q;
   // Search addresses until the vendor ID matches, then retain the address for polls.
   logic [4:0] address_q, reg_addr;
@@ -120,7 +124,7 @@ module es_perips_phy_88e1111 #(
     end else begin
       case (state_q)
         S_DELAY: if (delay_q == 64'd0) state_q <= S_START;
- else delay_q <= delay_q - 64'd1;
+        else delay_q <= delay_q - 64'd1;
         S_START: state_q <= S_WAIT;
         S_WAIT: if (valid) begin
           state_q <= S_START;
@@ -141,6 +145,8 @@ module es_perips_phy_88e1111 #(
             delay_q <= POLL;
             state_q <= S_DELAY;
           end else if (step_q == 4'd9) begin
+            // Require both current link and auto-negotiation completion before
+            // combining the result with the vendor-specific resolved status.
             link_q <= read_data[2] && read_data[5];
             step_q <= 4'd10;
           end else if (step_q == 4'd10) begin

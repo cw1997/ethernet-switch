@@ -3,8 +3,9 @@
 //  Description : Low-priority coherent telemetry scanner.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Reads the sequence before and after the image. Only equal sequences publish;
-//                console arbitration pauses requests without holding the CSR bus.
+//                Reads the sequence before and after the image. Only equal
+//                sequences publish; console arbitration pauses requests
+//                without holding the CSR bus.
 //  Interface   : req/ready accepts one byte-addressed CSR read; valid qualifies
 //                its response. image contains aggregate record zero followed by
 //                NUM_PORTS port records. pause blocks new requests; idle reports
@@ -47,6 +48,8 @@ module es_monitor_cache #(
     S_CHECK_WAIT
   } state_e;
   state_e state_q;
+  // Each scan begins and ends with the sequence word. A mismatch discards
+  // the staging image rather than exposing a mixture of two publications.
   logic [31:0] index_q, start_sequence_q;
   // An unchanged sequence can be skipped only after a coherent image was loaded.
   logic loaded_q;

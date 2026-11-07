@@ -3,8 +3,9 @@
 //  Description : Clause-22 MDIO transaction controller.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Generates MDC from the core clock and releases MDIO during read turnaround.
-//                The board supplies the bidirectional buffer and external pull-up.
+//                Generates MDC from the core clock and releases MDIO during
+//                read turnaround. The board supplies the bidirectional buffer
+//                and external pull-up.
 //  Interface   : CLK_FREQ_HZ and MDC_FREQ_HZ are frequencies in hertz. start_i
 //                captures read/write, PHY/register addresses and write data.
 //                busy_o prevents overlap; valid_o qualifies data_o/error_o.

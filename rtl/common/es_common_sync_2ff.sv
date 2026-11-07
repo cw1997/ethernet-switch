@@ -1,22 +1,26 @@
 // ============================================================================
 //  File        : es_common_sync_2ff.sv
 //  Description : Two-stage input sampler; no debounce or pulse stretching.
-//                Single clk_i domain; synchronous active-low rst_ni where present.
+//                Both stages use clk_i and synchronous active-low rst_ni.
+//                Each bit is sampled independently: a multi-bit input is not
+//                guaranteed to arrive as one coherent word.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_COMMON_SYNC_2FF_SV
 `define ES_COMMON_SYNC_2FF_SV
 `default_nettype none
 module es_common_sync_2ff #(
-  /// Word width in bits (key/sampler width is the number of input bits).
+  /// Number of independently sampled input bits.
   parameter int unsigned WIDTH = 1,
-  /// Synchronous reset/clear contents for each word.
+  /// Synchronous reset value for both sampling stages.
   parameter logic [WIDTH-1:0] RESET_VALUE = '1
 ) (
   input var logic clk_i, rst_ni,
   input var logic [WIDTH-1:0] async_i,
   output logic [WIDTH-1:0] sync_o
 );
+  // The first stage can sample an input near its transition; downstream logic
+  // sees only the second stage and must tolerate the sampling latency.
   logic [WIDTH-1:0] meta_q;
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin

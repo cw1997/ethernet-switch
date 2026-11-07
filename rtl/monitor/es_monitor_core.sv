@@ -3,8 +3,9 @@
 //  Description : Atomic telemetry capture and read-only CSR service.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Extends raw counters, stages one sample, computes rates serially and publishes
-//                one sequence atomically. Readers must retry if the sequence changes.
+//                Extends raw counters, stages one sample, computes rates
+//                serially and publishes one sequence atomically. Readers must
+//                retry if the sequence changes.
 //  Interface   : Port n occupies the n-th least-significant packed slice.
 //                REFRESH_INTERVAL_MS is a positive millisecond interval;
 //                CLK_FREQ_HZ sets its ceiling-rounded clock count. CAM_CAPACITY

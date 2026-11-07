@@ -9,7 +9,7 @@
 localparam logic [31:0] SW_CRC32_POLY = 32'hEDB8_8320;
 localparam logic [31:0] SW_CRC32_INIT = 32'hFFFF_FFFF;
 localparam logic [31:0] SW_CRC32_XOROUT = 32'hFFFF_FFFF;
-/// Residue of a valid frame in the *reflected* domain (see the note above).
+/// Residue of a valid frame after its FCS is absorbed in the reflected domain.
 localparam logic [31:0] SW_CRC32_RESIDUE = 32'hDEBB_20E3;
 
 /// One reflected bit step of the CRC-32 LFSR, as the receiver and transmitter
@@ -46,9 +46,10 @@ function automatic logic [31:0] sw_crc32_residue();
   sw_crc32_residue = x;
 endfunction
 
-  function automatic logic [7:0] sw_hexchar(input var logic [3:0] d);
-    sw_hexchar = (d < 4'd10) ? 8'd48 + {4'd0, d} : 8'd55 + {4'd0, d};
-  endfunction
+/// Uppercase hexadecimal ASCII digit, used by the console formatter.
+function automatic logic [7:0] sw_hexchar(input var logic [3:0] d);
+  sw_hexchar = (d < 4'd10) ? 8'd48 + {4'd0, d} : 8'd55 + {4'd0, d};
+endfunction
 /// Bits needed to encode a port index in [0, NUM_PORTS).
 function automatic int sw_port_w(input int unsigned n);
   sw_port_w = (n > 2) ? $clog2(n) : 1;

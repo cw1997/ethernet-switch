@@ -3,8 +3,9 @@
 //  Description : Serial binary-to-BCD double-dabble converter.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Captures a 64-bit value and publishes twenty packed decimal digits after
-//                shifting all input bits; requests while busy are not queued.
+//                Captures a 64-bit value and publishes twenty packed decimal
+//                digits after shifting all input bits; requests while busy are
+//                not queued.
 //  Interface   : start_i captures value_i while idle. valid_o pulses when bcd_o
 //                is published. Each least-significant nibble is one decimal digit;
 //                output data holds until the next conversion completes.

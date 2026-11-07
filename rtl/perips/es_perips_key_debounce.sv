@@ -1,16 +1,21 @@
 // ============================================================================
 //  File        : es_perips_key_debounce.sv
 //  Description : Active-low vector debounce; all keys share one stable interval.
-//                Single clk_i domain; synchronous active-low rst_ni where present.
+//                Inputs pass through a two-stage sampler. Any key transition
+//                restarts the shared timer, so all bits must remain unchanged
+//                for the configured interval before a new vector is accepted.
+//                Reset is synchronous active low; released keys reset high.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_PERIPS_KEY_DEBOUNCE_SV
 `define ES_PERIPS_KEY_DEBOUNCE_SV
 `default_nettype none
 module es_perips_key_debounce #(
-  /// Word width in bits (key/sampler width is the number of input bits).
+  /// Number of independently sampled keys in the debounced vector.
   parameter int unsigned WIDTH = 3,
+  /// Core clock frequency in hertz.
   parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+  /// Required stable interval in milliseconds, rounded up to whole clocks.
   parameter int unsigned DEBOUNCE_MS = 20
 ) (
   input var logic clk_i, rst_ni,
@@ -18,6 +23,8 @@ module es_perips_key_debounce #(
   output logic [WIDTH-1:0] stable_no, value_no, pressed_o
 );
   localparam logic [63:0] INTERVAL = (64'(CLK_FREQ_HZ)*64'(DEBOUNCE_MS)+64'd999)/64'd1000;
+  // value_no exposes the pending committed vector on the commit edge;
+  // pressed_o pulses only for active-low transitions in that vector.
   logic [WIDTH-1:0] sync_keys, candidate_q, stable_q;
   logic [63:0] timer_q;
   logic commit;

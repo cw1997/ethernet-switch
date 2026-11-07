@@ -1,17 +1,19 @@
 // ============================================================================
 //  File        : es_mems_ram_1r1w.sv
 //  Description : Synchronous write, asynchronous read RAM; contents are not reset.
-//                Single clk_i domain; synchronous active-low rst_ni where present.
+//                Writes use clk_i; the read port is asynchronous. The owner
+//                must keep both addresses below DEPTH and qualify unread data.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_MEMS_RAM_1R1W_SV
 `define ES_MEMS_RAM_1R1W_SV
 `default_nettype none
 module es_mems_ram_1r1w #(
-  /// Word width in bits (key/sampler width is the number of input bits).
+  /// Stored word width in bits.
   parameter int unsigned WIDTH = 64,
   /// Number of entries; addresses must remain below DEPTH.
   parameter int unsigned DEPTH = 16,
+  /// Address width must represent every entry in DEPTH.
   parameter int unsigned ADDR_W = (DEPTH <= 2) ? 1 : $clog2(DEPTH)
 ) (
   input var logic clk_i,

@@ -3,8 +3,9 @@
 //  Description : Character LCD write sequencer.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Serializes the formatted two-row text with clock-counted initialization and
-//                enable timing. The board owns LCD pin and voltage assignments.
+//                Serializes the formatted two-row text with clock-counted
+//                initialization and enable timing. The board owns LCD pin
+//                and voltage assignments.
 //  Interface   : CLK_FREQ_HZ is in hertz. text_i supplies the packed LCD rows;
 //                the sequencer drives write-only data, register-select and enable.
 //                LCD access timing is counted in clk_i cycles, not delayed RTL.
@@ -22,6 +23,7 @@ module es_perips_lcd #(
   parameter int unsigned CLK_FREQ_HZ = 50_000_000
 ) (
   input var logic clk_i, rst_ni,
+  // First row occupies [255:128], each row in left-to-right ASCII order.
   input var logic [255:0] text_i,
   output logic [7:0] data_o,
   output logic rs_o, rw_o, en_o, on_o, blon_o
@@ -39,6 +41,8 @@ module es_perips_lcd #(
   } state_e;
   state_e state_q;
   logic [31:0] timer_q;
+  // Indices 0..5 send setup commands, 6..21 write row one, 22 selects
+  // row two, and 23..38 write its characters.
   logic [5:0] index_q;
   // Hold one two-row image throughout a write pass; changes wait until idle.
   logic [255:0] text_q;
@@ -71,8 +75,8 @@ module es_perips_lcd #(
               6'd4: data_o <= 8'h01;
               6'd5: data_o <= 8'h80;
               6'd22: data_o <= 8'hc0;
-              default:
-              data_o <= (index_q < 6'd22) ? text_q[255-(32'(index_q)-32'd6)*32'd8 -: 8] :
+              default: data_o <= (index_q < 6'd22) ?
+                  text_q[255-(32'(index_q)-32'd6)*32'd8 -: 8] :
                   text_q[127-(32'(index_q)-32'd23)*32'd8 -: 8];
             endcase
             // Data/RS setup for one microsecond before E rises.

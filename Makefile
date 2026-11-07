@@ -80,6 +80,11 @@ RTL_SRCS := \
   $(RTL_DIR)/common/es_common_bin_to_bcd.sv \
   $(RTL_DIR)/perips/es_perips_lcd.sv \
   $(RTL_DIR)/monitor/es_monitor_display.sv \
+  $(RTL_DIR)/console/es_console_cmd_help.sv \
+  $(RTL_DIR)/console/es_console_cmd_status.sv \
+  $(RTL_DIR)/console/es_console_cmd_port.sv \
+  $(RTL_DIR)/console/es_console_cmd_mac.sv \
+  $(RTL_DIR)/console/es_console_snapshot.sv \
   $(RTL_DIR)/console/es_console_core.sv \
   $(RTL_DIR)/common/es_common_ratio.sv \
   $(RTL_DIR)/monitor/es_monitor_core.sv \

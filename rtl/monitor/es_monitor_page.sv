@@ -3,7 +3,8 @@
 //  Description : Debounced monitoring page and flush controls.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Page zero selects the aggregate; pages 1..NUM_PORTS select ports 0..N-1.
+//                Page zero selects the aggregate; pages 1..NUM_PORTS select
+//                ports 0..N-1.
 //                Explicit wrap preserves non-power-of-two port configurations.
 //  Interface   : key_ni is active low and sampled/debounced in clk_i's domain.
 //                page_o ranges from zero through NUM_PORTS. flush_o is a single
@@ -42,7 +43,8 @@ module es_monitor_page #(
     .clk_i(clk_i), .rst_ni(rst_ni), .key_ni(key_ni),
     .stable_no(stable_keys), .value_no(keys), .pressed_o(pressed)
   );
-  // Navigation policy stays here; events are consumed on the original commit edge.
+  // Navigation policy stays here; events are consumed on the original commit
+  // edge. Simultaneous previous and next presses do not change the page.
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       page_o <= '0;

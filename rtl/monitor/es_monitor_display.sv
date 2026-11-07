@@ -3,8 +3,9 @@
 //  Description : Telemetry formatting for seven-segment and LCD outputs.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Latches a page before serial ratio and decimal conversion so displayed fields
-//                cannot mix snapshots. Invalid records display placeholders.
+//                Latches a page before serial ratio and decimal conversion so
+//                displayed fields cannot mix snapshots. Invalid records display
+//                placeholders.
 //  Interface   : image_i contains aggregate record zero followed by port records.
 //                page_i selects one record. HEX outputs are active-low segment
 //                patterns; text_o holds two packed 16-character LCD rows.
@@ -25,6 +26,7 @@ module es_monitor_display #(
   parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
 ) (
   input var logic clk_i, rst_ni,
+  // The owner supplies a page in [0, NUM_PORTS]; zero selects aggregate data.
   input var logic [31:0] page_i,
   input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
   output logic [55:0] hex_o,
@@ -51,6 +53,7 @@ module es_monitor_display #(
   logic [63:0] value_q, ratio_result;
   logic ratio_busy, ratio_valid, decimal_valid;
   logic [ 79:0] decimal_result;
+  // Four packed 20-digit BCD results: RX/TX packet rates then RX/TX bit rates.
   logic [319:0] digits_q;
   logic rx_k_q, tx_k_q, valid_q;
   // --------------------------------------------------------------------------

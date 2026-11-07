@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : es_console_defs.sv
-//  Description : Console constants and compilation-unit helpers.
+//  Description : Reserved compilation-unit declarations for the console.
 //
 //                Compilation-unit declarations keep port ranges readable by
 //                yosys read_verilog -sv. Include guards prevent redefinition;
@@ -12,11 +12,10 @@
 `default_nettype none
 // Included by es_defs.sv after common declarations.
 // --------------------------------------------------------------------------
-// UART framing encodings
+// UART framing ownership
 //
 // Parity and flow-control values are shared by the UART, console and board
-// parameters.
+// parameters, and are declared by perips/es_perips_defs.sv.
 // --------------------------------------------------------------------------
-// UART framing encodings are owned by perips/es_perips_defs.sv.
 `default_nettype wire
 `endif  // ES_CONSOLE_DEFS_SV

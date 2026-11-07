@@ -3,12 +3,15 @@
 //  Description : Parameterized UART transmitter and receiver.
 //
 //                All state advances on clk_i; rst_ni is synchronous active low.
-//                Samples asynchronous RX/CTS through synchronizers. Ready/valid handshakes
-//                bound buffering; parity, framing and overflow are reported separately.
+//                Samples asynchronous RX/CTS through synchronizers. Handshakes
+//                bound buffering; parity, framing and overflow are reported
+//                separately.
 //  Interface   : CLK_FREQ_HZ and BAUD_RATE are hertz and bits/s. DATA_BITS,
 //                PARITY and STOP_BITS select framing; FLOW_CONTROL selects CTS.
-//                TX accepts tx_valid_i with tx_ready_o. RX holds data/valid until
-//                rx_ready_i; error outputs diagnose framing, parity and overflow.
+//                TX accepts tx_valid_i with tx_ready_o. A received character
+//                pulses rx_valid_o only when rx_ready_i is high; otherwise it
+//                is discarded and overflow_o pulses. Error outputs diagnose
+//                framing and parity independently.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_PERIPS_UART_SV
@@ -28,11 +31,11 @@ module es_perips_uart #(
   parameter int unsigned BAUD_RATE = 115200,
   /// Number of data bits per UART character, from five through eight.
   parameter int unsigned DATA_BITS = 8,
-  /// UART parity encoding from es_console_defs.sv.
+  /// UART parity encoding from es_perips_defs.sv.
   parameter int unsigned PARITY = SW_UART_PARITY_NONE,
   /// Number of UART stop bits, one or two.
   parameter int unsigned STOP_BITS = 1,
-  /// CTS/RTS policy from es_console_defs.sv.
+  /// CTS/RTS policy from es_perips_defs.sv.
   parameter int unsigned FLOW_CONTROL = SW_UART_FLOW_NONE
 ) (
   input var logic clk_i, rst_ni, rx_i, cts_ni,
@@ -114,7 +117,10 @@ module es_perips_uart #(
   end
 
   // --------------------------------------------------------------------------
-  // Control state
+  // Receiver state
+  //
+  // Validate the start bit at its center, then sample each data/parity/stop
+  // bit one period apart. A bad frame is discarded instead of being delivered.
   // --------------------------------------------------------------------------
   typedef enum logic [2:0] {
     S_IDLE,

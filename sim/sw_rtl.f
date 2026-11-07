@@ -40,6 +40,11 @@ rtl/monitor/es_monitor_page.sv
 rtl/common/es_common_bin_to_bcd.sv
 rtl/perips/es_perips_lcd.sv
 rtl/monitor/es_monitor_display.sv
+rtl/console/es_console_cmd_help.sv
+rtl/console/es_console_cmd_status.sv
+rtl/console/es_console_cmd_port.sv
+rtl/console/es_console_cmd_mac.sv
+rtl/console/es_console_snapshot.sv
 rtl/console/es_console_core.sv
 rtl/common/es_common_ratio.sv
 rtl/monitor/es_monitor_core.sv

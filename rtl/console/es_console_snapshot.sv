@@ -1,0 +1,175 @@
+// ============================================================================
+//  File        : es_console_snapshot.sv
+//  Description : Shared snapshot response generator for status and port.
+//
+//                Captures the packed cache image on start_i. UART stalls cannot
+//                mix cache generations. Aggregate page zero precedes port
+//                pages; error counters remain live, matching the console ABI.
+// ============================================================================
+`timescale 1ns/1ps
+`ifndef ES_CONSOLE_SNAPSHOT_SV
+`define ES_CONSOLE_SNAPSHOT_SV
+`default_nettype none
+`include "es_defs.sv"
+`default_nettype none
+
+module es_console_snapshot #(
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS
+) (
+  input var logic clk_i, rst_ni, start_i,
+  // Page zero is aggregate; page p+1 holds port p. The caller guarantees
+  // 0 <= first_page_i <= last_page_i <= NUM_PORTS.
+  input var logic [31:0] first_page_i, last_page_i,
+  input var logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] image_i,
+  input var logic [31:0] parity_errors_i, frame_errors_i, overflow_errors_i,
+  input var logic [31:0] busy_errors_i, long_errors_i,
+  input var logic ready_i,
+  // done_o accompanies acceptance of the last line, not UART transmission.
+  output logic valid_o, busy_o, done_o,
+  output logic [511:0] text_o
+);
+  // A page is held until all of its lines have been accepted. The cache copy
+  // is frozen at command start, even if transmission is stopped by CTS.
+  logic [(NUM_PORTS+1)*SW_MON_BITS-1:0] held_q;
+  logic [31:0] page_q, last_page_q, word_index;
+  logic [5:0] line_q;
+  logic active_q, last_line;
+  logic [63:0] print_value;
+  logic [191:0] print_label;
+  logic [SW_MON_BITS-1:0] record;
+  function automatic logic [511:0] value_line(input var logic [191:0] label,
+                                              input var logic [63:0] value);
+    logic [127:0] hextext;
+    for (int unsigned h = 0; h < 16; h++) hextext[127-h*8 -: 8] = sw_hexchar(value[63-h*4 -: 4]);
+    value_line = {label, "=0x", hextext, 16'h0d0a, 152'd0};
+  endfunction
+  function automatic logic [191:0] label_for(input var logic [5:0] line);
+    case (line)
+      6'd0: label_for = "snapshot_seq";
+      6'd1: label_for = "sample_valid";
+      6'd2: label_for = "phy_status";
+      6'd3: label_for = "rx_used_beats";
+      6'd4: label_for = "tx_used_beats";
+      6'd5: label_for = "rx_peak_beats";
+      6'd6: label_for = "tx_peak_beats";
+      6'd7: label_for = "rx_load_permille";
+      6'd8: label_for = "tx_load_permille";
+      6'd9: label_for = "rx_frames";
+      6'd10: label_for = "rx_octets";
+      6'd11: label_for = "rx_filtered";
+      6'd12: label_for = "rx_crc_error";
+      6'd13: label_for = "rx_runt";
+      6'd14: label_for = "rx_oversize";
+      6'd15: label_for = "rx_overflow";
+      6'd16: label_for = "tx_completed_frames";
+      6'd17: label_for = "tx_completed_octets";
+      6'd18: label_for = "ingress_stall_drops";
+      6'd19: label_for = "rx_pps";
+      6'd20: label_for = "tx_pps";
+      6'd21: label_for = "rx_bit_per_second";
+      6'd22: label_for = "tx_bit_per_second";
+      6'd23: label_for = "uptime_seconds";
+      6'd24: label_for = "window_clocks";
+      6'd25: label_for = "refresh_ms";
+      6'd26: label_for = "cam_entries";
+      6'd27: label_for = "cam_capacity";
+      6'd28: label_for = "cam_flushes";
+      6'd29: label_for = "fabric_busy_permille";
+      6'd30: label_for = "cam_age_enabled";
+      6'd31: label_for = "sample_clock";
+      6'd33: label_for = "uart_parity_errors";
+      6'd34: label_for = "uart_frame_errors";
+      6'd35: label_for = "uart_rx_overflows";
+      6'd36: label_for = "console_busy_input";
+      6'd37: label_for = "console_long_lines";
+      6'd38: label_for = "phy_valid";
+      6'd39: label_for = "link_up";
+      6'd40: label_for = "speed_mbit";
+      6'd41: label_for = "full_duplex";
+      6'd42: label_for = "phy_management_error";
+      default: label_for = "page_0_all_else_port+1";
+    endcase
+  endfunction
+  assign record = held_q[page_q*32'(SW_MON_BITS) +: SW_MON_BITS];
+  always_comb begin
+    word_index  = 32'd0;
+    print_value = '0;
+    print_label = label_for(line_q);
+    case (line_q)
+      6'd0: print_value = {32'd0, held_q[49*32 +: 32]};
+      6'd1: print_value = {32'd0, held_q[50*32 +: 32]};
+      6'd23: print_value = held_q[44*32 +: 64];
+      6'd24: print_value = held_q[46*32 +: 64];
+      6'd25: print_value = {32'd0, held_q[48*32 +: 32]};
+      6'd26: print_value = {32'd0, held_q[51*32 +: 32]};
+      6'd27: print_value = {32'd0, held_q[52*32 +: 32]};
+      6'd28: print_value = {32'd0, held_q[53*32 +: 32]};
+      6'd29: print_value = {32'd0, held_q[54*32 +: 32]};
+      6'd30: print_value = {32'd0, held_q[55*32 +: 32]};
+      6'd31: print_value = held_q[56*32 +: 64];
+      6'd33: print_value = {32'd0, parity_errors_i};
+      6'd34: print_value = {32'd0, frame_errors_i};
+      6'd35: print_value = {32'd0, overflow_errors_i};
+      6'd36: print_value = {32'd0, busy_errors_i};
+      6'd37: print_value = {32'd0, long_errors_i};
+      6'd38: print_value = {63'd0, record[0]};
+      6'd39: print_value = {63'd0, record[1]};
+      6'd40: print_value = (!record[0] || !record[1]) ? 64'd0 : (record[4:3] == 2'd0) ?
+          64'd10 : (record[4:3] == 2'd1) ? 64'd100 : (record[4:3] == 2'd2) ? 64'd1000 : 64'd0;
+      6'd41: print_value = {63'd0, record[0] && record[1] && record[2]};
+      6'd42: print_value = {63'd0, record[5]};
+      6'd63: print_value = {32'd0, page_q};
+      default: begin
+        if (line_q < 6'd9) begin
+          word_index  = 32'(line_q) - 32'd2;
+          print_value = {32'd0, record[word_index*32'd32 +: 32]};
+        end else begin
+          word_index = (line_q < 6'd19) ? 32'(SW_MON_COUNTER) + (32'(line_q) - 32'd9) * 32'd2 :
+              32'(SW_MON_RATE) + (32'(line_q) - 32'd19) * 32'd2;
+          print_value = record[word_index*32'd32 +: 64];
+        end
+      end
+    endcase
+    if ((page_q == 32'd0) && (line_q == 6'd2)) print_label = "system_ready";
+    if ((page_q == 32'd0) && (line_q == 6'd3)) print_label = "num_ports";
+  end
+
+  // A live error counter can change during a UART stall. Present the line only
+  // once the consumer is ready, so valid data never changes while stalled.
+  assign valid_o = active_q && ready_i;
+  assign busy_o = active_q;
+  assign last_line = (line_q == 6'd42) || ((page_q == 32'd0) && (line_q == 6'd37));
+  assign done_o = active_q && ready_i && last_line && (page_q == last_page_q);
+  assign text_o = value_line(print_label, print_value);
+
+  // Advance only when the dispatcher accepts a line. The aggregate record
+  // skips per-port occupancy and PHY fields; page header line 63 is first.
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      active_q <= 1'b0;
+      held_q <= '0;
+      page_q <= '0;
+      last_page_q <= '0;
+      line_q <= '0;
+    end else if (start_i) begin
+      held_q <= image_i;
+      page_q <= first_page_i;
+      last_page_q <= last_page_i;
+      line_q <= 6'd63;
+      active_q <= 1'b1;
+    end else if (active_q && ready_i) begin
+      if (line_q == 6'd63) line_q <= '0;
+      else if ((page_q == 32'd0) && (line_q == 6'd3)) line_q <= 6'd9;
+      else if (last_line) begin
+        if (page_q == last_page_q) active_q <= 1'b0;
+        else begin
+          page_q <= page_q + 32'd1;
+          line_q <= 6'd63;
+        end
+      end else if (line_q == 6'd31) line_q <= 6'd33;
+      else line_q <= line_q + 6'd1;
+    end
+  end
+endmodule
+`default_nettype wire
+`endif  // ES_CONSOLE_SNAPSHOT_SV

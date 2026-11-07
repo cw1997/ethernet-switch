@@ -7,7 +7,8 @@
 //                the result. Serial arithmetic stays outside the forwarding path.
 //  Interface   : start_i captures value_i, scale_i and divisor_i while idle.
 //                busy_o spans serial computation; valid_o qualifies result_o.
-//                The fixed-width result is intended for telemetry, not packet flow.
+//                Overflow saturates to 64'hffff_ffff_ffff_ffff; a zero divisor
+//                yields zero. The result is intended for telemetry, not packet flow.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_COMMON_RATIO_SV

@@ -44,6 +44,11 @@ set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-ST
 # repository Makefile uses.  es_defs.sv is included by every file, so its
 # location only matters for the include path above.
 
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_help.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_status.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cmd_mac.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_snapshot.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_uart.sv
