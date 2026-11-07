@@ -9,9 +9,8 @@
 //                the FCS check in the same module so that the CRC always
 //                advances at the octet rate.
 //
-//                ------------------------------------------------------------------------
 //                Clock-enable (single clock domain) contract
-//                ------------------------------------------------------------------------
+//                -------------------------------------------
 //                `oct_en_i` / `oct_d_i` are synchronous to `clk_i`:
 //                  * one octet is transferred every BYTE_PERIOD clock cycles,
 //                  * `oct_en_i` is asserted for the whole octet time and
@@ -66,19 +65,20 @@ module es_switch_gmii_rx #(
   // ---- canonical octet receive interface (clock-enable qualified) ----------
   /// One octet is held stable for BYTE_PERIOD clocks while oct_en_i is high.
   input var logic       oct_en_i,  ///< octet-stream enable from the front-end
-  input var logic [7:0] oct_d_i,  ///< octet from the front-end
+  input var logic [7:0] oct_d_i,   ///< octet from the front-end
+
   // ---- core beat interface -------------------------------------------------
   /// Packed eight-octet beat with frame boundaries and FCS verdict metadata.
-  output    logic        beat_valid_o,  ///< a 64-bit beat is available
-  output    logic [63:0] beat_data_o,  ///< octet 0 in [63:56] ... octet 7 in [7:0]
-  output    logic        beat_sof_o,  ///< beat carries the first octet of a frame
-  output    logic        beat_eof_o,  ///< beat carries the last octet of a frame
+  output    logic        beat_valid_o,   ///< a 64-bit beat is available
+  output    logic [63:0] beat_data_o,    ///< octet 0 in [63:56] ... octet 7 in [7:0]
+  output    logic        beat_sof_o,     ///< beat carries the first octet of a frame
+  output    logic        beat_eof_o,     ///< beat carries the last octet of a frame
   output    logic        beat_crc_ok_o,  ///< FCS verdict, valid together with eof
-  output    logic [3:0] beat_octets_o  ///< valid octets in this beat (1..8)
+  output    logic [3:0]  beat_octets_o   ///< valid octets in this beat (1..8)
 );
 
   // --------------------------------------------------------------------------
-  // Octet-rate clock-enable generator.
+  // Octet-rate clock-enable generator
   //
   // The counter runs free so that it stays phase-aligned with the PHY even
   // while the link is idle; `sample` marks the last cycle of every octet time.
@@ -87,10 +87,11 @@ module es_switch_gmii_rx #(
   localparam logic [BPW-1:0] PHASE_LAST = BYTE_PERIOD[BPW-1:0] - BPW'(1);
 
   logic [BPW-1:0] phase;
+
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) phase <= '0;
+    if (!rst_ni)                  phase <= '0;
     else if (phase == PHASE_LAST) phase <= '0;
-    else phase <= phase + BPW'(1);
+    else                          phase <= phase + BPW'(1);
   end
 
   // Sample on the final cycle of the octet time for maximum hold margin.
@@ -98,7 +99,7 @@ module es_switch_gmii_rx #(
   assign sample = oct_en_i && (phase == PHASE_LAST);
 
   // --------------------------------------------------------------------------
-  // Octet assembler.
+  // Octet assembler
   //
   //   `acc`      - shift register holding the octets of the beat under
   //                construction; the octet under construction at index 0 lives
@@ -119,24 +120,24 @@ module es_switch_gmii_rx #(
   // latency, and it costs no throughput: the beat is released on the very clock
   // the next octet is sampled, so one beat still leaves every eight clocks.
   //
-  // IMPORTANT: the assembler state may only be cleared when the link is really
-  // idle (`!oct_en_i`).  Between two octet samples of the same frame the link
-  // is still enabled, so the state has to be held for up to BYTE_PERIOD-1
-  // clocks.  Clearing it on `!sample` instead would destroy the beat
-  // accumulation for every port slower than 1000 Mbit/s.
+  // The assembler state may only be cleared when the link is really idle
+  // (`!oct_en_i`).  Between two octet samples of the same frame the link is
+  // still enabled, so the state has to be held for up to BYTE_PERIOD-1 clocks.
+  // Clearing it on `!sample` instead would destroy the beat accumulation for
+  // every port slower than 1000 Mbit/s.
   // --------------------------------------------------------------------------
   logic        in_frame;  ///< an octet has been seen since the last idle gap
-  logic [ 3:0] bcnt;
-  logic [63:0] acc;
-  logic        acc_sof;
+  logic [3:0]  bcnt;      ///< octets held in `acc` (0..8)
+  logic [63:0] acc;       ///< beat under construction, next octet at [63:56]
+  logic        acc_sof;   ///< `acc` holds the first beat of the frame
 
   // The PHY de-asserts `oct_en_i` for at least one clock between frames; the
   // first such clock after an octet is the end-of-frame indication.
-  logic        fend;
+  logic fend;
   assign fend = !oct_en_i && in_frame;
 
   // --------------------------------------------------------------------------
-  // FCS check over the complete received octet sequence, FCS included.
+  // FCS check over the complete received octet sequence, FCS included
   //
   // The LFSR is re-seeded on every idle cycle, so the very first octet of a
   // frame is absorbed correctly without a separate start-of-frame handshake.
@@ -144,7 +145,9 @@ module es_switch_gmii_rx #(
   // still carries the value produced by the last octet of the frame, which is
   // exactly what the closing beat needs.
   // --------------------------------------------------------------------------
-  logic crc_en, crc_clr, crc_resid_ok;
+  logic crc_en;
+  logic crc_clr;
+  logic crc_resid_ok;
 
   assign crc_en  = sample;
   assign crc_clr = !oct_en_i;
@@ -162,7 +165,7 @@ module es_switch_gmii_rx #(
   /* verilator lint_on PINCONNECTEMPTY */
 
   // --------------------------------------------------------------------------
-  // Beat release.
+  // Beat release
   //
   // `emit` is the single condition under which a beat leaves the assembler; the
   // accompanying signals describe that beat.  It is a combinational decision
@@ -173,19 +176,20 @@ module es_switch_gmii_rx #(
   logic        emit_sof;
   logic        emit_eof;
   logic        emit_crc_ok;
-  logic [ 3:0] emit_octets;
+  logic [3:0]  emit_octets;
   logic [63:0] emit_data;
 
   // The beat in `acc` is full (bcnt == 8) and a ninth octet has been sampled, so
   // it is provably *not* the closing beat of the frame.
-  logic        full_and_more;
+  logic full_and_more;
   assign full_and_more = sample && (bcnt == 4'd8);
 
   // The frame has ended with either a full (bcnt == 8) or a partial
   // (0 < bcnt < 8) beat still sitting in `acc`; that beat is the closing one.
-  logic close_full, close_part;
-  assign close_full  = fend && (bcnt == 4'd8);
-  assign close_part  = fend && (bcnt != 4'd0) && (bcnt != 4'd8);
+  logic close_full;
+  logic close_part;
+  assign close_full = fend && (bcnt == 4'd8);
+  assign close_part = fend && (bcnt != 4'd0) && (bcnt != 4'd8);
 
   assign emit        = full_and_more || close_full || close_part;
   assign emit_sof    = acc_sof;
@@ -198,7 +202,7 @@ module es_switch_gmii_rx #(
   assign emit_data   = acc;
 
   // --------------------------------------------------------------------------
-  // Two stage beat pipeline.
+  // Two stage beat pipeline
   //
   // The end-of-frame marker and the FCS verdict are resolved in the assembler
   // (see above) and simply travel with the beat, so this is a plain two deep
@@ -209,13 +213,19 @@ module es_switch_gmii_rx #(
   // port in front of it always drains its beat FIFO, so a beat can never be
   // dropped, which is what allows the adapter to sustain full line rate.
   // --------------------------------------------------------------------------
-  logic s0_valid, s0_sof, s0_eof, s0_crc_ok;
+  logic        s0_valid;
+  logic        s0_sof;
+  logic        s0_eof;
+  logic        s0_crc_ok;
   logic [63:0] s0_data;
-  logic [ 3:0] s0_octets;
+  logic [3:0]  s0_octets;
 
-  logic s1_valid, s1_sof, s1_eof, s1_crc_ok;
+  logic        s1_valid;
+  logic        s1_sof;
+  logic        s1_eof;
+  logic        s1_crc_ok;
   logic [63:0] s1_data;
-  logic [ 3:0] s1_octets;
+  logic [3:0]  s1_octets;
 
   assign beat_valid_o  = s1_valid;
   assign beat_data_o   = s1_data;
@@ -224,6 +234,9 @@ module es_switch_gmii_rx #(
   assign beat_crc_ok_o = s1_crc_ok;
   assign beat_octets_o = s1_octets;
 
+  // --------------------------------------------------------------------------
+  // Synchronous state and datapath
+  // --------------------------------------------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       in_frame  <= 1'b0;
@@ -259,8 +272,8 @@ module es_switch_gmii_rx #(
         acc_sof  <= 1'b0;
       end else if (sample) begin
         if (bcnt == 4'd8) begin
-          // Impossible in a well-formed stream: the beat was already released
-          // by `full_and_more` above.  Held for simulation robustness.
+          // Unreachable in a well-formed stream: the beat was already released
+          // by `full_and_more` above.  Kept for simulation robustness.
           acc     <= {acc[55:0], oct_d_i};
           acc_sof <= 1'b0;
         end else if (bcnt == 4'd0) begin

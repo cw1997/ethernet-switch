@@ -5,9 +5,12 @@
 //                Reset and clear take priority over independent word writes.
 // ============================================================================
 `timescale 1ns/1ps
+
 `ifndef ES_MEMS_REG_BANK_SV
 `define ES_MEMS_REG_BANK_SV
+
 `default_nettype none
+
 module es_mems_reg_bank #(
   /// Word width in bits.
   parameter int unsigned WIDTH = 32,
@@ -23,21 +26,37 @@ module es_mems_reg_bank #(
   input var logic [DEPTH*WIDTH-1:0] wr_data_i,
   /// Packed register contents, with entry zero in the least-significant slice.
   output    logic [DEPTH*WIDTH-1:0] data_o);
+
+  // --------------------------------------------------------------------------
+  // One flop group per entry
+  //
+  // Quartus rejects an inline `for (genvar g = ...)` and a bare module-level
+  // loop, so the genvar is declared separately and the loop is wrapped in an
+  // explicit generate block.  See AGENTS.md 2.4.
+  // --------------------------------------------------------------------------
   genvar g;
+
   generate
     for (g = 0; g < DEPTH; g++) begin : g_entry
-      logic [WIDTH-1:0] value_q, write_word;
+      logic [WIDTH-1:0] value_q;
+      logic [WIDTH-1:0] write_word;
+
       // Icarus needs a plain word at each per-entry nonblocking store; the
       // generated constant slice supplies it before the clocked process.
       assign write_word = wr_data_i[g*WIDTH +: WIDTH];
+
       always_ff @(posedge clk_i) begin
-        if (!rst_ni) value_q <= RESET_VALUE;
-        else if (clear_i) value_q <= RESET_VALUE;
+        if (!rst_ni)        value_q <= RESET_VALUE;
+        else if (clear_i)   value_q <= RESET_VALUE;
         else if (wr_en_i[g]) value_q <= write_word;
       end
+
       assign data_o[g*WIDTH +: WIDTH] = value_q;
     end
   endgenerate
+
 endmodule : es_mems_reg_bank
+
 `default_nettype wire
-`endif // ES_MEMS_REG_BANK_SV
+
+`endif  // ES_MEMS_REG_BANK_SV

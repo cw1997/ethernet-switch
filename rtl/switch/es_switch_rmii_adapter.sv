@@ -4,9 +4,8 @@
 //                pins into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the RMII pins.
 //
-//                ------------------------------------------------------------------------
 //                Synchronous model (no REF_CLK pin)
-//                ------------------------------------------------------------------------
+//                -----------------------------------
 //                Like the rest of the core this adapter is synchronous to the
 //                single `clk_i` and consumes no PHY clock.  A real RMII clocks
 //                its 2-bit chunks with a 50 MHz REF_CLK shared by MAC and PHY;
@@ -29,7 +28,7 @@
 //                    nothing else,
 //                  * the octet stream starts with the destination MAC: the PHY
 //                    has already removed the preamble, as a real MAC expects
-//                    (the same convention as sw_gmii_rx).
+//                    (the same convention as es_switch_gmii_rx).
 //
 //                BYTE_PERIOD must be a multiple of 4 - four whole chunk
 //                windows have to fit into every octet time.  1000 Mbit/s would
@@ -48,45 +47,44 @@
 //                RMII has no RX_ER: a PHY with a receive coding error simply
 //                delivers corrupt data, which the fabric's FCS check rejects.
 //
-//                ------------------------------------------------------------------------
 //                Receive path
-//                ------------------------------------------------------------------------
+//                ------------
 //                The chunk window counter *parks* while the link is idle and
 //                therefore counts every frame's windows from that frame's own
 //                CRS_DV rise - no front-end or testbench has to land a frame
-//                on any particular grid, exactly as sw_gmii_rx asks nothing of
-//                the phase of an incoming frame.  One chunk is sampled at the
-//                end of every window; after the fourth, the assembled octet is
-//                presented for one full octet time, one octet behind the wire.
+//                on any particular grid, exactly as es_switch_gmii_rx asks
+//                nothing of the phase of an incoming frame.  One chunk is
+//                sampled at the end of every window; after the fourth, the
+//                assembled octet is presented for one full octet time, one octet
+//                behind the wire.
 //
 //                A presentation down-counter closes the window: the counter
 //                that produces the sampling instants parks on the idle link,
 //                so the *last* octet of a frame has no sampling boundary left
 //                to end its presentation window - the down-counter is what
 //                keeps the canonical stream stable for a full BYTE_PERIOD
-//                after the link went idle, which is what sw_gmii_rx samples
-//                on.  A presentation window is always exactly BYTE_PERIOD
-//                long, so the octet rate reaching the core is unaffected by
-//                the latency.
+//                after the link went idle, which is what es_switch_gmii_rx
+//                samples on.  A presentation window is always exactly
+//                BYTE_PERIOD long, so the octet rate reaching the core is
+//                unaffected by the latency.
 //
-//                ------------------------------------------------------------------------
 //                Transmit path
-//                ------------------------------------------------------------------------
-//                The canonical octet stream is produced by sw_gmii_tx, which
-//                only ever updates its octet on an octet boundary of the grid
-//                that every module on clk_i derives from reset.  Splitting it
-//                into chunks is therefore a pure combinational part-select
+//                -------------
+//                The canonical octet stream is produced by es_switch_gmii_tx,
+//                which only ever updates its octet on an octet boundary of the
+//                grid that every module on clk_i derives from reset.  Splitting
+//                it into chunks is therefore a pure combinational part-select
 //                driven by a *free-running* window counter: chunk k is on the
 //                pins during the k-th quarter of every octet time.  The enable
 //                is passed through combinationally for the same reason
-//                sw_gmii_tx drives its own enable combinationally - a
+//                es_switch_gmii_tx drives its own enable combinationally - a
 //                registered enable would be one clock late and clip the first
 //                chunk.
 //
 //                The transmit counter cannot be shared with the receive
 //                counter: the receive one parks on the idle link, which would
-//                drag the transmit part-select boundaries off the sw_gmii_tx
-//                grid during every inter-frame gap.
+//                drag the transmit part-select boundaries off the
+//                es_switch_gmii_tx grid during every inter-frame gap.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -127,26 +125,38 @@ module es_switch_rmii_adapter #(
   output    logic [1:0] rmii_txd_o,
 
   // ---- canonical octet stream (see the module header) ----------------------
-  // receive direction: towards sw_rx_port
   /// Receive octets are presented for one complete BYTE_PERIOD window.
   output    logic       oct_en_o,
-  output    logic [7:0] oct_d_o,  // transmit direction: from sw_tx_port
+  output    logic [7:0] oct_d_o,
   /// Transmit octets are consumed on the canonical octet grid.
   input var logic       oct_en_i,
-  input var logic [7:0] oct_d_i);
+  input var logic [7:0] oct_d_i
+);
 
-  // Chunk window length.  The elaboration check below rejects anything that
-  // does not divide evenly, so this module can rely on whole windows.
+  // --------------------------------------------------------------------------
+  // Window timing
+  //
+  // CPK clocks per chunk window, four windows per octet time.  The elaboration
+  // check below rejects anything that does not divide evenly, so this module can
+  // rely on whole windows.
+  // --------------------------------------------------------------------------
   localparam int unsigned CPK = BYTE_PERIOD / 4;
   localparam int unsigned CPW = (CPK <= 1) ? 1 : $clog2(CPK);
   /// Last clock of a chunk window (the window counts 0 .. CPK-1).
   localparam logic [CPW-1:0] CHK_LAST = CPK[CPW-1:0] - CPW'(1);
-  /// Width of the presentation down-counter, which holds BYTE_PERIOD-1.
+  /// Width of the presentation down-counter, which holds BYTE_PERIOD-1.  Four
+  /// windows is the smallest legal octet time, so the width never drops below 2.
   localparam int unsigned PRW = (BYTE_PERIOD <= 4) ? 2 : $clog2(BYTE_PERIOD);
 
+  // --------------------------------------------------------------------------
+  // Parameter check
+  //
+  // Excluded from synthesis because yosys has no implementation for `$error`
+  // (AGENTS.md 3.4).
+  // --------------------------------------------------------------------------
 `ifndef SYNTHESIS
   initial begin
-    if ((BYTE_PERIOD < 4) || (BYTE_PERIOD % 4 != 0)) begin
+    if ((BYTE_PERIOD < 4) || ((BYTE_PERIOD % 4) != 0)) begin
       $error(
           "es_switch_rmii_adapter: BYTE_PERIOD (%0d) must be a multiple of 4 clocks - four 2-bit chunk windows per octet time",
           BYTE_PERIOD);
@@ -155,7 +165,7 @@ module es_switch_rmii_adapter #(
 `endif
 
   // --------------------------------------------------------------------------
-  // Receive: chunk window counter.
+  // Receive: chunk window counter
   //
   // Parks at the first chunk window while the link is idle, so the first
   // window of every frame is counted from that frame's own CRS_DV rise - the
@@ -165,7 +175,7 @@ module es_switch_rmii_adapter #(
   // CRS_DV high is already the first clock of the first chunk window.
   // --------------------------------------------------------------------------
   logic [CPW-1:0] rx_phase;  ///< clock within the current chunk window
-  logic [    1:0] rx_cidx;  ///< chunk index within the octet (0 = bits [1:0])
+  logic [1:0]     rx_cidx;   ///< chunk index within the octet (0 = bits [1:0])
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -176,7 +186,7 @@ module es_switch_rmii_adapter #(
       rx_cidx  <= 2'd0;
     end else if (rx_phase == CHK_LAST) begin
       rx_phase <= '0;
-      rx_cidx  <= (rx_cidx == 2'd3) ? 2'd0 : rx_cidx + 2'd1;
+      rx_cidx  <= (rx_cidx == 2'd3) ? 2'd0 : (rx_cidx + 2'd1);
     end else begin
       rx_phase <= rx_phase + CPW'(1);
     end
@@ -184,26 +194,26 @@ module es_switch_rmii_adapter #(
 
   /// End of a chunk window with valid data on the pins.
   logic rx_win_end;
-  assign rx_win_end = rmii_crs_dv_i && (rx_phase == CHK_LAST);
   /// End of the octet time (the fourth chunk window closes).
   logic rx_oct_end;
+
+  assign rx_win_end = rmii_crs_dv_i && (rx_phase == CHK_LAST);
   assign rx_oct_end = rx_win_end && (rx_cidx == 2'd3);
 
   // --------------------------------------------------------------------------
-  // Receive: octet assembly and presentation.
+  // Receive: octet assembly and presentation
   // --------------------------------------------------------------------------
-  logic [    1:0] rx_c0_q;  ///< bits [1:0], captured in the first window
-  logic [    1:0] rx_c1_q;  ///< bits [3:2]
-  logic [    1:0] rx_c2_q;  ///< bits [5:4]
-  logic           rx_en_q;  ///< enable presented on the canonical stream
-  logic [    7:0] rx_d_q;  ///< octet presented on the canonical stream
+  logic [1:0]     rx_c0_q;      ///< bits [1:0], captured in the first window
+  logic [1:0]     rx_c1_q;      ///< bits [3:2]
+  logic [1:0]     rx_c2_q;      ///< bits [5:4]
+  logic           rx_en_q;      ///< enable presented on the canonical stream
+  logic [7:0]     rx_d_q;       ///< octet presented on the canonical stream
+  logic [PRW-1:0] rx_pres_cnt;  ///< presentation window countdown
 
-  /// Presentation window countdown.  Reloaded at every octet end; it is what
-  /// closes the *last* octet's window, after the link has gone idle and the
-  /// parking counter has stopped producing octet ends.
-  logic [PRW-1:0] rx_pres_cnt;
-
-  logic           rx_en_nxt;
+  /// Presentation countdown.  Reloaded at every octet end; it is what closes
+  /// the *last* octet's window, after the link has gone idle and the parking
+  /// counter has stopped producing octet ends.
+  logic rx_en_nxt;
   assign rx_en_nxt = rx_oct_end || (rx_pres_cnt != '0);
 
   always_ff @(posedge clk_i) begin
@@ -242,10 +252,10 @@ module es_switch_rmii_adapter #(
   assign oct_d_o  = rx_d_q;
 
   // --------------------------------------------------------------------------
-  // Transmit: free-running chunk windows on the reset grid.
+  // Transmit: free-running chunk windows on the reset grid
   // --------------------------------------------------------------------------
   logic [CPW-1:0] tx_phase;
-  logic [    1:0] tx_cidx;
+  logic [1:0]     tx_cidx;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -253,22 +263,23 @@ module es_switch_rmii_adapter #(
       tx_cidx  <= 2'd0;
     end else if (tx_phase == CHK_LAST) begin
       tx_phase <= '0;
-      tx_cidx  <= (tx_cidx == 2'd3) ? 2'd0 : tx_cidx + 2'd1;
+      tx_cidx  <= (tx_cidx == 2'd3) ? 2'd0 : (tx_cidx + 2'd1);
     end else begin
       tx_phase <= tx_phase + CPW'(1);
     end
   end
 
   // `oct_d_i` only ever changes on an octet boundary of the same grid
-  // (guaranteed by sw_gmii_tx), so the chunk index alone decides which pair of
-  // bits is on the pins.  No register in this path: a registered chunk would
-  // lag the combinationally driven enable and shift the first chunk window.
-  // Continuous assignment rather than an always_comb case: a constant part
-  // select inside an always_* block makes Icarus over-approximate the
+  // (guaranteed by es_switch_gmii_tx), so the chunk index alone decides which
+  // pair of bits is on the pins.  No register in this path: a registered chunk
+  // would lag the combinationally driven enable and shift the first chunk
+  // window.  Continuous assignment rather than an always_comb case: a constant
+  // part select inside an always_* block makes Icarus over-approximate the
   // sensitivity list (it prints a "sorry" and includes every bit).
   assign rmii_tx_en_o = oct_en_i;
-  assign rmii_txd_o = (tx_cidx == 2'd0) ? oct_d_i[1:0] : (tx_cidx == 2'd1) ?
-      oct_d_i[3:2] : (tx_cidx == 2'd2) ? oct_d_i[5:4] : oct_d_i[7:6];  // tx_cidx == 2'd3
+  assign rmii_txd_o   = (tx_cidx == 2'd0) ? oct_d_i[1:0] :
+                        (tx_cidx == 2'd1) ? oct_d_i[3:2] :
+                        (tx_cidx == 2'd2) ? oct_d_i[5:4] : oct_d_i[7:6];
 
 endmodule : es_switch_rmii_adapter
 

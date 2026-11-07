@@ -3,7 +3,7 @@
 //  Description : Ingress datapath of one Layer-2 switch port.
 //
 //                Responsibilities
-//                ------------------
+//                ----------------
 //                1. Absorb the canonical octet stream into a small elastic beat
 //                   FIFO.  The octet interface itself is never stalled (a
 //                   mid-frame pause is illegal on GMII, and the MII/RMII symbol
@@ -25,9 +25,8 @@
 //                   rollback.  Payload and tag can therefore never lose frame
 //                   synchronisation, whatever the receive conditions are.
 //
-//                ------------------------------------------------------------------------
 //                Frame size resolution
-//                ------------------------------------------------------------------------
+//                ---------------------
 //                The length/EtherType field only determines the frame size for
 //                a legacy 802.3 *length* field (values <= 1500).  Every modern
 //                EtherType frame - IPv4, IPv6, ARP, anything - has an unknown
@@ -67,40 +66,28 @@
 // what lets them appear in a port range.  See es_defs.sv for why a package cannot
 // be used here.
 module es_switch_rx_port #(
-
   /// Total number of switch ports (the port index must be < NUM_PORTS).
-  parameter int unsigned        NUM_PORTS      = SW_DEFAULT_NUM_PORTS,
-
+  parameter int unsigned NUM_PORTS = SW_DEFAULT_NUM_PORTS,
   /// Index of this port; drives the ingress source index and the CAM learn.
-  parameter int unsigned        PORT_ID        = 0,
-
+  parameter int unsigned PORT_ID = 0,
   /// MAC address owned by this port; frames sourced from it are not reflected.
-  parameter logic        [47:0] PORT_MAC       = 48'h0,
-
+  parameter logic [47:0] PORT_MAC = 48'h0,
   /// `clk_i` cycles per octet time of the canonical octet stream on this port.
-  parameter int unsigned        BYTE_PERIOD    = 1,
-
+  parameter int unsigned BYTE_PERIOD = 1,
   /// Largest frame accepted, in octets (FCS excluded).
-  parameter int unsigned        MAX_FRAME_LEN  = 1518,
-
+  parameter int unsigned MAX_FRAME_LEN = 1518,
   /// Payload beats buffered per port.  Must be >= ceil(MAX_FRAME_LEN/8) or
-
   /// maximum-length frames are dropped as ingress overflow.
-  parameter int unsigned        RX_FIFO_DEPTH  = 256,
-
+  parameter int unsigned RX_FIFO_DEPTH = 256,
   /// Frame descriptors buffered per port.  Bounds how many complete frames
-
   /// may wait for the fabric.
-  parameter int unsigned        TAG_FIFO_DEPTH = 16,
-
+  parameter int unsigned TAG_FIFO_DEPTH = 16,
   /// Elastic beat FIFO between the octet adapter and the parser.
-  parameter int unsigned        WF_DEPTH       = 16,
-
+  parameter int unsigned WF_DEPTH = 16,
   /// Unknown / group address flooding policy (elaboration-time default).
-  parameter logic        [ 1:0] FLOOD_MODE     = 2'd1,
-
+  parameter logic [1:0] FLOOD_MODE = 2'd1,
   /// Source address learning enable (elaboration-time default).
-  parameter logic               LEARNING_EN    = 1'b1
+  parameter logic LEARNING_EN = 1'b1
 ) (
   /// Clock/reset and administrative link state for this ingress port.
   input var logic clk_i,
@@ -115,7 +102,7 @@ module es_switch_rx_port #(
   // ---- CAM lookup interface (answer valid one clock after the request) ------
   /// Destination-address query and one-clock-later lookup result.
   output    logic                 cam_req_o,
-  output    logic [47:0] cam_mac_o,
+  output    logic [47:0]          cam_mac_o,
   input var logic                 cam_hit_i,
   input var logic [NUM_PORTS-1:0] cam_port_i,
 
@@ -136,8 +123,8 @@ module es_switch_rx_port #(
   /// FWFT payload head and occupancy controls consumed by the fabric.
   output    logic [63:0] rd_data_o,
   output    logic        empty_o,
-  input var logic        rd_en_i,  ///< pop the next payload beat
-  input var logic        flush_i,  ///< discard everything buffered
+  input var logic        rd_en_i,   ///< pop the next payload beat
+  input var logic        flush_i,   ///< discard everything buffered
 
   // ---- tag FIFO read side (driven by the arbiter) -------------------------
   // The fabric owns the read side of this FIFO: it decides which ingress
@@ -156,14 +143,17 @@ module es_switch_rx_port #(
   output    logic [32*SW_STAT_COUNT-1:0] stat_o
 );
 
-  localparam int unsigned PW = sw_port_w(NUM_PORTS);
-  localparam int unsigned TAGW = sw_tag_width(NUM_PORTS);
-  localparam int unsigned BEATW = 11;  ///< beat index width
-  localparam int unsigned OCTW = SW_LEN_W + 7;  ///< wire octet counter
-  localparam int unsigned UF_W = (RX_FIFO_DEPTH <= 2) ? 1 : $clog2(RX_FIFO_DEPTH);
+  // --------------------------------------------------------------------------
+  // Derived widths
+  // --------------------------------------------------------------------------
+  localparam int unsigned PW        = sw_port_w(NUM_PORTS);
+  localparam int unsigned TAGW      = sw_tag_width(NUM_PORTS);
+  localparam int unsigned BEATW     = 11;            ///< beat index width
+  localparam int unsigned OCTW      = SW_LEN_W + 7;  ///< wire octet counter
+  localparam int unsigned UF_W      = (RX_FIFO_DEPTH <= 2) ? 1 : $clog2(RX_FIFO_DEPTH);
   localparam int unsigned MAX_BEATS = sw_beats_of(MAX_FRAME_LEN);
 
-  // A one-hot port bit, correctly sized for NUM_PORTS == 1 and 2 as well.
+  /// A one-hot port bit, correctly sized for NUM_PORTS == 1 and 2 as well.
   localparam logic [NUM_PORTS-1:0] PORT_BIT_ONE = {{(NUM_PORTS - 1) {1'b0}}, 1'b1};
 
   // --------------------------------------------------------------------------
@@ -185,12 +175,15 @@ module es_switch_rx_port #(
   // --------------------------------------------------------------------------
   // 1. Octet adapter and elastic beat FIFO
   // --------------------------------------------------------------------------
-  logic beat_valid, beat_sof, beat_eof, beat_crc_ok;
+  logic        beat_valid;
+  logic        beat_sof;
+  logic        beat_eof;
+  logic        beat_crc_ok;
   logic [63:0] beat_data;
-  logic [ 3:0] beat_octets;
+  logic [3:0]  beat_octets;
 
   es_switch_gmii_rx #(
-    .BYTE_PERIOD(BYTE_PERIOD)
+    .BYTE_PERIOD (BYTE_PERIOD)
   ) u_gmii_rx (
     .clk_i         (clk_i),
     .rst_ni        (rst_ni),
@@ -223,7 +216,7 @@ module es_switch_rx_port #(
   logic        w_sof;
   logic        w_eof;
   logic        w_crcok;
-  logic [ 3:0] w_oct;
+  logic [3:0]  w_oct;
 
   assign w_data  = wf_rd_data[63:0];
   assign w_sof   = wf_rd_data[64];
@@ -245,30 +238,42 @@ module es_switch_rx_port #(
     S_DRAIN = 3'd7   ///< discarding the remainder of a rejected frame
   } state_e;
 
-  state_e state;
+  state_e state_q;
 
-  logic [63:0] hdr_w0, hdr_w1, hdr_w2;  ///< captured header beats
-  logic [15:0] src_hi_q;  ///< first two octets of the source MAC
+  // --------------------------------------------------------------------------
+  // 3. Header capture and frame geometry registers
+  // --------------------------------------------------------------------------
+  logic [63:0] hdr_w0;      ///< captured header beat 0
+  logic [63:0] hdr_w1;      ///< captured header beat 1
+  logic [63:0] hdr_w2;      ///< captured header beat 2 (VLAN only)
+  logic [15:0] src_hi_q;    ///< first two octets of the source MAC
   logic        hdr_vlan_q;  ///< header carried a 802.1Q tag
   logic [15:0] hdr_type_q;  ///< resolved (inner) length/EtherType
-  sw_mac_t dst_mac_q, src_mac_q;
+  sw_mac_t     dst_mac_q;
+  sw_mac_t     src_mac_q;
 
-  logic                 fixed_len_q;  ///< 802.3 length field governs the size
-  logic [ SW_LEN_W-1:0] frame_len_q;  ///< declared size (fixed) or the bound
-  logic [    BEATW-1:0] last_beat_q;  ///< index of the last payload beat
-  logic [    BEATW-1:0] widx;  ///< payload beats written so far
-  logic [    BEATW-1:0] wr_cnt;  ///< beats written for this frame
-  logic [     OCTW-1:0] oct_cnt;  ///< octets popped from the beat FIFO
+  logic        fixed_len_q;  ///< 802.3 length field governs the size
+  logic [SW_LEN_W-1:0] frame_len_q;  ///< declared size (fixed) or the bound
+  logic [BEATW-1:0]    last_beat_q;  ///< index of the last payload beat
+  logic [BEATW-1:0]    widx;         ///< payload beats written so far
+  logic [BEATW-1:0]    wr_cnt;       ///< beats written for this frame
+  logic [OCTW-1:0]     oct_cnt;      ///< octets popped from the beat FIFO
 
   logic [NUM_PORTS-1:0] verdict_mask_q;
   logic                 verdict_flood_q;
 
+  /// A one-hot bit for this port, used to exclude the ingress port from every
+  /// forwarding mask.
+  logic [NUM_PORTS-1:0] port_bit;
+  assign port_bit = PORT_BIT_ONE << PW'(PORT_ID);
+
   // --------------------------------------------------------------------------
-  // 3. CAM request
-  // --------------------------------------------------------------------------
+  // 4. CAM request
+  //
   // The address must be presented in the very clock in which the request is
   // asserted, so it is taken combinationally from the beat FIFO head.
-  assign cam_req_o = (state == S_IDLE) && !wf_empty && w_sof;
+  // --------------------------------------------------------------------------
+  assign cam_req_o = (state_q == S_IDLE) && !wf_empty && w_sof;
   assign cam_mac_o = w_data[63:16];
 
   // Registered CAM answer: the CAM needs one clock to respond, and the header
@@ -282,7 +287,7 @@ module es_switch_rx_port #(
   end
 
   // --------------------------------------------------------------------------
-  // 4. Ingress forwarding policy, evaluated in S_DEC
+  // 5. Ingress forwarding policy, evaluated in S_DEC
   //
   //  * A frame whose source address is the port's own address is a reflected
   //    frame: it has come back around to the port it came from, so it is neither
@@ -303,15 +308,11 @@ module es_switch_rx_port #(
   //  * A unicast address that misses in the CAM is flooded (or filtered)
   //    according to the policy.
   // --------------------------------------------------------------------------
-  logic [NUM_PORTS-1:0] port_bit;
-  assign port_bit = PORT_BIT_ONE << PW'(PORT_ID);
 
-  // --------------------------------------------------------------------------
   // Effective run-time configuration.  `cfg_ovr_i` selects the run-time
   // configuration ports over the elaboration-time defaults `FLOOD_MODE` and
   // `LEARNING_EN`; the signal is resolved once here and used by both the
   // forwarding policy below and the learning logic further down.
-  // --------------------------------------------------------------------------
   logic [1:0] flood_mode;
   logic       learning_en;
   assign flood_mode  = cfg_ovr_i ? flood_mode_i : 2'(FLOOD_MODE);
@@ -323,19 +324,20 @@ module es_switch_rx_port #(
   // Unknown-unicast and group-address flooding permission.
   logic flood_unknown_ucast;
   logic flood_group;
+
   always_comb begin
     case (flood_mode)
       SW_FLOOD_ALL: begin
         flood_unknown_ucast = 1'b1;
-        flood_group = 1'b1;
+        flood_group         = 1'b1;
       end
       SW_FLOOD_BCAST_UKN: begin
         flood_unknown_ucast = 1'b1;
-        flood_group = 1'b0;
+        flood_group         = 1'b0;
       end
       default: begin
         flood_unknown_ucast = 1'b0;
-        flood_group = 1'b0;
+        flood_group         = 1'b0;
       end
     endcase
   end
@@ -385,9 +387,10 @@ module es_switch_rx_port #(
   end
 
   // --------------------------------------------------------------------------
-  // 5. Frame geometry derived from the length / EtherType field
+  // 6. Frame geometry derived from the length / EtherType field
   // --------------------------------------------------------------------------
   logic [15:0] declared_payload;
+
   always_comb begin
     if (sw_is_8023_length(hdr_type_q)) begin
       // 802.3 length field: the frame is exactly this long.  Values below the
@@ -403,14 +406,15 @@ module es_switch_rx_port #(
   assign len_calc = 17'(hdr_vlan_q ? SW_HDR_LEN_VLAN : SW_HDR_LEN) + {1'b0, declared_payload};
 
   logic [15:0] len_clamped;
+
   always_comb begin
-    if (len_calc > 17'(MAX_FRAME_LEN)) len_clamped = 16'(MAX_FRAME_LEN);
+    if (len_calc > 17'(MAX_FRAME_LEN))         len_clamped = 16'(MAX_FRAME_LEN);
     else if (len_calc < 17'(SW_MIN_FRAME_LEN)) len_clamped = 16'(SW_MIN_FRAME_LEN);
-    else len_clamped = 16'(len_calc);
+    else                                       len_clamped = 16'(len_calc);
   end
 
   // --------------------------------------------------------------------------
-  // 6. Ingress buffers
+  // 7. Ingress buffers
   //
   // Each port owns one payload FIFO (the frame octets, 64 bits per beat) and
   // one descriptor FIFO (one `TAGW` word per frame).  Both are fall-through on
@@ -418,12 +422,12 @@ module es_switch_rx_port #(
   // which it pops the descriptor.  `data_full` / `tag_full` are needed by the
   // frame-close decision below, hence the early declaration.
   // --------------------------------------------------------------------------
-  logic            data_wr_en;
-  logic [    63:0] data_wr_data;
-  logic            data_full;
-  logic            data_undo;
-  logic [  UF_W:0] data_undo_cnt;
-  logic            data_flush;
+  logic          data_wr_en;
+  logic [63:0]   data_wr_data;
+  logic          data_full;
+  logic          data_undo;
+  logic [UF_W:0] data_undo_cnt;
+  logic          data_flush;
 
   logic            tag_wr_en;
   logic [TAGW-1:0] tag_wr_data;
@@ -432,25 +436,25 @@ module es_switch_rx_port #(
   logic            tag_empty;
 
   // --------------------------------------------------------------------------
-  // 7. Frame close decision
+  // 8. Frame close decision
   //
   // Evaluated in S_BODY and S_TAIL for the beat that carries end-of-frame.  The
   // same expressions are valid in both states, because `widx` already accounts
   // for the beats already written and `w_oct` is the octet count of the closing
   // beat itself.
   // --------------------------------------------------------------------------
-  logic [    16:0] fin_wire;  ///< octets the whole frame occupied on the wire
-  logic [    15:0] fin_len;  ///< MAC client data length derived from the wire
-  logic [    15:0] fin_beats;  ///< payload beats the frame occupies
-  logic [     3:0] fin_octets;  ///< valid octets in the final payload beat
-  logic            fin_write;  ///< the closing beat still carries payload
-  logic [    63:0] fin_data;  ///< closing beat, masked to `fin_octets`
-  logic            fin_runt;  ///< too short, or shorter than declared
-  logic            fin_ovr;  ///< too long, or longer than declared
-  logic            fin_room;  ///< the closing beat and the tag still fit
+  logic [16:0] fin_wire;    ///< octets the whole frame occupied on the wire
+  logic [15:0] fin_len;     ///< MAC client data length derived from the wire
+  logic [15:0] fin_beats;   ///< payload beats the frame occupies
+  logic [3:0]  fin_octets;  ///< valid octets in the final payload beat
+  logic        fin_write;   ///< the closing beat still carries payload
+  logic [63:0] fin_data;    ///< closing beat, masked to `fin_octets`
+  logic        fin_runt;    ///< too short, or shorter than declared
+  logic        fin_ovr;     ///< too long, or longer than declared
+  logic        fin_room;    ///< the closing beat and the tag still fit
 
   // Hoisted constant select: the number of octets in the final payload beat.
-  logic [     2:0] fin_len_lo;
+  logic [2:0] fin_len_lo;
   assign fin_len_lo = fin_len[2:0];
 
   always_comb begin
@@ -473,22 +477,22 @@ module es_switch_rx_port #(
       fin_len = (fin_wire > 17'(SW_FCS_LEN)) ? 16'(fin_wire - 17'(SW_FCS_LEN)) : 16'd0;
     end
 
-    fin_beats = 16'((16'(fin_len) + 16'd7) >> 3);
+    fin_beats  = 16'((16'(fin_len) + 16'd7) >> 3);
     fin_octets = (fin_len_lo == 3'd0) ? 4'd8 : {1'b0, fin_len_lo};
-    fin_write = (widx < BEATW'(fin_beats));
-    fin_data = mask_octets(w_data, fin_octets);
+    fin_write  = (widx < BEATW'(fin_beats));
+    fin_data   = mask_octets(w_data, fin_octets);
 
     // ---- length classification --------------------------------------------
     fin_runt = 1'b0;
-    fin_ovr = 1'b0;
+    fin_ovr  = 1'b0;
     if (fixed_len_q) begin
-      if (fin_wire != 17'(frame_len_q) + 17'(SW_FCS_LEN)) begin
-        if (fin_wire < 17'(frame_len_q) + 17'(SW_FCS_LEN)) fin_runt = 1'b1;
+      if (fin_wire != (17'(frame_len_q) + 17'(SW_FCS_LEN))) begin
+        if (fin_wire < (17'(frame_len_q) + 17'(SW_FCS_LEN))) fin_runt = 1'b1;
         else fin_ovr = 1'b1;
       end
     end else begin
-      if (fin_len < 16'(SW_MIN_FRAME_LEN)) fin_runt = 1'b1;
-      else if (fin_len > 16'(MAX_FRAME_LEN)) fin_ovr = 1'b1;
+      if (fin_len < 16'(SW_MIN_FRAME_LEN))   fin_runt = 1'b1;
+      else if (fin_len > 16'(MAX_FRAME_LEN)) fin_ovr  = 1'b1;
     end
     // A frame that cannot possibly fit into the payload buffer is oversize.
     if (16'(MAX_BEATS) < fin_beats) fin_ovr = 1'b1;
@@ -500,15 +504,16 @@ module es_switch_rx_port #(
   end
 
   // --------------------------------------------------------------------------
-  // 8. Payload/tag FIFO read side and beat consumption
+  // 9. Payload/tag FIFO read side and beat consumption
   // --------------------------------------------------------------------------
   assign tag_rd_data_o = tag_rd_data;
-  assign tag_empty_o = tag_empty;
+  assign tag_empty_o   = tag_empty;
 
   // A hard flush must never cut a frame in half, so it is only accepted while
   // the parser is not driving a payload FIFO write.
-  assign data_flush = flush_i && ((state == S_IDLE) || (state == S_HDR2) || (state == S_HDR3) ||
-                                  (state == S_DEC) || (state == S_DRAIN));
+  assign data_flush = flush_i &&
+                      ((state_q == S_IDLE) || (state_q == S_HDR2) || (state_q == S_HDR3) ||
+                       (state_q == S_DEC) || (state_q == S_DRAIN));
 
   assign data_undo_cnt = (UF_W + 1)'(wr_cnt);
 
@@ -526,27 +531,32 @@ module es_switch_rx_port #(
   // S_BODY additionally waits for payload FIFO space, because a full buffer
   // cannot accept the next beat.
   logic pop;
+
   always_comb begin
-    case (state)
+    case (state_q)
       S_DEC, S_PRE: pop = 1'b0;
       S_BODY:       pop = !wf_empty && !data_full;
       default:      pop = !wf_empty;
     endcase
   end
+
   assign wf_rd_en = pop;
 
   // --------------------------------------------------------------------------
-  // 9. Frame tag assembly
+  // 10. Frame tag assembly
+  //
+  // The descriptor length comes from the declared size while the frame is being
+  // received, and from the size measured on the wire once the frame closes.
+  // For an EtherType frame only the latter is meaningful.
   // --------------------------------------------------------------------------
-  // The descriptor length comes from the declared size while the frame is
-  // being received, and from the size measured on the wire once the frame
-  // closes.  For an EtherType frame only the latter is meaningful.
   logic [SW_LEN_W-1:0] tag_len_src;
-  assign tag_len_src = ((state == S_BODY) || (state == S_TAIL)) ? SW_LEN_W'(fin_len) : frame_len_q;
+  assign tag_len_src = ((state_q == S_BODY) || (state_q == S_TAIL)) ?
+                       SW_LEN_W'(fin_len) : frame_len_q;
 
-  // The field order below is the mirror image of the `sw_tag_*_lsb()` helpers in
-  // the package, so the two cannot drift apart: the package defines the bit
-  // offsets and this concatenation defines the word, in the same order.
+  // The field order below is the mirror image of the `sw_tag_*_lsb()` helpers
+  // declared in switch/es_switch_defs.sv, so the two cannot drift apart: the
+  // library defines the bit offsets and this concatenation defines the word, in
+  // the same order.
   //   { drop, flood, len[SW_LEN_W-1:0], src[PW-1:0], dst_mask[NUM_PORTS-1:0] }
   logic [TAGW-1:0] tag;
   assign tag = {
@@ -558,9 +568,14 @@ module es_switch_rx_port #(
   };
 
   // --------------------------------------------------------------------------
-  // 10. Statistics counters
+  // 11. Statistics counters
   // --------------------------------------------------------------------------
-  logic [31:0] cnt_frames, cnt_octets, cnt_filtered, cnt_crc, cnt_runt, cnt_ovr;
+  logic [31:0] cnt_frames;
+  logic [31:0] cnt_octets;
+  logic [31:0] cnt_filtered;
+  logic [31:0] cnt_crc;
+  logic [31:0] cnt_runt;
+  logic [31:0] cnt_ovr;
   logic [31:0] cnt_ovf;  ///< ingress buffer exhaustion (distinct from oversize)
 
   assign stat_o[32*int'(SW_STAT_RX_FRAMES) +: 32]   = cnt_frames;
@@ -572,6 +587,7 @@ module es_switch_rx_port #(
   // Ingress buffer exhaustion is reported separately from an oversize frame,
   // because it points at a buffer that is too small rather than at a bad frame.
   assign stat_o[32*int'(SW_STAT_RX_OVERFLOW) +: 32] = cnt_ovf;
+
   // The remaining counters are produced by the transmit path, the scheduler
   // and the CAM; the top level sums them in.
   // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
@@ -579,6 +595,7 @@ module es_switch_rx_port #(
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
   // all forms (see es_switch_arbiter.sv for the full note).
   genvar gk;
+
   generate
     for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
       if ((gk != int'(SW_STAT_RX_FRAMES)) && (gk != int'(SW_STAT_RX_OCTETS)) &&
@@ -591,11 +608,11 @@ module es_switch_rx_port #(
   endgenerate
 
   // --------------------------------------------------------------------------
-  // 10. Main parser
+  // 12. Main parser
   // --------------------------------------------------------------------------
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
-      state           <= S_IDLE;
+      state_q         <= S_IDLE;
       hdr_w0          <= 64'd0;
       hdr_w1          <= 64'd0;
       hdr_w2          <= 64'd0;
@@ -627,6 +644,7 @@ module es_switch_rx_port #(
       cnt_ovr         <= 32'd0;
       cnt_ovf         <= 32'd0;
     end else begin
+      // All five strobes are one-clock pulses by default.
       data_wr_en <= 1'b0;
       data_undo  <= 1'b0;
       tag_wr_en  <= 1'b0;
@@ -635,7 +653,7 @@ module es_switch_rx_port #(
       // Every octet that leaves the elastic FIFO is counted, FCS included.
       if (pop) oct_cnt <= oct_cnt + OCTW'(w_oct);
 
-      case (state)
+      case (state_q)
         // ---------------------------------------------------------------
         // The 14 octet MAC header does not line up with the 8 octet beat
         // boundary, so it is stitched together from two beats:
@@ -653,9 +671,9 @@ module es_switch_rx_port #(
           if (pop && w_sof) begin
             hdr_w0    <= w_data;
             dst_mac_q <= w_data[63:16];  // dst[0..5]
-            src_hi_q  <= w_data[15:0];  // src[0..1]
+            src_hi_q  <= w_data[15:0];   // src[0..1]
             oct_cnt   <= OCTW'(w_oct);
-            state     <= S_HDR2;
+            state_q   <= S_HDR2;
           end
         end
 
@@ -664,9 +682,9 @@ module es_switch_rx_port #(
           if (pop) begin
             hdr_w1     <= w_data;
             src_mac_q  <= {src_hi_q, w_data[63:32]};  // src[0..1] ++ src[2..5]
-            hdr_type_q <= w_data[31:16];  // l2type[0..1]
+            hdr_type_q <= w_data[31:16];              // l2type[0..1]
             hdr_vlan_q <= sw_is_vlan_type(w_data[31:16]);
-            state      <= sw_is_vlan_type(w_data[31:16]) ? S_HDR3 : S_DEC;
+            state_q    <= sw_is_vlan_type(w_data[31:16]) ? S_HDR3 : S_DEC;
           end
         end
 
@@ -681,7 +699,7 @@ module es_switch_rx_port #(
           if (pop) begin
             hdr_w2     <= w_data;
             hdr_type_q <= w_data[63:48];  // inner_type[0..1]
-            state      <= S_DEC;
+            state_q    <= S_DEC;
           end
         end
 
@@ -699,9 +717,9 @@ module es_switch_rx_port #(
           if (fwd_drop) begin
             // Known-doomed frame: never buffer it at all.
             cnt_filtered <= cnt_filtered + 32'd1;
-            state        <= S_DRAIN;
+            state_q      <= S_DRAIN;
           end else begin
-            state <= S_PRE;
+            state_q <= S_PRE;
           end
         end
 
@@ -711,7 +729,7 @@ module es_switch_rx_port #(
           if (data_full) begin
             // The header could not even be buffered: ingress congestion.
             cnt_ovf <= cnt_ovf + 32'd1;
-            state   <= S_DRAIN;
+            state_q <= S_DRAIN;
           end else if (widx == BEATW'(0)) begin
             data_wr_en   <= 1'b1;
             data_wr_data <= hdr_w0;
@@ -728,7 +746,7 @@ module es_switch_rx_port #(
             wr_cnt       <= wr_cnt + BEATW'(1);
             widx         <= BEATW'(3);
           end else begin
-            state <= S_BODY;
+            state_q <= S_BODY;
           end
         end
 
@@ -743,22 +761,22 @@ module es_switch_rx_port #(
                 // Frame check sequence mismatch: not forwarded.
                 cnt_crc   <= cnt_crc + 32'd1;
                 data_undo <= 1'b1;
-                state     <= S_IDLE;
+                state_q   <= S_IDLE;
               end else if (fin_runt) begin
                 cnt_runt  <= cnt_runt + 32'd1;
                 data_undo <= 1'b1;
-                state     <= S_IDLE;
+                state_q   <= S_IDLE;
               end else if (fin_ovr) begin
                 cnt_ovr   <= cnt_ovr + 32'd1;
                 data_undo <= 1'b1;
-                state     <= S_IDLE;
+                state_q   <= S_IDLE;
               end else if (!fin_room) begin
                 // The closing beat or the tag descriptor does not fit: the
                 // ingress buffer is too small for this traffic, not the frame
                 // being malformed.
                 cnt_ovf   <= cnt_ovf + 32'd1;
                 data_undo <= 1'b1;
-                state     <= S_IDLE;
+                state_q   <= S_IDLE;
               end else begin
                 if (fin_write) begin
                   data_wr_en   <= 1'b1;
@@ -767,11 +785,12 @@ module es_switch_rx_port #(
                 end
                 tag_wr_en   <= 1'b1;
                 tag_wr_data <= tag;
-                learn_o     <= learning_en && sw_is_unicast(src_mac_q) && (src_mac_q != PORT_MAC);
+                learn_o     <= learning_en && sw_is_unicast(src_mac_q) &&
+                               (src_mac_q != PORT_MAC);
                 learn_mac_o <= src_mac_q;
                 cnt_frames  <= cnt_frames + 32'd1;
                 cnt_octets  <= cnt_octets + {21'd0, fin_len[10:0]};
-                state       <= S_IDLE;
+                state_q     <= S_IDLE;
               end
             end else if (fixed_len_q && (widx == last_beat_q)) begin
               // The declared payload ended exactly on a beat boundary, so the
@@ -780,11 +799,11 @@ module es_switch_rx_port #(
               data_wr_data <= w_data;
               wr_cnt       <= wr_cnt + BEATW'(1);
               widx         <= widx + BEATW'(1);
-              state        <= S_TAIL;
+              state_q      <= S_TAIL;
             end else if (widx >= BEATW'(MAX_BEATS)) begin
               // Longer than the largest configurable frame: stop buffering.
               cnt_ovr <= cnt_ovr + 32'd1;
-              state   <= S_DRAIN;
+              state_q <= S_DRAIN;
             end else begin
               data_wr_en   <= 1'b1;
               data_wr_data <= w_data;
@@ -804,30 +823,31 @@ module es_switch_rx_port #(
               // More octets on the wire than the header declared: malformed.
               cnt_ovr   <= cnt_ovr + 32'd1;
               data_undo <= 1'b1;
-              state     <= S_IDLE;
+              state_q   <= S_IDLE;
             end else if (!w_crcok) begin
               cnt_crc   <= cnt_crc + 32'd1;
               data_undo <= 1'b1;
-              state     <= S_IDLE;
+              state_q   <= S_IDLE;
             end else if (fin_runt || fin_ovr) begin
               if (fin_runt) cnt_runt <= cnt_runt + 32'd1;
-              else cnt_ovr <= cnt_ovr + 32'd1;
+              else          cnt_ovr  <= cnt_ovr + 32'd1;
               data_undo <= 1'b1;
-              state     <= S_IDLE;
+              state_q   <= S_IDLE;
             end else if (!tag_full) begin
               // `fin_write` is false here by construction: the payload is
               // complete, the closing beat carried FCS octets only.
               tag_wr_en   <= 1'b1;
               tag_wr_data <= tag;
-              learn_o     <= learning_en && sw_is_unicast(src_mac_q) && (src_mac_q != PORT_MAC);
+              learn_o     <= learning_en && sw_is_unicast(src_mac_q) &&
+                             (src_mac_q != PORT_MAC);
               learn_mac_o <= src_mac_q;
               cnt_frames  <= cnt_frames + 32'd1;
               cnt_octets  <= cnt_octets + {21'd0, fin_len[10:0]};
-              state       <= S_IDLE;
+              state_q     <= S_IDLE;
             end else begin
               cnt_ovr   <= cnt_ovr + 32'd1;
               data_undo <= 1'b1;
-              state     <= S_IDLE;
+              state_q   <= S_IDLE;
             end
           end
         end
@@ -839,25 +859,25 @@ module es_switch_rx_port #(
         S_DRAIN: begin
           if (pop && w_eof) begin
             data_undo <= 1'b1;
-            state     <= S_IDLE;
+            state_q   <= S_IDLE;
           end
         end
 
         // ---------------------------------------------------------------
-        default: state <= S_IDLE;
+        default: state_q <= S_IDLE;
       endcase
     end
   end
 
   // --------------------------------------------------------------------------
-  // 11. Storage instances
+  // 13. Storage instances
   // --------------------------------------------------------------------------
   logic [sw_tx_free_width(RX_FIFO_DEPTH):0] data_free;
-  assign used_o = 32'(RX_FIFO_DEPTH) - 32'(data_free);
   logic        data_rd_en;
   logic [63:0] data_rd_data;
 
   assign data_rd_en = rd_en_i;
+  assign used_o     = 32'(RX_FIFO_DEPTH) - 32'(data_free);
 
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(

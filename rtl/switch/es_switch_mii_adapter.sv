@@ -4,9 +4,8 @@
 //                into the switch's canonical clock-enable qualified octet
 //                stream, and serialises that stream back onto the MII pins.
 //
-//                ------------------------------------------------------------------------
 //                Synchronous model (no PHY clock pins)
-//                ------------------------------------------------------------------------
+//                --------------------------------------
 //                Like the rest of the core this adapter is synchronous to the
 //                single `clk_i` and consumes no PHY clock.  A real MII clocks
 //                its nibbles with the PHY's RX_CLK / TX_CLK; capturing those
@@ -26,7 +25,7 @@
 //                    idle clock,
 //                  * the octet stream starts with the destination MAC: the PHY
 //                    has already removed the preamble, as a real MII MAC
-//                    expects (the same convention as sw_gmii_rx).
+//                    expects (the same convention as es_switch_gmii_rx).
 //
 //                BYTE_PERIOD must be an even number of clocks - two whole
 //                nibble windows have to fit into every octet time - and at
@@ -34,15 +33,14 @@
 //                10/100 Mbit/s front-end; the top level rejects the speed as
 //                well.
 //
-//                ------------------------------------------------------------------------
 //                Receive path
-//                ------------------------------------------------------------------------
+//                ------------
 //                The nibble window counter *parks* while the link is idle and
 //                therefore counts every frame's windows from that frame's own
 //                DV rise - no front-end or testbench has to land a frame on
-//                any particular grid, exactly as sw_gmii_rx asks nothing of
-//                the phase of an incoming frame.  The low nibble is sampled at
-//                the end of the first half of every octet time and the high
+//                any particular grid, exactly as es_switch_gmii_rx asks nothing
+//                of the phase of an incoming frame.  The low nibble is sampled
+//                at the end of the first half of every octet time and the high
 //                nibble at the end of the second.
 //
 //                The assembled octet is presented for one full octet time,
@@ -52,7 +50,7 @@
 //                frame has no sampling boundary left to end its presentation
 //                window - the down-counter is what keeps the canonical stream
 //                stable for a full BYTE_PERIOD after the link went idle, which
-//                is what sw_gmii_rx samples on.  A presentation window is
+//                is what es_switch_gmii_rx samples on.  A presentation window is
 //                always exactly BYTE_PERIOD long, so the octet rate reaching
 //                the core is unaffected by the latency.
 //
@@ -63,24 +61,23 @@
 //                a runt or a CRC error, never forwarded.  The flag clears when
 //                the link goes idle.
 //
-//                ------------------------------------------------------------------------
 //                Transmit path
-//                ------------------------------------------------------------------------
-//                The canonical octet stream is produced by sw_gmii_tx, which
-//                only ever updates its octet on an octet boundary of the grid
-//                that every module on clk_i derives from reset.  Splitting it
-//                into nibbles is therefore a pure combinational part-select
+//                -------------
+//                The canonical octet stream is produced by es_switch_gmii_tx,
+//                which only ever updates its octet on an octet boundary of the
+//                grid that every module on clk_i derives from reset.  Splitting
+//                it into nibbles is therefore a pure combinational part-select
 //                driven by a *free-running* window counter: the low nibble is
 //                on the pins during the first half of every octet time, the
 //                high nibble during the second.  The enable is passed through
-//                combinationally for the same reason sw_gmii_tx drives its own
-//                enable combinationally - a registered enable would be one
-//                clock late and clip the first nibble.
+//                combinationally for the same reason es_switch_gmii_tx drives
+//                its own enable combinationally - a registered enable would be
+//                one clock late and clip the first nibble.
 //
 //                The transmit counter cannot be shared with the receive
 //                counter: the receive one parks on the idle link, which would
-//                drag the transmit part-select boundaries off the sw_gmii_tx
-//                grid during every inter-frame gap.
+//                drag the transmit part-select boundaries off the
+//                es_switch_gmii_tx grid during every inter-frame gap.
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -123,16 +120,21 @@ module es_switch_mii_adapter #(
   output    logic [3:0] mii_txd_o,
 
   // ---- canonical octet stream (see the module header) ----------------------
-  // receive direction: towards sw_rx_port
   /// Receive octets are presented for one complete BYTE_PERIOD window.
   output    logic       oct_en_o,
-  output    logic [7:0] oct_d_o,  // transmit direction: from sw_tx_port
+  output    logic [7:0] oct_d_o,
   /// Transmit octets are consumed on the canonical octet grid.
   input var logic       oct_en_i,
-  input var logic [7:0] oct_d_i);
+  input var logic [7:0] oct_d_i
+);
 
-  // Nibble window length.  The elaboration check below rejects anything that
-  // does not divide evenly, so this module can rely on whole windows.
+  // --------------------------------------------------------------------------
+  // Window timing
+  //
+  // NPK clocks per nibble window, two windows per octet time.  The elaboration
+  // check below rejects anything that does not divide evenly, so this module can
+  // rely on whole windows.
+  // --------------------------------------------------------------------------
   localparam int unsigned NPK = BYTE_PERIOD / 2;
   localparam int unsigned NPW = (NPK <= 1) ? 1 : $clog2(NPK);
   /// Last clock of a nibble window (the window counts 0 .. NPK-1).
@@ -140,9 +142,15 @@ module es_switch_mii_adapter #(
   /// Width of the presentation down-counter, which holds BYTE_PERIOD-1.
   localparam int unsigned PRW = (BYTE_PERIOD <= 2) ? 1 : $clog2(BYTE_PERIOD);
 
+  // --------------------------------------------------------------------------
+  // Parameter check
+  //
+  // Excluded from synthesis because yosys has no implementation for `$error`
+  // (AGENTS.md 3.4).
+  // --------------------------------------------------------------------------
 `ifndef SYNTHESIS
   initial begin
-    if ((BYTE_PERIOD < 2) || (BYTE_PERIOD % 2 != 0)) begin
+    if ((BYTE_PERIOD < 2) || ((BYTE_PERIOD % 2) != 0)) begin
       $error(
           "es_switch_mii_adapter: BYTE_PERIOD (%0d) must be an even number of clocks >= 2 - two nibble windows per octet time",
           BYTE_PERIOD);
@@ -151,7 +159,7 @@ module es_switch_mii_adapter #(
 `endif
 
   // --------------------------------------------------------------------------
-  // Receive: nibble window counter.
+  // Receive: nibble window counter
   //
   // Parks at the start of a low-nibble window while the link is idle, so the
   // first window of every frame is counted from that frame's own DV rise - the
@@ -161,7 +169,7 @@ module es_switch_mii_adapter #(
   // DV high is already the first clock of the first low-nibble window.
   // --------------------------------------------------------------------------
   logic [NPW-1:0] rx_phase;  ///< clock within the current nibble window
-  logic           rx_half;  ///< 0 = low-nibble window, 1 = high-nibble window
+  logic           rx_half;   ///< 0 = low-nibble window, 1 = high-nibble window
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -180,32 +188,32 @@ module es_switch_mii_adapter #(
 
   /// End of a nibble window with valid data on the pins.
   logic rx_win_end;
-  assign rx_win_end = mii_rx_dv_i && (rx_phase == NIB_LAST);
   /// End of the low-nibble window of the octet being assembled.
   logic rx_lo_end;
-  assign rx_lo_end = rx_win_end && !rx_half;
   /// End of the octet time (the high-nibble window closes).
   logic rx_oct_end;
+
+  assign rx_win_end = mii_rx_dv_i && (rx_phase == NIB_LAST);
+  assign rx_lo_end  = rx_win_end && !rx_half;
   assign rx_oct_end = rx_win_end && rx_half;
 
   // --------------------------------------------------------------------------
-  // Receive: octet assembly and presentation.
+  // Receive: octet assembly and presentation
   // --------------------------------------------------------------------------
-  logic [3:0] rx_lo_q;  ///< low nibble captured in the first half
-  logic       rx_err;  ///< sticky: RX_ER seen while the link was enabled
-  logic       rx_en_q;  ///< enable presented on the canonical stream
-  logic [7:0] rx_d_q;  ///< octet presented on the canonical stream
+  logic [3:0] rx_lo_q;      ///< low nibble captured in the first half
+  logic       rx_err;       ///< sticky: RX_ER seen while the link was enabled
+  logic       rx_en_q;      ///< enable presented on the canonical stream
+  logic [7:0] rx_d_q;       ///< octet presented on the canonical stream
+  logic [PRW-1:0] rx_pres_cnt;  ///< presentation window countdown
 
   /// Effective receive error: the sticky flag from an earlier window, or RX_ER
   /// on the pins in the window that is just ending.
-  logic       rx_err_eff;
+  logic rx_err_eff;
   assign rx_err_eff = rx_err || mii_rx_er_i;
 
-  /// Presentation window countdown.  Reloaded at every octet end that presents
+  /// The presentation down-counter is reloaded at every octet end that presents
   /// an octet; it is what closes the *last* octet's window, after the link has
   /// gone idle and the parking counter has stopped producing octet ends.
-  logic [PRW-1:0] rx_pres_cnt;
-
   logic rx_en_nxt;
   assign rx_en_nxt = (rx_oct_end && !rx_err_eff) || (rx_pres_cnt != '0);
 
@@ -245,7 +253,7 @@ module es_switch_mii_adapter #(
   assign oct_d_o  = rx_d_q;
 
   // --------------------------------------------------------------------------
-  // Transmit: free-running nibble windows on the reset grid.
+  // Transmit: free-running nibble windows on the reset grid
   // --------------------------------------------------------------------------
   logic [NPW-1:0] tx_phase;
   logic           tx_half;
@@ -263,9 +271,9 @@ module es_switch_mii_adapter #(
   end
 
   // `oct_d_i` only ever changes on an octet boundary of the same grid
-  // (guaranteed by sw_gmii_tx), so the half flag alone decides which nibble is
-  // on the pins.  No register in this path: a registered nibble would lag the
-  // combinationally driven enable and shift the first nibble window.
+  // (guaranteed by es_switch_gmii_tx), so the half flag alone decides which
+  // nibble is on the pins.  No register in this path: a registered nibble would
+  // lag the combinationally driven enable and shift the first nibble window.
   assign mii_tx_en_o = oct_en_i;
   assign mii_txd_o   = !tx_half ? oct_d_i[3:0] : oct_d_i[7:4];
   assign mii_tx_er_o = 1'b0;

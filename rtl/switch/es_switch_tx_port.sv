@@ -53,15 +53,15 @@ module es_switch_tx_port #(
   input var logic rst_ni,
 
   // ---- fabric write side ---------------------------------------------------
-  input var logic                wr_en_i,  ///< a payload beat is offered
-  input var logic [63:0] wr_data_i,
+  input var logic                wr_en_i,   ///< a payload beat is offered
+  input var logic [63:0]         wr_data_i,
   input var logic [SW_LEN_W-1:0] wr_len_i,  ///< valid together with `wr_fr_i`
-  input var logic                wr_fr_i,  ///< this beat starts a new frame
+  input var logic                wr_fr_i,   ///< this beat starts a new frame
 
   // ---- canonical octet transmit interface ----------------------------------
   /// Clock-enable-qualified octet stream consumed by the MAC front-end.
-  output    logic       oct_en_o,
-  output    logic [7:0] oct_d_o,
+  output    logic        oct_en_o,
+  output    logic [7:0]  oct_d_o,
 
   // ---- egress capacity (consumed by the arbiter) ---------------------------
   // Two separate limits, because there are two separate buffers, and reporting
@@ -90,18 +90,20 @@ module es_switch_tx_port #(
   // ---- status / statistics -------------------------------------------------
   /// Frame completion, completed length, and per-port counters.
   output    logic                        done_o,
-  output    logic [SW_LEN_W-1:0] done_len_o,
+  output    logic [SW_LEN_W-1:0]         done_len_o,
   output    logic [32*SW_STAT_COUNT-1:0] stat_o);
 
-  logic                                      tx_busy;
-  logic                                      len_empty;
-  logic [                      SW_LEN_W-1:0] len_data;
-  logic                                      data_empty;
-  logic [                              63:0] data_rd_data;  ///< FWFT head of the egress beat FIFO
-  logic                                      beat_rd;
-
-  // Free space in the length-descriptor FIFO.  Its width is whatever that FIFO
-  // needs; only "is it non-zero" is used, so it is reduced to one bit here.
+  // --------------------------------------------------------------------------
+  // Queues and handshakes
+  // --------------------------------------------------------------------------
+  logic                tx_busy;   ///< the serialiser is inside a frame
+  logic                len_empty; ///< no frame descriptor queued
+  logic [SW_LEN_W-1:0] len_data;  ///< FWFT head of the descriptor FIFO
+  logic                data_empty;  ///< no payload beat queued
+  logic [63:0]         data_rd_data;  ///< FWFT head of the egress beat FIFO
+  logic                beat_rd;       ///< pop the head payload beat
+  /// Free space in the length-descriptor FIFO.  Its width is whatever that FIFO
+  /// needs; only "is it non-zero" is used, so it is reduced to one bit here.
   logic [sw_tx_free_width(LEN_FIFO_DEPTH):0] len_free;
 
   assign slot_o = (len_free != '0);
@@ -111,8 +113,11 @@ module es_switch_tx_port #(
   logic fr_start;
   assign fr_start = !len_empty && !tx_busy;
 
+  // --------------------------------------------------------------------------
+  // Octet serialiser
+  // --------------------------------------------------------------------------
   es_switch_gmii_tx #(
-    .BYTE_PERIOD(BYTE_PERIOD)
+    .BYTE_PERIOD (BYTE_PERIOD)
   ) u_gmii_tx (
     .clk_i        (clk_i),
     .rst_ni       (rst_ni),
@@ -128,7 +133,9 @@ module es_switch_tx_port #(
     .oct_d_o      (oct_d_o)
   );
 
-  // ---- egress beat FIFO -----------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Egress beat FIFO
+  // --------------------------------------------------------------------------
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
     .WIDTH (64),
@@ -149,9 +156,12 @@ module es_switch_tx_port #(
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
-  // ---- frame length descriptor FIFO ----------------------------------------
+  // --------------------------------------------------------------------------
+  // Frame length descriptor FIFO
+  //
   // Written once per frame: `wr_en_i` pulses for every beat, `wr_fr_i` marks
   // the first one.
+  // --------------------------------------------------------------------------
   /* verilator lint_off PINCONNECTEMPTY */
   es_mems_sync_fifo #(
     .WIDTH (SW_LEN_W),
@@ -172,25 +182,14 @@ module es_switch_tx_port #(
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
-  // ---- statistics -----------------------------------------------------------
-  logic [31:0] cnt_frames, cnt_octets;
-  assign stat_o[32*int'(SW_STAT_TX_FRAMES) +: 32] = cnt_frames;
-  assign stat_o[32*int'(SW_STAT_TX_OCTETS) +: 32] = cnt_octets;
-  // The remaining counters belong to the receive path, the CAM and the
-  // scheduler; they are zeroed here and summed by the top level.
-  // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
-  // also rejects a bare module-level `for` - every loop carries an explicit
-  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
-  // all forms (see es_switch_arbiter.sv for the full note).
-  genvar gk;
-  generate
-    for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
-      if ((gk != int'(SW_STAT_TX_FRAMES)) &&
-          (gk != int'(SW_STAT_TX_OCTETS))) begin : g_stat_zero_other
-        assign stat_o[32*gk +: 32] = 32'd0;
-      end
-    end
-  endgenerate
+  // --------------------------------------------------------------------------
+  // Statistics
+  //
+  // Counted on `fr_start`, i.e. when the descriptor is handed to the serialiser,
+  // so a frame that is queued but never reaches the wire is not counted.
+  // --------------------------------------------------------------------------
+  logic [31:0] cnt_frames;
+  logic [31:0] cnt_octets;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -201,6 +200,26 @@ module es_switch_tx_port #(
       cnt_octets <= cnt_octets + {21'd0, len_data[10:0]};
     end
   end
+
+  assign stat_o[32*int'(SW_STAT_TX_FRAMES) +: 32] = cnt_frames;
+  assign stat_o[32*int'(SW_STAT_TX_OCTETS) +: 32] = cnt_octets;
+
+  // The remaining counters belong to the receive path, the CAM and the
+  // scheduler; they are zeroed here and summed by the top level.
+  // Quartus's parser rejects the SV inline form `for (genvar gk = 0; ...)` and
+  // also rejects a bare module-level `for` - every loop carries an explicit
+  // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
+  // all forms (see es_switch_arbiter.sv for the full note).
+  genvar gk;
+
+  generate
+    for (gk = 0; gk < int'(SW_STAT_COUNT); gk++) begin : g_stat_zero
+      if ((gk != int'(SW_STAT_TX_FRAMES)) &&
+          (gk != int'(SW_STAT_TX_OCTETS))) begin : g_stat_zero_other
+        assign stat_o[32*gk +: 32] = 32'd0;
+      end
+    end
+  endgenerate
 
 endmodule : es_switch_tx_port
 

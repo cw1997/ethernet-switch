@@ -24,9 +24,8 @@
 //                  ingress-overflow / CRC error detection, and a per-port
 //                  statistics counter block.
 //
-//                ------------------------------------------------------------------------
 //                Octet-stream contract
-//                ------------------------------------------------------------------------
+//                ---------------------
 //                Every port presents the same canonical, clock-enable-qualified
 //                octet stream, synchronous to `clk_i`:
 //                  * one octet is transferred every BYTE_PERIOD(port) clocks,
@@ -35,22 +34,21 @@
 //                  * the enable is de-asserted during the inter-frame gap.
 //                The GMII pins carry exactly this stream; the MII and RMII
 //                wrappers assemble / serialise their narrow pins onto the same
-//                grid with the `es_switch_mii` / `es_switch_rmii` symbol adapters, so this
-//                core never sees a difference.  Preamble and start-of-frame
-//                delimiter are removed by the PHY on receive and re-inserted on
-//                transmit, exactly as a real MAC does.  If the PHY runs on its
-//                own clock, wrap the core in asynchronous FIFOs - nothing
-//                inside the switch changes.
+//                grid with the `es_switch_mii_adapter` / `es_switch_rmii_adapter`
+//                symbol adapters, so this core never sees a difference.
+//                Preamble and start-of-frame delimiter are removed by the PHY on
+//                receive and re-inserted on transmit, exactly as a real MAC
+//                does.  If the PHY runs on its own clock, wrap the core in
+//                asynchronous FIFOs - nothing inside the switch changes.
 //
-//                ------------------------------------------------------------------------
 //                Parameter encoding
-//                ------------------------------------------------------------------------
+//                ------------------
 //                The per-port parameters are *flat packed vectors* rather than
 //                unpacked arrays, so that they are accepted by every tool in
 //                the flow (Icarus Verilog among them, which does not implement
 //                unpacked array parameters):
-//                  * `PORT_MAC`  - port p occupies bits [48*p +: 48]
-//                  * `PORT_SPEED`- port p occupies bits [2*p  +:  2]
+//                  * `PORT_MAC`   - port p occupies bits [48*p +: 48]
+//                  * `PORT_SPEED` - port p occupies bits [ 2*p +:  2]
 // ============================================================================
 // ---------------------------------------------------------------------------
 //  Time resolution: the RTL carries no timing, but a declared timescale keeps
@@ -79,20 +77,19 @@
 module es_switch_core #(
   // ---- topology ------------------------------------------------------------
   /// Number of Ethernet ports.  Any value >= 1 is supported.
-  parameter int unsigned                    NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
+  parameter int unsigned NUM_PORTS   = SW_DEFAULT_NUM_PORTS,
   /// Core clock frequency in Hz.  Must be >= the 1000BASE-T octet rate
   /// (125 MHz for full line rate); a slower core simply stretches the octet
   /// clock enables and loses line rate, nothing else.
-  parameter int unsigned                    CLK_FREQ_HZ = 125_000_000,
+  parameter int unsigned CLK_FREQ_HZ = 125_000_000,
   /// Per-port MAC addresses, 48 bits per port, port p at bits [48*p +: 48].
   /// A port left at all zero gets the locally administered address
   /// 02:00:00:00:00:<p>.
-  parameter logic        [NUM_PORTS*48-1:0] PORT_MAC    = '0,
+  parameter logic [NUM_PORTS*48-1:0] PORT_MAC = '0,
   /// Per-port link speed, 2 bits per port, port p at bits [2*p +: 2]:
   /// 0 = 10 Mbit/s, 1 = 100 Mbit/s, 2 = 1000 Mbit/s, 3 = administratively
   /// down.  Defaults to 1000 Mbit/s on every port.
-  parameter logic        [ NUM_PORTS*2-1:0] PORT_SPEED  = {NUM_PORTS{2'd2}},
-
+  parameter logic [NUM_PORTS*2-1:0] PORT_SPEED = {NUM_PORTS{2'd2}},
   /// Telemetry publication interval in milliseconds, rounded up to a clock.
   parameter int unsigned REFRESH_INTERVAL_MS = 500,
 
@@ -110,33 +107,43 @@ module es_switch_core #(
 
   // ---- switching fabric ----------------------------------------------------
   /// Largest frame accepted, in octets, FCS excluded.
-  parameter int unsigned       MAX_FRAME_LEN = 1518,
+  parameter int unsigned MAX_FRAME_LEN = 1518,
   /// 0 = block unknown unicast, 1 = flood it, 2 = flood unknown group too.
-  parameter logic        [1:0] FLOOD_MODE    = 2'd1,
+  parameter logic [1:0] FLOOD_MODE   = 2'd1,
   /// Source address learning default.
-  parameter logic              LEARNING_EN   = 1'b1,
+  parameter logic       LEARNING_EN  = 1'b1,
   /// Cycles a head-of-line frame may wait at a congested egress before it is
   /// dropped.  0 stalls forever and never drops.
-  parameter int unsigned       STALL_LIMIT   = 0,
+  parameter int unsigned STALL_LIMIT = 0,
 
   // ---- forwarding address table -------------------------------------------
-  parameter int unsigned CAM_SETS       = 128,
-  parameter int unsigned CAM_WAYS       = 4,
-  parameter logic        CAM_AGE_EN     = 1'b0,
+  /// Number of CAM sets; the table holds CAM_SETS * CAM_WAYS addresses.
+  parameter int unsigned CAM_SETS   = 128,
+  /// Ways per CAM set.
+  parameter int unsigned CAM_WAYS   = 4,
+  /// Enable idle-time ageing of learned addresses.
+  parameter logic        CAM_AGE_EN = 1'b0,
   /// Clocks between two ageing steps.  The effective idle timeout is
   /// CAM_AGE_CYCLES * CAM_SETS * CAM_WAYS * (CAM_AGE_LIMIT + 1) clocks.
   parameter int unsigned CAM_AGE_CYCLES = 1_000_000,
+  /// Ageing steps an entry may survive before it is evicted.
   parameter int unsigned CAM_AGE_LIMIT  = 4
 ) (
+  /// Core clock and synchronous active-low reset.
   input var logic clk_i,
-  input var logic rst_ni, ///< active-low reset
+  input var logic rst_ni,
 
   // ---- control -------------------------------------------------------------
-  input var logic [NUM_PORTS-1:0] link_up_i,      ///< port is enabled
-  input var logic [          1:0] flood_mode_i,
-  input var logic                 learning_en_i,
-  input var logic                 cfg_ovr_i,      ///< use run-time config
-  input var logic                 cam_flush_i,    ///< flush the CAM
+  /// Administrative port enable, one bit per port.
+  input var logic [NUM_PORTS-1:0] link_up_i,
+  /// Run-time flooding policy, sampled instead of FLOOD_MODE when cfg_ovr_i.
+  input var logic [1:0] flood_mode_i,
+  /// Run-time source-learning enable.
+  input var logic learning_en_i,
+  /// Use the run-time configuration above rather than the elaboration values.
+  input var logic cfg_ovr_i,
+  /// Flush every learned address.
+  input var logic cam_flush_i,
 
   // ---- canonical octet stream (interface-agnostic) -------------------------
   //
@@ -144,17 +151,18 @@ module es_switch_core #(
   // wrapper (es_switch_gmii / es_switch_mii / es_switch_rmii); this core
   // neither knows nor cares which PHY interface the ports expose.  See the
   // octet-stream contract in the header.
-  input var logic [  NUM_PORTS-1:0] rx_oct_en_i,
+  input var logic [NUM_PORTS-1:0]   rx_oct_en_i,
   input var logic [NUM_PORTS*8-1:0] rx_oct_data_i,
-  output    logic [  NUM_PORTS-1:0] tx_oct_en_o,
+  output    logic [NUM_PORTS-1:0]   tx_oct_en_o,
   output    logic [NUM_PORTS*8-1:0] tx_oct_data_o,
 
   // Telemetry PHY metadata is independent of the administrative link enable.
   input var logic [NUM_PORTS*8-1:0] phy_status_i,
-  input var logic mon_req_i,
-  input var logic [31:0] mon_addr_i,
-  output logic mon_ready_o, mon_valid_o,
-  output logic [31:0] mon_data_o,
+  input var logic                   mon_req_i,
+  input var logic [31:0]            mon_addr_i,
+  output    logic                   mon_ready_o,
+  output    logic                   mon_valid_o,
+  output    logic [31:0]            mon_data_o,
 
   // ---- observability -------------------------------------------------------
   /// Packed statistics bus, 32 bits per counter, indices per sw_stat_id_e.
@@ -165,8 +173,11 @@ module es_switch_core #(
   localparam int unsigned TAGW = sw_tag_width(NUM_PORTS);
   localparam int unsigned FF_W = sw_tx_free_width(TX_FIFO_DEPTH);
 
-  // Elaboration-time sanity checks.  A mismatch here is a design error, not a
-  // run-time condition, so it is reported with $error instead of being handled.
+  // --------------------------------------------------------------------------
+  // Elaboration-time sanity checks
+  //
+  // A mismatch here is a design error, not a run-time condition, so it is
+  // reported with $error instead of being handled.
   //
   // The whole block is excluded from synthesis.  `$error` and `$warning` are
   // simulation system tasks: yosys has no implementation for them and aborts on
@@ -174,10 +185,12 @@ module es_switch_core #(
   // a mis-parameterised instance is actually built - and the synthesised netlist
   // never sees them.  The parameter values themselves are still elaborated, so a
   // genuinely invalid configuration fails the simulation runs just as before.
+  // --------------------------------------------------------------------------
 `ifndef SYNTHESIS
   initial begin
-    if ((REFRESH_INTERVAL_MS == 0) || (CLK_FREQ_HZ == 0))
+    if ((REFRESH_INTERVAL_MS == 0) || (CLK_FREQ_HZ == 0)) begin
       $error("monitor: clock and refresh must be positive");
+    end
     if (NUM_PORTS == 0) $error("es_switch_core: NUM_PORTS must be >= 1");
     if (RX_FIFO_DEPTH < sw_beats_of(MAX_FRAME_LEN)) begin
       $warning(
@@ -195,160 +208,171 @@ module es_switch_core #(
   // --------------------------------------------------------------------------
   // Per-port wiring
   // --------------------------------------------------------------------------
-  logic [          NUM_PORTS-1:0] src_empty;
-  logic [          NUM_PORTS-1:0] src_data_rd_en;
-  logic [       NUM_PORTS*64-1:0] src_data_rd_data;
-  logic [          NUM_PORTS-1:0] src_tag_rd_en;  ///< driven by the fabric
-  logic [          NUM_PORTS-1:0] src_tag_empty;
-  logic [     NUM_PORTS*TAGW-1:0] src_tag_rd_data;
-  logic [          NUM_PORTS-1:0] src_flush;
+  logic [NUM_PORTS-1:0]         src_empty;
+  logic [NUM_PORTS-1:0]         src_data_rd_en;
+  logic [NUM_PORTS*64-1:0]      src_data_rd_data;
+  logic [NUM_PORTS-1:0]         src_tag_rd_en;      ///< driven by the fabric
+  logic [NUM_PORTS-1:0]         src_tag_empty;
+  logic [NUM_PORTS*TAGW-1:0]    src_tag_rd_data;
+  logic [NUM_PORTS-1:0]         src_flush;
 
-  logic [          NUM_PORTS-1:0] dst_wr_en;
-  logic [       NUM_PORTS*64-1:0] dst_wr_data;
-  logic [ NUM_PORTS*SW_LEN_W-1:0] dst_wr_len;
-  logic [          NUM_PORTS-1:0] dst_fr;
-  logic [ NUM_PORTS*(FF_W+1)-1:0] dst_free;
-  logic [          NUM_PORTS-1:0] dst_slot;  ///< an egress port still fits a frame
+  logic [NUM_PORTS-1:0]         dst_wr_en;
+  logic [NUM_PORTS*64-1:0]      dst_wr_data;
+  logic [NUM_PORTS*SW_LEN_W-1:0] dst_wr_len;
+  logic [NUM_PORTS-1:0]         dst_fr;
+  logic [NUM_PORTS*(FF_W+1)-1:0] dst_free;
+  logic [NUM_PORTS-1:0]         dst_slot;  ///< an egress port still fits a frame
 
-  logic [   32*SW_STAT_COUNT-1:0] rx_stat                                          [NUM_PORTS];
-  logic [   32*SW_STAT_COUNT-1:0] tx_stat                                          [NUM_PORTS];
-
-  // The canonical octet stream arrives through the rx_oct_* / tx_oct_* ports;
-  // the wrapper above adapts the physical MAC pins onto it.  The contract is
-  // the one documented at es_switch_gmii_rx / es_switch_gmii_tx: one octet every
-  // BYTE_PERIOD clocks, enable asserted for the whole octet time, data stable
-  // for the same window.
+  logic [32*SW_STAT_COUNT-1:0] rx_stat [NUM_PORTS];
+  logic [32*SW_STAT_COUNT-1:0] tx_stat [NUM_PORTS];
 
   // One shared CAM serves every port: NUM_PORTS parallel lookup ports and
   // NUM_PORTS learn ports, all in the same single clock domain.
-  logic [          NUM_PORTS-1:0] cam_req;
-  logic [       NUM_PORTS*48-1:0] cam_mac;
-  logic [          NUM_PORTS-1:0] cam_hit;
+  logic [NUM_PORTS-1:0]          cam_req;
+  logic [NUM_PORTS*48-1:0]       cam_mac;
+  logic [NUM_PORTS-1:0]          cam_hit;
   logic [NUM_PORTS*NUM_PORTS-1:0] cam_port;
-  logic [          NUM_PORTS-1:0] cam_learn;
-  logic [       NUM_PORTS*48-1:0] cam_learn_mac;
-  // `cam_entries` is the number of CAM insertions since the last flush.  It is
-  // a debug/bring-up observable rather than a traffic counter, so it is
-  // reduced into a dummy net here instead of being added to `stat_o`.
-  logic [                   31:0] cam_entries;
-  logic                           unused_cam_entries;
-  assign unused_cam_entries = ^cam_entries;
-  logic [            31:0] cam_hits;
-  logic [            31:0] cam_misses;
-  logic [            31:0] cam_learns;
+  logic [NUM_PORTS-1:0]          cam_learn;
+  logic [NUM_PORTS*48-1:0]       cam_learn_mac;
 
-  // Learn port index of every port is simply the port number itself, packed.
+  /// Number of CAM insertions since the last flush.  It is a debug/bring-up
+  /// observable rather than a traffic counter, so it is reduced into a dummy
+  /// net instead of being added to `stat_o`.
+  logic [31:0] cam_entries;
+  logic        unused_cam_entries;
+  assign unused_cam_entries = ^cam_entries;
+
+  logic [31:0] cam_hits;
+  logic [31:0] cam_misses;
+  logic [31:0] cam_learns;
+
+  /// Learn port index of every port is simply the port number itself, packed.
   logic [NUM_PORTS*PW-1:0] learn_port_idx;
+
   // Quartus's parser rejects the SV inline form `for (genvar g = 0; ...)` and
   // also rejects a bare module-level `for` - every loop carries an explicit
   // `generate`/`endgenerate` wrapper; yosys, Verilator and Icarus accept
   // all forms (see es_switch_arbiter.sv for the full note).
   genvar gi;
   genvar g;
+  genvar mk;
+
   generate
     for (gi = 0; gi < NUM_PORTS; gi++) begin : g_learn_idx
       assign learn_port_idx[gi*PW +: PW] = PW'(gi);
     end
   endgenerate
 
-  logic [NUM_PORTS*32-1:0] mon_rx_used, mon_tx_used;
+  logic [NUM_PORTS*32-1:0]               mon_rx_used;
+  logic [NUM_PORTS*32-1:0]               mon_tx_used;
   logic [NUM_PORTS*32*SW_STAT_COUNT-1:0] mon_port_stat;
-  logic [NUM_PORTS-1:0] mon_done, mon_stalled;
-  logic [NUM_PORTS*SW_LEN_W-1:0] mon_len;
-  logic mon_busy;
-  logic cam_mon_req, cam_mon_valid;
-  logic [ 31:0] cam_mon_index;
-  logic [127:0] cam_mon_entry;
+  logic [NUM_PORTS-1:0]                  mon_done;
+  logic [NUM_PORTS-1:0]                  mon_stalled;
+  logic [NUM_PORTS*SW_LEN_W-1:0]         mon_len;
+  logic                                  mon_busy;
+  logic                                  cam_mon_req;
+  logic                                  cam_mon_valid;
+  logic [31:0]                           cam_mon_index;
+  logic [127:0]                          cam_mon_entry;
+
+  // --------------------------------------------------------------------------
+  // One receive / transmit pair per port
+  // --------------------------------------------------------------------------
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_port
-
       // Locally administered fallback address when the port is left unassigned.
-      localparam logic [47:0] MAC_G = (PORT_MAC[g*48 +: 48] == 48'h0) ? sw_default_mac(
-          g
-      ) : PORT_MAC[g*48 +: 48];
+      localparam logic [47:0] MAC_G =
+          (PORT_MAC[g*48 +: 48] == 48'h0) ? sw_default_mac(g) : PORT_MAC[g*48 +: 48];
 
-      // Clock enables per octet for this port's link speed.
-      localparam int unsigned BP_G = sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+      // Clocks per octet for this port's link speed.
+      localparam int unsigned BP_G =
+          sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+
+      logic [FF_W:0] tx_free;
+      logic          tx_slot;
+      logic [31:0]   stalled_q;
 
       // ---- ingress --------------------------------------------------------
       es_switch_rx_port #(
-        .NUM_PORTS     (NUM_PORTS),
-        .PORT_ID       (g),
-        .PORT_MAC      (MAC_G),
-        .BYTE_PERIOD   (BP_G),
-        .MAX_FRAME_LEN (MAX_FRAME_LEN),
-        .RX_FIFO_DEPTH (RX_FIFO_DEPTH),
-        .TAG_FIFO_DEPTH(TAG_FIFO_DEPTH),
-        .WF_DEPTH      (WF_DEPTH),
-        .FLOOD_MODE    (FLOOD_MODE),
-        .LEARNING_EN   (LEARNING_EN)
+        .NUM_PORTS      (NUM_PORTS),
+        .PORT_ID        (g),
+        .PORT_MAC       (MAC_G),
+        .BYTE_PERIOD    (BP_G),
+        .MAX_FRAME_LEN  (MAX_FRAME_LEN),
+        .RX_FIFO_DEPTH  (RX_FIFO_DEPTH),
+        .TAG_FIFO_DEPTH (TAG_FIFO_DEPTH),
+        .WF_DEPTH       (WF_DEPTH),
+        .FLOOD_MODE     (FLOOD_MODE),
+        .LEARNING_EN    (LEARNING_EN)
       ) u_rx (
-        .clk_i        (clk_i),
-        .rst_ni       (rst_ni),
-        .link_up_i    (link_up_i[g]),
-        .oct_en_i     (rx_oct_en_i[g]),
-        .oct_d_i      (rx_oct_data_i[g*8 +: 8]),
-        .cam_req_o    (cam_req[g]),
-        .cam_mac_o    (cam_mac[g*48 +: 48]),
-        .cam_hit_i    (cam_hit[g]),
-        .cam_port_i   (cam_port[g*NUM_PORTS +: NUM_PORTS]),
-        .learn_o      (cam_learn[g]),
-        .learn_mac_o  (cam_learn_mac[g*48 +: 48]),
-        .flood_mode_i (flood_mode_i),
-        .learning_en_i(learning_en_i),
-        .cfg_ovr_i    (cfg_ovr_i),
-        .rd_data_o    (src_data_rd_data[g*64 +: 64]),
-        .empty_o      (src_empty[g]),
-        .rd_en_i      (src_data_rd_en[g]),
-        .flush_i      (src_flush[g]),
-        .tag_rd_en_i  (src_tag_rd_en[g]),
-        .tag_rd_data_o(src_tag_rd_data[g*TAGW +: TAGW]),
-        .tag_empty_o  (src_tag_empty[g]),
-        .used_o       (mon_rx_used[g*32 +: 32]),
-        .stat_o       (rx_stat[g])
+        .clk_i         (clk_i),
+        .rst_ni        (rst_ni),
+        .link_up_i     (link_up_i[g]),
+        .oct_en_i      (rx_oct_en_i[g]),
+        .oct_d_i       (rx_oct_data_i[g*8 +: 8]),
+        .cam_req_o     (cam_req[g]),
+        .cam_mac_o     (cam_mac[g*48 +: 48]),
+        .cam_hit_i     (cam_hit[g]),
+        .cam_port_i    (cam_port[g*NUM_PORTS +: NUM_PORTS]),
+        .learn_o       (cam_learn[g]),
+        .learn_mac_o   (cam_learn_mac[g*48 +: 48]),
+        .flood_mode_i  (flood_mode_i),
+        .learning_en_i (learning_en_i),
+        .cfg_ovr_i     (cfg_ovr_i),
+        .rd_data_o     (src_data_rd_data[g*64 +: 64]),
+        .empty_o       (src_empty[g]),
+        .rd_en_i       (src_data_rd_en[g]),
+        .flush_i       (src_flush[g]),
+        .tag_rd_en_i   (src_tag_rd_en[g]),
+        .tag_rd_data_o (src_tag_rd_data[g*TAGW +: TAGW]),
+        .tag_empty_o   (src_tag_empty[g]),
+        .used_o        (mon_rx_used[g*32 +: 32]),
+        .stat_o        (rx_stat[g])
       );
 
       // ---- egress ---------------------------------------------------------
-      logic [FF_W:0] tx_free;
-      logic          tx_slot;
-
       es_switch_tx_port #(
-        .BYTE_PERIOD  (BP_G),
-        .TX_FIFO_DEPTH(TX_FIFO_DEPTH)
+        .BYTE_PERIOD   (BP_G),
+        .TX_FIFO_DEPTH (TX_FIFO_DEPTH)
       ) u_tx (
-        .clk_i     (clk_i),
-        .rst_ni    (rst_ni),
-        .wr_en_i   (dst_wr_en[g]),
-        .wr_data_i (dst_wr_data[g*64 +: 64]),
-        .wr_len_i  (dst_wr_len[g*SW_LEN_W +: SW_LEN_W]),
-        .wr_fr_i   (dst_fr[g]),
-        .oct_en_o  (tx_oct_en_o[g]),
-        .oct_d_o   (tx_oct_data_o[g*8 +: 8]),
-        .free_o    (tx_free),
-        .slot_o    (tx_slot),
-        .done_o    (mon_done[g]),
-        .done_len_o(mon_len[g*SW_LEN_W +: SW_LEN_W]),
-        .stat_o    (tx_stat[g])
+        .clk_i      (clk_i),
+        .rst_ni     (rst_ni),
+        .wr_en_i    (dst_wr_en[g]),
+        .wr_data_i  (dst_wr_data[g*64 +: 64]),
+        .wr_len_i   (dst_wr_len[g*SW_LEN_W +: SW_LEN_W]),
+        .wr_fr_i    (dst_fr[g]),
+        .oct_en_o   (tx_oct_en_o[g]),
+        .oct_d_o    (tx_oct_data_o[g*8 +: 8]),
+        .free_o     (tx_free),
+        .slot_o     (tx_slot),
+        .done_o     (mon_done[g]),
+        .done_len_o (mon_len[g*SW_LEN_W +: SW_LEN_W]),
+        .stat_o     (tx_stat[g])
       );
 
       assign dst_free[g*(FF_W+1) +: FF_W+1] = tx_free;
-      assign dst_slot[g]                  = tx_slot;
+      assign dst_slot[g]                    = tx_slot;
+      // Occupancy of the egress FIFO, in beats, for the telemetry snapshot.
       assign mon_tx_used[g*32 +: 32]        = 32'(TX_FIFO_DEPTH) - 32'(tx_free);
-      logic [31:0] stalled_q;
+
+      // The scheduler reports a stall as a one-clock event; telemetry wants a
+      // running total, so it is accumulated here rather than in the arbiter.
       always_ff @(posedge clk_i) begin
-        if (!rst_ni) stalled_q <= '0;
-        else if (mon_stalled[g]) stalled_q <= stalled_q + 32'd1;
+        if (!rst_ni)                stalled_q <= '0;
+        else if (mon_stalled[g])    stalled_q <= stalled_q + 32'd1;
       end
-      genvar mk;
+
+      // A statistics word is either owned by the receive path, by the transmit
+      // path, or by this per-port stall accumulator - never by two of them, so
+      // the OR below is a selector in practice and not a merge.
       for (mk = 0; mk < SW_STAT_COUNT; mk++) begin : g_mon_stat
         if (mk == int'(SW_STAT_TX_STALLED)) begin : g_stall
           assign mon_port_stat[(g*SW_STAT_COUNT+mk)*32 +: 32] = stalled_q;
         end else begin : g_other
-          assign mon_port_stat[(g*SW_STAT_COUNT+mk)*32 +: 32] = rx_stat[g][mk*32 +: 32] |
-              tx_stat[g][mk*32 +: 32];
+          assign mon_port_stat[(g*SW_STAT_COUNT+mk)*32 +: 32] =
+              rx_stat[g][mk*32 +: 32] | tx_stat[g][mk*32 +: 32];
         end
       end
-
     end
   endgenerate
 
@@ -362,31 +386,31 @@ module es_switch_core #(
   // that finish a frame in the same clock both get their address recorded.
   // --------------------------------------------------------------------------
   es_switch_mac_table #(
-    .NUM_PORTS      (NUM_PORTS),
-    .NUM_SETS       (CAM_SETS),
-    .NUM_WAYS       (CAM_WAYS),
-    .AGE_EN         (CAM_AGE_EN),
-    .AGE_TICK_CYCLES(CAM_AGE_CYCLES),
-    .AGE_LIMIT      (CAM_AGE_LIMIT)
+    .NUM_PORTS       (NUM_PORTS),
+    .NUM_SETS        (CAM_SETS),
+    .NUM_WAYS        (CAM_WAYS),
+    .AGE_EN          (CAM_AGE_EN),
+    .AGE_TICK_CYCLES (CAM_AGE_CYCLES),
+    .AGE_LIMIT       (CAM_AGE_LIMIT)
   ) u_cam (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .flush_i     (cam_flush_i),
-    .req_i       (cam_req),
-    .mac_i       (cam_mac),
-    .hit_o       (cam_hit),
-    .port_o      (cam_port),
-    .learn_i     (cam_learn),
-    .learn_mac_i (cam_learn_mac),
-    .learn_port_i(learn_port_idx),
-    .mon_req_i   (cam_mon_req),
-    .mon_index_i (cam_mon_index),
-    .mon_valid_o (cam_mon_valid),
-    .mon_entry_o (cam_mon_entry),
-    .entries_o   (cam_entries),
-    .hits_o      (cam_hits),
-    .misses_o    (cam_misses),
-    .learns_o    (cam_learns)
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .flush_i      (cam_flush_i),
+    .req_i        (cam_req),
+    .mac_i        (cam_mac),
+    .hit_o        (cam_hit),
+    .port_o       (cam_port),
+    .learn_i      (cam_learn),
+    .learn_mac_i  (cam_learn_mac),
+    .learn_port_i (learn_port_idx),
+    .mon_req_i    (cam_mon_req),
+    .mon_index_i  (cam_mon_index),
+    .mon_valid_o  (cam_mon_valid),
+    .mon_entry_o  (cam_mon_entry),
+    .entries_o    (cam_entries),
+    .hits_o       (cam_hits),
+    .misses_o     (cam_misses),
+    .learns_o     (cam_learns)
   );
 
   // --------------------------------------------------------------------------
@@ -395,36 +419,36 @@ module es_switch_core #(
   logic [32*SW_STAT_COUNT-1:0] arb_stat;
 
   es_switch_arbiter #(
-    .NUM_PORTS    (NUM_PORTS),
-    .TX_FIFO_DEPTH(TX_FIFO_DEPTH),
-    .STALL_LIMIT  (STALL_LIMIT)
+    .NUM_PORTS     (NUM_PORTS),
+    .TX_FIFO_DEPTH (TX_FIFO_DEPTH),
+    .STALL_LIMIT   (STALL_LIMIT)
   ) u_arb (
-    .clk_i             (clk_i),
-    .rst_ni            (rst_ni),
-    .src_empty_i       (src_empty),
-    .src_tag_empty_i   (src_tag_empty),
-    .src_tag_rd_en_o   (src_tag_rd_en),
-    .src_tag_rd_data_i (src_tag_rd_data),
-    .src_data_rd_en_o  (src_data_rd_en),
-    .src_data_rd_data_i(src_data_rd_data),
-    .src_flush_o       (src_flush),
-    .dst_wr_en_o       (dst_wr_en),
-    .dst_wr_data_o     (dst_wr_data),
-    .dst_wr_len_o      (dst_wr_len),
-    .dst_fr_o          (dst_fr),
-    .dst_free_i        (dst_free),
-    .dst_slot_i        (dst_slot),
-    .busy_o            (mon_busy),
-    .stalled_o         (mon_stalled),
-    .stat_o            (arb_stat)
+    .clk_i              (clk_i),
+    .rst_ni             (rst_ni),
+    .src_empty_i        (src_empty),
+    .src_tag_empty_i    (src_tag_empty),
+    .src_tag_rd_en_o    (src_tag_rd_en),
+    .src_tag_rd_data_i  (src_tag_rd_data),
+    .src_data_rd_en_o   (src_data_rd_en),
+    .src_data_rd_data_i (src_data_rd_data),
+    .src_flush_o        (src_flush),
+    .dst_wr_en_o        (dst_wr_en),
+    .dst_wr_data_o      (dst_wr_data),
+    .dst_wr_len_o       (dst_wr_len),
+    .dst_fr_o           (dst_fr),
+    .dst_free_i         (dst_free),
+    .dst_slot_i         (dst_slot),
+    .busy_o             (mon_busy),
+    .stalled_o          (mon_stalled),
+    .stat_o             (arb_stat)
   );
 
   // --------------------------------------------------------------------------
   // Statistics aggregation
   //
   // Per-port receive and transmit counters are summed; the scheduler and the
-  // CAM counters come from their own dedicated blocks.  The generate loop keeps
-  // the "which counter belongs to whom" decision in one readable place.
+  // CAM counters come from their own dedicated blocks.  The loop keeps the
+  // "which counter belongs to whom" decision in one readable place.
   // --------------------------------------------------------------------------
   function automatic logic [31:0] stat_get(input var logic [32*SW_STAT_COUNT-1:0] bus,
                                            input int unsigned idx);
@@ -463,33 +487,41 @@ module es_switch_core #(
     stat_o[32*int'(SW_STAT_CAM_FLUSH) +: 32]  = cam_flush_i ? 32'd1 : 32'd0;
   end
 
+  // --------------------------------------------------------------------------
+  // Telemetry
+  //
+  // The monitor sees the per-port statistics after the same per-port merge the
+  // aggregate bus uses, plus the FIFO occupancy, the PHY status bytes and the
+  // transmit completions - the last gated by the administrative link state so a
+  // disabled port does not look like a source of traffic.
+  // --------------------------------------------------------------------------
   es_monitor_core #(
-    .NUM_PORTS(NUM_PORTS),
-    .CLK_FREQ_HZ(CLK_FREQ_HZ),
-    .REFRESH_INTERVAL_MS(REFRESH_INTERVAL_MS),
-    .CAM_CAPACITY(CAM_SETS * CAM_WAYS),
-    .CAM_AGE_EN(CAM_AGE_EN)
+    .NUM_PORTS           (NUM_PORTS),
+    .CLK_FREQ_HZ         (CLK_FREQ_HZ),
+    .REFRESH_INTERVAL_MS (REFRESH_INTERVAL_MS),
+    .CAM_CAPACITY        (CAM_SETS * CAM_WAYS),
+    .CAM_AGE_EN          (CAM_AGE_EN)
   ) u_monitor (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .port_stat_i(mon_port_stat),
-    .tx_done_i(mon_done & link_up_i),
-    .tx_len_i(mon_len),
-    .phy_status_i(phy_status_i),
-    .rx_used_i(mon_rx_used),
-    .tx_used_i(mon_tx_used),
-    .busy_i(mon_busy),
-    .flush_i(cam_flush_i),
-    .cam_entries_i(cam_entries),
-    .req_i(mon_req_i),
-    .addr_i(mon_addr_i),
-    .ready_o(mon_ready_o),
-    .valid_o(mon_valid_o),
-    .data_o(mon_data_o),
-    .cam_req_o(cam_mon_req),
-    .cam_index_o(cam_mon_index),
-    .cam_valid_i(cam_mon_valid),
-    .cam_entry_i(cam_mon_entry)
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .port_stat_i   (mon_port_stat),
+    .tx_done_i     (mon_done & link_up_i),
+    .tx_len_i      (mon_len),
+    .phy_status_i  (phy_status_i),
+    .rx_used_i     (mon_rx_used),
+    .tx_used_i     (mon_tx_used),
+    .busy_i        (mon_busy),
+    .flush_i       (cam_flush_i),
+    .cam_entries_i (cam_entries),
+    .req_i         (mon_req_i),
+    .addr_i        (mon_addr_i),
+    .ready_o       (mon_ready_o),
+    .valid_o       (mon_valid_o),
+    .data_o        (mon_data_o),
+    .cam_req_o     (cam_mon_req),
+    .cam_index_o   (cam_mon_index),
+    .cam_valid_i   (cam_mon_valid),
+    .cam_entry_i   (cam_mon_entry)
   );
 
 endmodule : es_switch_core

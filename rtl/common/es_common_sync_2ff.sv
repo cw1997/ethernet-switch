@@ -6,9 +6,12 @@
 //                guaranteed to arrive as one coherent word.
 // ============================================================================
 `timescale 1ns/1ps
+
 `ifndef ES_COMMON_SYNC_2FF_SV
 `define ES_COMMON_SYNC_2FF_SV
+
 `default_nettype none
+
 module es_common_sync_2ff #(
   /// Number of independently sampled input bits.
   parameter int unsigned WIDTH = 1,
@@ -21,9 +24,17 @@ module es_common_sync_2ff #(
   input var logic [WIDTH-1:0] async_i,
   /// Input vector after two rising edges in the clk_i domain.
   output    logic [WIDTH-1:0] sync_o);
+
+  // --------------------------------------------------------------------------
+  // Sampling stages
+  //
   // The first stage can sample an input near its transition; downstream logic
-  // sees only the second stage and must tolerate the sampling latency.
+  // sees only the second stage and must tolerate the sampling latency.  There
+  // is deliberately no third stage and no edge detector here: a caller that
+  // needs one builds it on `sync_o`, where the metastability window is closed.
+  // --------------------------------------------------------------------------
   logic [WIDTH-1:0] meta_q;
+
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       meta_q <= RESET_VALUE;
@@ -33,6 +44,9 @@ module es_common_sync_2ff #(
       sync_o <= meta_q;
     end
   end
+
 endmodule : es_common_sync_2ff
+
 `default_nettype wire
-`endif // ES_COMMON_SYNC_2FF_SV
+
+`endif  // ES_COMMON_SYNC_2FF_SV

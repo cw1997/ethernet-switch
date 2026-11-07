@@ -17,9 +17,12 @@
 //                    octet first.
 //
 //                  * Receive (check) - the received octets *including* the
-//                    received FCS are absorbed; a good frame leaves the magic
-//                    residue 0xC704DD1B in the register, which is what
-//                    `resid_ok_o` compares against.
+//                    received FCS are absorbed; a good frame leaves the
+//                    reflected-domain residue 0xDEBB20E3 in the register,
+//                    which is what `resid_ok_o` compares against.  The
+//                    textbook 0xC704DD1B belongs to the non-reflected
+//                    formulation and would reject every valid frame here; see
+//                    the CRC section of switch/es_switch_defs.sv.
 //
 //                Both modes are driven purely by `en_i` / `clr_i`, so the
 //                module contains no frame state of its own.
@@ -46,13 +49,13 @@
 // The shared CRC constants arrive through the include above and are visible at
 // compilation-unit scope.  See es_defs.sv for why a package cannot be used here.
 module es_common_crc32 (
-  input var logic        clk_i,  ///< core clock
-  input var logic        rst_ni,  ///< active-low synchronous reset
-  input var logic        en_i,  ///< absorb `din_i` this clock
-  input var logic [7:0] din_i,  ///< octet to absorb
-  input var logic        clr_i,  ///< re-seed the LFSR (start of frame)
+  input var logic        clk_i,      ///< core clock
+  input var logic        rst_ni,     ///< active-low synchronous reset
+  input var logic        en_i,       ///< absorb `din_i` this clock
+  input var logic [7:0]  din_i,      ///< octet to absorb
+  input var logic        clr_i,      ///< re-seed the LFSR (start of frame)
   output    logic [31:0] crc_fin_o,  ///< LFSR ^ 0xFFFFFFFF - the value to transmit
-  output    logic        resid_ok_o  ///< LFSR == 0xC704DD1B - receive check
+  output    logic        resid_ok_o  ///< LFSR == 0xDEBB20E3 - receive check
 );
 
   // --------------------------------------------------------------------------
@@ -91,12 +94,14 @@ module es_common_crc32 (
   // incoming octet.  It is hoisted out of the process below because some
   // simulators over-approximate the sensitivity of an inline constant
   // part-select inside an always_* block.
-  logic [ 7:0] crc_lsb;
-  logic [ 7:0] tbl_idx;
+  logic [7:0] crc_lsb;
+  logic [7:0] tbl_idx;
+
   assign crc_lsb = crc[7:0];
   assign tbl_idx = crc_lsb ^ din_i;
 
   logic [31:0] crc_d;
+
   always_comb begin
     crc_d = (crc >> 8) ^ crc_table_word(tbl_idx);
   end
