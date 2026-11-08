@@ -70,6 +70,7 @@ RTL_SRCS := \
   $(RTL_DIR)/mac/es_mac_tx_frame.sv \
   $(RTL_DIR)/mac/es_mac_mii_serdes.sv \
   $(RTL_DIR)/mac/es_mac_rmii_serdes.sv \
+  $(RTL_DIR)/mac/es_mac_core.sv \
   $(RTL_DIR)/mac/es_mac_gmii.sv \
   $(RTL_DIR)/mac/es_mac_mii.sv \
   $(RTL_DIR)/mac/es_mac_rmii.sv \
@@ -77,6 +78,17 @@ RTL_SRCS := \
   $(RTL_DIR)/perips/es_perips_mdio.sv \
   $(RTL_DIR)/perips/es_perips_phy_88e1111.sv \
   $(RTL_DIR)/panel/es_panel.sv \
+  $(RTL_DIR)/console/es_console_command_help.sv \
+  $(RTL_DIR)/console/es_console_command_version.sv \
+  $(RTL_DIR)/console/es_console_command_status.sv \
+  $(RTL_DIR)/console/es_console_command_port.sv \
+  $(RTL_DIR)/console/es_console_command_stat.sv \
+  $(RTL_DIR)/console/es_console_command_link.sv \
+  $(RTL_DIR)/console/es_console_command_cfg.sv \
+  $(RTL_DIR)/console/es_console_command_mac_count.sv \
+  $(RTL_DIR)/console/es_console_cam_walk.sv \
+  $(RTL_DIR)/console/es_console_command_mac_all.sv \
+  $(RTL_DIR)/console/es_console_command_mac_port.sv \
   $(RTL_DIR)/console/es_console_port.sv \
   $(RTL_DIR)/console/es_console_hub.sv \
   $(RTL_DIR)/switch/es_switch_rx_port.sv \

@@ -163,6 +163,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rx_frame.
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_tx_frame.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_mii_serdes.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rmii_serdes.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_gmii.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_mii.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_rmii.sv
@@ -170,6 +171,17 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_uar
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_mdio.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_phy_88e1111.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/panel/es_panel.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_help.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_version.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_status.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_stat.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_link.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_cfg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_mac_count.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_cam_walk.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_mac_all.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_command_mac_port.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_port.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/console/es_console_hub.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_rx_port.sv

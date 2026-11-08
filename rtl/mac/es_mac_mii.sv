@@ -3,21 +3,18 @@
 //  Description : MII MAC for one switch port: 4-bit nibble pins on one side,
 //                the switch's beat contract on the other.
 //
-//                The chain is the same as `es_mac_gmii` with one stage added at
-//                each end: the nibble pins are reassembled into the canonical
-//                octet stream by `es_mac_mii_serdes`, that stream is framed into
-//                beats by `es_mac_rx_frame`, and on transmit the framer's octet
-//                stream is split back into nibbles by the same serialiser.
+//                The nibble pins are reassembled into the canonical octet
+//                stream by `es_mac_mii_serdes`, and that stream is framed into
+//                beats (and back) by the interface-agnostic `es_mac_core`, which
+//                owns the receive framer, the elastic receive buffer and the
+//                transmit framer.  See `es_mac_core.sv` for the beat contract,
+//                the `tx_fr_ready_o` invariant and the clocking model.
 //
 //                Only the receive octets are gated by `link_up_i`.  The
 //                serialiser is left free-running so that its nibble window
 //                counter stays on the grid the PHY is transmitting on; gating it
 //                would make the transmit windows start at an arbitrary phase
 //                after the link came up.
-//
-//                Beat contract, `tx_fr_ready_o` and the clocking model are
-//                identical to `es_mac_gmii`; see that file for why `ready` may
-//                only ever come from the framer's busy register.
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -40,7 +37,7 @@ module es_mac_mii #(
   /// octet time carries exactly two nibble windows; MII is a 10/100 Mbit/s
   /// front-end and the 1000 Mbit/s value of 1 is rejected at elaboration.
   parameter int unsigned BYTE_PERIOD = 2,
-  /// Depth of the elastic receive beat buffer; see `es_mac_gmii`.
+  /// Depth of the elastic receive beat buffer; see `es_mac_core`.
   parameter int unsigned WF_DEPTH    = 16
 ) (
   /// Clock and synchronous active-low reset.
@@ -89,8 +86,6 @@ module es_mac_mii #(
   logic [7:0] ser_rx_oct_data;
   logic       ser_tx_oct_en;
   logic [7:0] ser_tx_oct_data;
-  logic       fr_tx_oct_en;
-  logic [7:0] fr_tx_oct_data;
 
   es_mac_mii_serdes #(
     .BYTE_PERIOD (BYTE_PERIOD)
@@ -109,100 +104,34 @@ module es_mac_mii #(
     .oct_d_i     (ser_tx_oct_data)
   );
 
-  assign ser_tx_oct_en   = fr_tx_oct_en;
-  assign ser_tx_oct_data = fr_tx_oct_data;
-
   // --------------------------------------------------------------------------
-  // Receive framer: octets to beats, FCS checked at the octet rate
+  // Interface-agnostic frame path.  The serialiser's canonical octet stream is
+  // the core's line side; `link_up_i` is gated inside the core.
   // --------------------------------------------------------------------------
-  logic        frame_valid;
-  logic [63:0] frame_data;
-  logic        frame_sof;
-  logic        frame_eof;
-  logic        frame_crc_ok;
-  logic [3:0]  frame_octets;
-
-  es_mac_rx_frame #(
-    .BYTE_PERIOD (BYTE_PERIOD)
-  ) u_rx_frame (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .oct_en_i      (ser_rx_oct_en & link_up_i),
-    .oct_d_i       (ser_rx_oct_data),
-    .beat_valid_o  (frame_valid),
-    .beat_data_o   (frame_data),
-    .beat_sof_o    (frame_sof),
-    .beat_eof_o    (frame_eof),
-    .beat_crc_ok_o (frame_crc_ok),
-    .beat_octets_o (frame_octets)
-  );
-
-  // --------------------------------------------------------------------------
-  // Elastic receive buffer; see `es_mac_gmii` for the shape and the drop rule.
-  // --------------------------------------------------------------------------
-  logic                   wf_wr_en;
-  logic [SW_MAC_WF_W-1:0] wf_wr_data;
-  logic                   wf_rd_en;
-  logic [SW_MAC_WF_W-1:0] wf_rd_data;
-  logic                   wf_empty;
-
-  assign wf_wr_en   = frame_valid;
-  assign wf_wr_data = {frame_octets, frame_crc_ok, frame_eof, frame_sof, frame_data};
-  assign wf_rd_en   = rx_beat_rd_i;
-
-  assign rx_beat_valid_o  = !wf_empty;
-  assign rx_beat_data_o   = wf_rd_data[63:0];
-  assign rx_beat_sof_o    = wf_rd_data[64];
-  assign rx_beat_eof_o    = wf_rd_data[65];
-  assign rx_beat_crc_ok_o = wf_rd_data[66];
-  assign rx_beat_octets_o = wf_rd_data[67 +: 4];
-
-  /* verilator lint_off PINCONNECTEMPTY */
-  es_mems_sync_fifo #(
-    .WIDTH (SW_MAC_WF_W),
-    .DEPTH (WF_DEPTH)
-  ) u_wf (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .undo_i     (1'b0),
-    .undo_cnt_i ('0),
-    .flush_i    (1'b0),
-    .wr_en_i    (wf_wr_en),
-    .wr_data_i  (wf_wr_data),
-    .full_o     (),
-    .free_o     (),
-    .rd_en_i    (wf_rd_en),
-    .rd_data_o  (wf_rd_data),
-    .empty_o    (wf_empty)
-  );
-  /* verilator lint_on PINCONNECTEMPTY */
-
-  // --------------------------------------------------------------------------
-  // Transmit framer: beats to octets, then octets to nibbles above
-  // --------------------------------------------------------------------------
-  logic tx_busy;
-  logic unused_tx_done;
-  logic [SW_LEN_W-1:0] unused_tx_len;
-  logic unused_tx_status;
-
-  assign tx_fr_ready_o = !tx_busy;
-  assign unused_tx_status = unused_tx_done ^ (^unused_tx_len);
-
-  es_mac_tx_frame #(
-    .BYTE_PERIOD (BYTE_PERIOD)
-  ) u_tx_frame (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .fr_start_i  (tx_fr_valid_i && tx_fr_ready_o),
-    .fr_len_i    (tx_fr_len_i),
-    .done_o      (unused_tx_done),
-    .done_len_o  (unused_tx_len),
-    .tx_busy_o   (tx_busy),
-    .beat_valid_i(tx_beat_valid_i),
-    .beat_data_i (tx_beat_data_i),
-    .beat_rd_o   (tx_beat_rd_o),
-    .oct_en_o    (fr_tx_oct_en),
-    .oct_d_o     (fr_tx_oct_data)
+  es_mac_core #(
+    .BYTE_PERIOD (BYTE_PERIOD),
+    .WF_DEPTH    (WF_DEPTH)
+  ) u_core (
+    .clk_i            (clk_i),
+    .rst_ni           (rst_ni),
+    .link_up_i        (link_up_i),
+    .oct_en_i         (ser_rx_oct_en),
+    .oct_d_i          (ser_rx_oct_data),
+    .oct_en_o         (ser_tx_oct_en),
+    .oct_d_o          (ser_tx_oct_data),
+    .rx_beat_valid_o  (rx_beat_valid_o),
+    .rx_beat_data_o   (rx_beat_data_o),
+    .rx_beat_sof_o    (rx_beat_sof_o),
+    .rx_beat_eof_o    (rx_beat_eof_o),
+    .rx_beat_crc_ok_o (rx_beat_crc_ok_o),
+    .rx_beat_octets_o (rx_beat_octets_o),
+    .rx_beat_rd_i     (rx_beat_rd_i),
+    .tx_fr_valid_i    (tx_fr_valid_i),
+    .tx_fr_len_i      (tx_fr_len_i),
+    .tx_fr_ready_o    (tx_fr_ready_o),
+    .tx_beat_valid_i  (tx_beat_valid_i),
+    .tx_beat_data_i   (tx_beat_data_i),
+    .tx_beat_rd_o     (tx_beat_rd_o)
   );
 
 endmodule : es_mac_mii

@@ -6,12 +6,13 @@
 //                Self-contained by design
 //                ------------------------
 //                Everything this port needs is either one of its own ports or a
-//                function in `es_console_defs.sv`.  It holds no state another
-//                console port can see, drives no shared bus, and takes its own
-//                reset.  Adding a second console is therefore an instantiation,
-//                not a redesign - and a port whose cable is missing, babbling,
-//                or being plugged in cannot disturb any other port, which is
-//                what "hot plug" has to mean for a UART.
+//                command module (`es_console_command_*`) plus the shared
+//                rendering functions in `es_console_defs.sv`.  It holds no state
+//                another console port can see, drives no shared bus, and takes
+//                its own reset.  Adding a second console is therefore an
+//                instantiation, not a redesign - and a port whose cable is
+//                missing, babbling, or being plugged in cannot disturb any other
+//                port, which is what "hot plug" has to mean for a UART.
 //
 //                The only shared resource in the console subsystem is the
 //                forwarding-table read port.  A port asks for it with
@@ -20,12 +21,14 @@
 //
 //                Response model
 //                --------------
-//                A command answers with a fixed number of lines, described by
-//                `sw_console_line_info`.  A line is rendered in full into
-//                `text_q` and shifted out one octet per accepted character; the
-//                first zero octet ends it.  A line's value is fetched one clock
-//                before it is rendered, so "one line, one counter" means a
-//                counter cannot update in the middle of a number.
+//                Each command is its own module.  A command module emits one
+//                response-line descriptor (or a pre-rendered text line for the
+//                forwarding-table commands) per `line_ack_i` handshake, and the
+//                dispatcher here renders the line into `text_q` and shifts it
+//                out one octet per accepted character; the first zero octet ends
+//                it.  A line's value is fetched one clock before it is rendered,
+//                so "one line, one counter" means a counter cannot update in the
+//                middle of a number.
 //
 //                Commands are pure queries.  There is no path from here into the
 //                switch configuration, so two consoles can never disagree about
@@ -114,13 +117,6 @@ module es_console_port #(
 
   localparam int unsigned PW = sw_port_w(NUM_PORTS);
 
-  // A forwarding-table entry carries reserved fields that the table's read
-  // interface defines and no reader needs.  Reducing the whole word keeps
-  // "nothing observes these bits" an explicit decision rather than a dangling
-  // input, and costs one XOR tree.
-  logic unused_entry;
-  assign unused_entry = ^cam_rd_entry_i;
-
   // --------------------------------------------------------------------------
   // Parameter checks
   //
@@ -140,16 +136,11 @@ module es_console_port #(
   end
 `endif
 
-  typedef enum logic [3:0] {
+  typedef enum logic [2:0] {
     S_RX,       ///< accumulate characters until a line ending
     S_PARSE,    ///< decode the line and start a response
-    S_NEXT,     ///< wait for the buffer, then select the next line
-    S_LOAD,     ///< render the selected line into the transmit buffer
-    S_MAC_WAIT, ///< waiting for the shared table read port
-    S_MAC_REQ,  ///< issue one table read
-    S_MAC_EVAL, ///< filter the returned entry
-    S_MAC_EMIT, ///< render one of the two lines describing a match
-    S_MAC_NEXT, ///< advance the table cursor
+    S_NEXT,     ///< fetch the next line from the active command
+    S_LOAD,     ///< render a descriptor line into the transmit buffer
     S_END       ///< drain the last line before returning to S_RX
   } state_e;
 
@@ -196,17 +187,7 @@ module es_console_port #(
   /// by the synthesis frontend; the encoding is compared, never used as a type.
   logic [3:0]      cmd_q;
   logic [3:0]      arg_q;      ///< its decimal argument
-  logic [6:0]      line_q;     ///< line index within the response
   logic [12:0]     desc_q;     ///< {last, port, src, id} of the line in flight
-
-  logic [31:0] mac_cursor_q;   ///< table index under inspection
-  /// Fields of the entry the table returned; only these three are meaningful,
-  /// so only these three are stored - the entry's reserved bits would otherwise
-  /// be state that nothing can ever read.
-  logic [3:0]  mac_port_q;
-  logic [47:0] mac_addr_q;
-  logic        mac_sub_q;      ///< 0 = high half + port, 1 = low half
-  logic        mac_hit_q;      ///< the entry matched the filter
 
   // --------------------------------------------------------------------------
   // Parsing
@@ -282,16 +263,179 @@ module es_console_port #(
   endfunction
 
   // --------------------------------------------------------------------------
-  // Literal text lines
+  // Combinational evaluation of the parse table
   // --------------------------------------------------------------------------
-  function automatic logic [SW_CONSOLE_LINE_BYTES*8-1:0] help_line(input logic [3:0] i);
-    case (i)
-      4'd0: help_line = "help     status    stat     port <n>\015\n";
-      4'd1: help_line = "link     cfg       version\015\n";
-      4'd2: help_line = "mac all  mac <n>   mac count\015\n";
-      default: help_line = "values are hex, port numbers are decimal\015\n";
+  logic [7:0]  parse_w;
+
+  assign parse_w = console_parse(command_q, length_q);
+
+  // --------------------------------------------------------------------------
+  // Command modules and their selection
+  //
+  // One module per command.  The eight descriptor commands emit a 13-bit
+  // response-line descriptor; the two forwarding-table commands wrap the shared
+  // traversal and emit pre-rendered text lines.  Selection is by plain
+  // logic-vs-enum comparison of `cmd_q` (never a cast of a variable to an enum
+  // type, which yosys rejects).
+  // --------------------------------------------------------------------------
+  logic [12:0] help_desc, version_desc, status_desc, port_desc, stat_desc,
+               link_desc, cfg_desc, mac_count_desc;
+  logic        help_valid, version_valid, status_valid, port_valid, stat_valid,
+               link_valid, cfg_valid, mac_count_valid;
+  logic        help_done, version_done, status_done, port_done, stat_done,
+               link_done, cfg_done, mac_count_done;
+
+  logic        mac_all_valid, mac_port_valid, mac_all_done, mac_port_done;
+  logic [SW_CONSOLE_LINE_BYTES*8-1:0] mac_all_text, mac_port_text;
+
+  logic        mac_all_claim, mac_port_claim;
+  logic        mac_all_req,   mac_port_req;
+  logic [31:0] mac_all_index, mac_port_index;
+
+  // One-clock start pulses, decoded in S_PARSE so each command begins exactly
+  // once.
+  logic start_help, start_version, start_status, start_port, start_stat,
+        start_link, start_cfg, start_mac_count, start_mac_all, start_mac_port;
+
+  assign start_help      = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_HELP);
+  assign start_version   = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_VERSION);
+  assign start_status    = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_STATUS);
+  assign start_port      = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_PORT);
+  assign start_stat      = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_STAT);
+  assign start_link      = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_LINK);
+  assign start_cfg       = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_CFG);
+  assign start_mac_count = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_MAC_COUNT);
+  assign start_mac_all   = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_MAC_ALL);
+  assign start_mac_port  = (state_q == S_PARSE) && (parse_w[7:4] == SW_CMD_MAC_PORT);
+
+  /// Which forwarding-table command is running; `mac count` is a descriptor
+  /// command, not a traversal.
+  logic is_mac;
+  logic mac_which;
+  assign is_mac    = (cmd_q == SW_CMD_MAC_ALL) || (cmd_q == SW_CMD_MAC_PORT);
+  assign mac_which = (cmd_q == SW_CMD_MAC_ALL);
+
+  /// One-clock pulse the dispatcher raises to accept the active command's line.
+  /// Only the active command is in a state that reacts to it, so a single line
+  /// fans out to all ten modules.
+  logic line_ack;
+  assign line_ack = (state_q == S_NEXT) && text_free &&
+                    (is_mac ? (mac_all_valid | mac_port_valid)
+                            : (help_valid | version_valid | status_valid |
+                               port_valid | stat_valid | link_valid | cfg_valid |
+                               mac_count_valid));
+
+  es_console_command_help  u_help (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_help),
+    .line_ack_i(line_ack), .line_valid_o(help_valid), .desc_o(help_desc),
+    .done_o(help_done)
+  );
+  es_console_command_version u_version (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_version),
+    .line_ack_i(line_ack), .line_valid_o(version_valid), .desc_o(version_desc),
+    .done_o(version_done)
+  );
+  es_console_command_status #(.NUM_PORTS(NUM_PORTS)) u_status (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_status),
+    .line_ack_i(line_ack), .line_valid_o(status_valid), .desc_o(status_desc),
+    .done_o(status_done)
+  );
+  es_console_command_port u_port (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_port), .arg_i(arg_q),
+    .line_ack_i(line_ack), .line_valid_o(port_valid), .desc_o(port_desc),
+    .done_o(port_done)
+  );
+  es_console_command_stat u_stat (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_stat),
+    .line_ack_i(line_ack), .line_valid_o(stat_valid), .desc_o(stat_desc),
+    .done_o(stat_done)
+  );
+  es_console_command_link #(.NUM_PORTS(NUM_PORTS)) u_link (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_link),
+    .line_ack_i(line_ack), .line_valid_o(link_valid), .desc_o(link_desc),
+    .done_o(link_done)
+  );
+  es_console_command_cfg u_cfg (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_cfg),
+    .line_ack_i(line_ack), .line_valid_o(cfg_valid), .desc_o(cfg_desc),
+    .done_o(cfg_done)
+  );
+  es_console_command_mac_count u_mac_count (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_mac_count),
+    .line_ack_i(line_ack), .line_valid_o(mac_count_valid), .desc_o(mac_count_desc),
+    .done_o(mac_count_done)
+  );
+
+  es_console_command_mac_all #(.CAM_CAPACITY(CAM_CAPACITY)) u_mac_all (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_mac_all), .arg_i(arg_q),
+    .line_ack_i(line_ack), .line_valid_o(mac_all_valid), .line_text_o(mac_all_text),
+    .done_o(mac_all_done),
+    .cam_claim_o(mac_all_claim), .cam_grant_i(cam_grant_i),
+    .cam_rd_req_o(mac_all_req), .cam_rd_index_o(mac_all_index),
+    .cam_rd_valid_i(cam_rd_valid_i), .cam_rd_entry_i(cam_rd_entry_i)
+  );
+  es_console_command_mac_port #(.CAM_CAPACITY(CAM_CAPACITY)) u_mac_port (
+    .clk_i(clk_i), .rst_ni(rst_ni), .start_i(start_mac_port), .arg_i(arg_q),
+    .line_ack_i(line_ack), .line_valid_o(mac_port_valid), .line_text_o(mac_port_text),
+    .done_o(mac_port_done),
+    .cam_claim_o(mac_port_claim), .cam_grant_i(cam_grant_i),
+    .cam_rd_req_o(mac_port_req), .cam_rd_index_o(mac_port_index),
+    .cam_rd_valid_i(cam_rd_valid_i), .cam_rd_entry_i(cam_rd_entry_i)
+  );
+
+  // The descriptor commands expose `done_o` for interface uniformity; the
+  // dispatcher completes them via the descriptor's own `last` bit, so the eight
+  // flags are reduced to keep "nothing reads these" explicit.
+  logic unused_desc_done;
+  assign unused_desc_done = help_done ^ version_done ^ status_done ^ port_done ^
+                            stat_done ^ link_done ^ cfg_done ^ mac_count_done;
+
+  // --------------------------------------------------------------------------
+  // Active-command muxes
+  // --------------------------------------------------------------------------
+  logic [12:0] desc_w;
+  logic        desc_valid;
+  always_comb begin
+    desc_w     = 13'd0;
+    desc_valid = 1'b0;
+    case (cmd_q)
+      SW_CMD_HELP:      begin desc_w = help_desc;      desc_valid = help_valid;      end
+      SW_CMD_VERSION:   begin desc_w = version_desc;   desc_valid = version_valid;   end
+      SW_CMD_STATUS:    begin desc_w = status_desc;    desc_valid = status_valid;    end
+      SW_CMD_PORT:      begin desc_w = port_desc;      desc_valid = port_valid;      end
+      SW_CMD_STAT:      begin desc_w = stat_desc;      desc_valid = stat_valid;      end
+      SW_CMD_LINK:      begin desc_w = link_desc;      desc_valid = link_valid;      end
+      SW_CMD_CFG:       begin desc_w = cfg_desc;       desc_valid = cfg_valid;       end
+      SW_CMD_MAC_COUNT: begin desc_w = mac_count_desc; desc_valid = mac_count_valid; end
+      default:          begin desc_w = 13'd0;          desc_valid = 1'b0;            end
     endcase
-  endfunction
+  end
+
+  logic [SW_CONSOLE_LINE_BYTES*8-1:0] mac_line_text;
+  logic        mac_line_valid;
+  logic        mac_done;
+  always_comb begin
+    if (mac_which) begin
+      mac_line_text  = mac_all_text;
+      mac_line_valid = mac_all_valid;
+      mac_done       = mac_all_done;
+    end else begin
+      mac_line_text  = mac_port_text;
+      mac_line_valid = mac_port_valid;
+      mac_done       = mac_port_done;
+    end
+  end
+
+  // --------------------------------------------------------------------------
+  // Shared forwarding-table read port
+  //
+  // Only one mac command runs at a time, so the claim and request OR together
+  // and the index is selected by `mac_which`.  `cam_rd_valid_i` arrives already
+  // gated by the grant (see es_console_hub.sv) and fans out to both commands.
+  // --------------------------------------------------------------------------
+  assign cam_claim_o   = mac_all_claim | mac_port_claim;
+  assign cam_rd_req_o  = mac_all_req   | mac_port_req;
+  assign cam_rd_index_o = mac_which ? mac_all_index : mac_port_index;
 
   // --------------------------------------------------------------------------
   // Value and label resolution
@@ -303,12 +447,10 @@ module es_console_port #(
   logic [3:0] desc_port;
   logic [3:0] desc_src;
   logic [3:0] desc_id;
-  logic       desc_last;
   logic [31:0] desc_value;
   logic [7:0]  desc_phy;
   logic [1:0]  desc_speed;
 
-  assign desc_last  = desc_q[12];
   assign desc_port  = desc_q[11:8];
   assign desc_src   = desc_q[7:4];
   assign desc_id    = desc_q[3:0];
@@ -342,63 +484,6 @@ module es_console_port #(
       default:          desc_value = 32'd0;
     endcase
   end
-
-  /// Which fixed name a non-counter line carries.
-  function automatic logic [3:0] named_label_sel(input logic [3:0] src);
-    case (src)
-      SW_SRC_PHY:        named_label_sel = 4'd0;
-      SW_SRC_LINK_UP:    named_label_sel = 4'd1;
-      SW_SRC_SPEED:      named_label_sel = 4'd2;
-      SW_SRC_DUPLEX:     named_label_sel = 4'd3;
-      SW_SRC_CAM_ENT:    named_label_sel = 4'd4;
-      SW_SRC_CAM_CAP:    named_label_sel = 4'd5;
-      SW_SRC_NUM_PORTS:  named_label_sel = 4'd6;
-      SW_SRC_MAC_IF:     named_label_sel = 4'd7;
-      SW_SRC_CONSOLE_ID: named_label_sel = 4'd12;
-      SW_SRC_CFG_FLOOD:  named_label_sel = 4'd9;
-      SW_SRC_CFG_LEARN:  named_label_sel = 4'd10;
-      SW_SRC_CFG_OVR:    named_label_sel = 4'd11;
-      default:           named_label_sel = 4'd12;
-    endcase
-  endfunction
-
-  /// Render the line the latched descriptor describes.
-  function automatic logic [SW_CONSOLE_LINE_BYTES*8-1:0] render_line(
-      input var logic [7:0]  desc,
-      input var logic [31:0] value);
-    logic [SW_CONSOLE_LABEL_BYTES*8-1:0] label;
-    if (desc[7:4] == SW_SRC_TEXT) begin
-      render_line = help_line(desc[3:0]);
-    end else if ((desc[7:4] == SW_SRC_STAT_AGG) ||
-                 (desc[7:4] == SW_SRC_STAT_PORT)) begin
-      label = sw_console_stat_label(desc[3:0]);
-      render_line = sw_console_value_line(label, value);
-    end else begin
-      label = sw_console_named_label(named_label_sel(desc[7:4]));
-      render_line = sw_console_value_line(label, value);
-    end
-  endfunction
-
-  // --------------------------------------------------------------------------
-  // Combinational evaluation of the two tables
-  //
-  // Both are evaluated once as continuous assignments rather than at each use:
-  // the parse result feeds three separate decisions in the same clock, and the
-  // line descriptor feeds the read-port selectors and the renderer, so calling
-  // the functions repeatedly would only obscure which value is authoritative.
-  // --------------------------------------------------------------------------
-  logic [7:0]  parse_w;
-  logic [12:0] info_w;
-  /// Descriptor port field, broken out because a chain of two range selects is
-  /// rejected by Icarus and reads ambiguously everywhere else.
-  logic [PW-1:0] info_port;
-
-  assign parse_w   = console_parse(command_q, length_q);
-  assign info_w    = sw_console_line_info(cmd_q, line_q, arg_q, int'(NUM_PORTS));
-  // Truncation to the port-index width is deliberate: a NUM_PORTS-port fabric
-  // cannot produce a descriptor whose port field needs more bits, and the
-  // upper bits would otherwise be state nothing can read.
-  assign info_port = PW'(info_w[11:8]);
 
   // --------------------------------------------------------------------------
   // UART instance
@@ -453,18 +538,9 @@ module es_console_port #(
       text_left_q    <= '0;
       cmd_q          <= SW_CMD_NONE;
       arg_q          <= '0;
-      line_q         <= '0;
       desc_q         <= '0;
       stat_port_o    <= '0;
       stat_id_o      <= '0;
-      cam_claim_o    <= 1'b0;
-      cam_rd_req_o   <= 1'b0;
-      cam_rd_index_o <= '0;
-      mac_cursor_q   <= '0;
-      mac_port_q     <= '0;
-      mac_addr_q     <= '0;
-      mac_sub_q      <= 1'b0;
-      mac_hit_q      <= 1'b0;
     end else begin
       // One octet leaves the buffer per accepted character; a zero octet is the
       // terminator and costs a clock without being transmitted.
@@ -484,10 +560,6 @@ module es_console_port #(
         fault_o       <= 1'b1;
       end
       if (parity_error || frame_error || overflow) fault_o <= 1'b1;
-
-      // The table read request is a one-clock pulse; the index stays put so the
-      // table sees a stable address for the whole transaction.
-      cam_rd_req_o <= 1'b0;
 
       case (state_q)
         // ---- line editing --------------------------------------------------
@@ -516,14 +588,14 @@ module es_console_port #(
         // ---- decode --------------------------------------------------------
         //
         // A rejected line answers with one error line instead of a response, and
-        // both the over-long case and an unrecognised command land here.
+        // both the over-long case and an unrecognised command land here.  The
+        // start pulse for the parsed command is combinationally high for this
+        // cycle, so the selected command module begins on the same edge that
+        // this state hands over to S_NEXT.
         S_PARSE: begin
           command_q <= '0;
           length_q  <= '0;
           long_q    <= 1'b0;
-          line_q    <= '0;
-          mac_cursor_q <= '0;
-          mac_sub_q    <= 1'b0;
           cmd_q     <= parse_w[7:4];
           arg_q     <= parse_w[3:0];
           if (long_q || (parse_w[7:4] == SW_CMD_NONE)) begin
@@ -534,91 +606,43 @@ module es_console_port #(
             // heard me".
             fault_o     <= 1'b1;
             state_q     <= S_END;
-          end else if ((parse_w[7:4] == SW_CMD_MAC_ALL) ||
-                       (parse_w[7:4] == SW_CMD_MAC_PORT)) begin
-            state_q <= S_MAC_WAIT;
           end else begin
             state_q <= S_NEXT;
           end
         end
 
-        // ---- fixed line sequence -------------------------------------------
+        // ---- fetch the next line from the active command -------------------
         S_NEXT: begin
-          if (text_free) begin
-            desc_q      <= info_w;
-            stat_port_o <= info_port;
-            stat_id_o   <= info_w[3:0];
-            state_q     <= S_LOAD;
-          end
-        end
-
-        S_LOAD: begin
-          text_q      <= render_line(desc_q[7:0], desc_value);
-          text_left_q <= 7'd64;
-          line_q      <= line_q + 7'd1;
-          state_q     <= desc_last ? S_END : S_NEXT;
-        end
-
-        // ---- forwarding table traversal ------------------------------------
-        S_MAC_WAIT: begin
-          cam_claim_o <= present_i;
-          if (cam_grant_i) state_q <= S_MAC_REQ;
-        end
-
-        S_MAC_REQ: begin
-          if (32'(mac_cursor_q) >= 32'(CAM_CAPACITY)) begin
-            cam_claim_o <= 1'b0;
-            state_q     <= S_END;
-          end else begin
-            cam_rd_index_o <= mac_cursor_q;
-            cam_rd_req_o   <= 1'b1;
-            state_q        <= S_MAC_EVAL;
-          end
-        end
-
-        S_MAC_EVAL: begin
-          if (cam_rd_valid_i) begin
-            // Entry layout: {31'd0, valid, port[31:0], 16'd0, mac[47:0]}.
-            mac_port_q  <= cam_rd_entry_i[67:64];
-            mac_addr_q  <= cam_rd_entry_i[47:0];
-            mac_hit_q   <= cam_rd_entry_i[96] &&
-                           ((cmd_q == SW_CMD_MAC_ALL) ||
-                            (cam_rd_entry_i[95:64] == 32'(arg_q)));
-            mac_sub_q   <= 1'b0;
-            state_q     <= S_MAC_EMIT;
-          end
-        end
-
-        S_MAC_EMIT: begin
-          if (mac_hit_q) begin
-            if (text_free) begin
-              if (!mac_sub_q) begin
-                // High half of the address together with the learned port, so
-                // one 32-bit value carries both fields without a third line.
-                text_q <= sw_console_value_line("mac_hi_port",
-                            {mac_addr_q[47:32], 12'd0, mac_port_q});
-              end else begin
-                text_q <= sw_console_value_line("mac_lo", mac_addr_q[31:0]);
-              end
+          if (is_mac) begin
+            if (mac_done) begin
+              state_q <= S_END;
+            end else if (text_free && mac_line_valid) begin
+              // Pre-rendered line; the ack advances the traversal.
+              text_q      <= mac_line_text;
               text_left_q <= 7'd64;
-              mac_sub_q   <= ~mac_sub_q;
-              if (mac_sub_q) state_q <= S_MAC_NEXT;
             end
           end else begin
-            state_q <= S_MAC_NEXT;
+            if (text_free && desc_valid) begin
+              desc_q      <= desc_w;
+              // Truncation to the port-index width is deliberate: a
+              // NUM_PORTS-port fabric cannot produce a descriptor whose port
+              // field needs more bits.
+              stat_port_o <= PW'(desc_w[11:8]);
+              stat_id_o   <= desc_w[3:0];
+              state_q     <= S_LOAD;
+            end
           end
         end
 
-        S_MAC_NEXT: begin
-          if (text_free) begin
-            mac_cursor_q <= mac_cursor_q + 32'd1;
-            state_q      <= S_MAC_REQ;
-          end
+        // ---- render a descriptor line --------------------------------------
+        S_LOAD: begin
+          text_q      <= sw_console_render_line(desc_q[7:0], desc_value);
+          text_left_q <= 7'd64;
+          state_q     <= desc_q[12] ? S_END : S_NEXT;
         end
 
         // ---- drain ----------------------------------------------------------
         S_END: begin
-          cam_claim_o <= 1'b0;
           if (text_free) state_q <= S_RX;
         end
 

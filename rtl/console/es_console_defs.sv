@@ -1,21 +1,23 @@
 // ============================================================================
 //  File        : es_console_defs.sv
-//  Description : Console command catalogue, response-line description and the
-//                text formatting helpers every console port shares.
+//  Description : Console command catalogue, the value-source vocabulary, and
+//                the text formatting / rendering helpers every console port
+//                and command module shares.
 //
 //                One console port never talks to another.  What they do share is
-//                this file: the names of the commands, the shape of the reply
-//                and the function that renders a value line.  Keeping all three
-//                here is what makes a second console port a pure instantiation
-//                rather than a second implementation - and therefore what makes
-//                "add another UART" a one-line change.
+//                this file: the names of the commands, the shape of a reply
+//                line, and the functions that render a value line.  Keeping all
+//                of it here is what makes a second console port a pure
+//                instantiation rather than a second implementation.
 //
-//                A response is a sequence of lines.  A line is either a literal
-//                text line (the help banner, an error) or a "label = value"
-//                line whose value comes from somewhere in the switch.  The
-//                sequencer asks `sw_console_line_info` what line N of command X
-//                is and `sw_console_label` what it is called, so adding a field
-//                to a command is an edit to two functions and nothing else.
+//                A command is its own module - `es_console_command_<name>` -
+//                that emits the sequence of response lines for exactly one
+//                command.  This file carries the shared vocabulary those
+//                modules use: the command and value-source enums, the line
+//                geometry, and the pure rendering functions a dispatcher calls
+//                to turn a value-source descriptor into a text line.  Adding a
+//                field to a command is therefore an edit to that command's own
+//                module and nothing else.
 //
 //                Declarations are at compilation-unit scope, not in a package;
 //                see es_defs.sv for why.
@@ -112,132 +114,17 @@ function automatic logic [SW_CONSOLE_LINE_BYTES*8-1:0] sw_console_text_line(
 endfunction
 
 // ============================================================================
-// 5.  Response shape
+// 5.  Literal text lines
 // ============================================================================
-/// Number of lines a command answers with.  `mac` answers with a variable count
-/// and reports completion through the traversal instead.
-function automatic int unsigned sw_console_line_count(input var logic [3:0] cmd,
-                                                     input int unsigned num_ports);
-  int unsigned n;
-  n = 0;
-  case (cmd)
-    SW_CMD_HELP:    n = 4;
-    SW_CMD_VERSION: n = 4;
-    // Two switch-wide lines, then four per port: link, rate, receive frames and
-    // transmit frames - the four numbers an operator looks at first.
-    SW_CMD_STATUS:  n = 2 + 4*num_ports;
-    SW_CMD_PORT:    n = 4 + SW_STAT_COUNT;
-    SW_CMD_STAT:    n = SW_STAT_COUNT + 2;
-    SW_CMD_LINK:    n = num_ports;
-    SW_CMD_CFG:     n = 4;
-    SW_CMD_MAC_COUNT: n = 2;
-    default:        n = 0;
+/// The four lines of the `help` banner, indexed by line number.
+function automatic logic [SW_CONSOLE_LINE_BYTES*8-1:0] sw_console_help_line(
+    input logic [3:0] i);
+  case (i)
+    4'd0: sw_console_help_line = "help     status    stat     port <n>\015\n";
+    4'd1: sw_console_help_line = "link     cfg       version\015\n";
+    4'd2: sw_console_help_line = "mac all  mac <n>   mac count\015\n";
+    default: sw_console_help_line = "values are hex, port numbers are decimal\015\n";
   endcase
-  sw_console_line_count = n;
-endfunction
-
-/// Describe line `idx` of command `cmd`: where its value comes from, which
-/// counter or port it refers to, and whether it is the last line.
-///
-/// `{last, port, src, id}` - `port` is meaningful for the per-port sources and
-/// `id` for the counter sources.  `arg` is the command's own decimal argument,
-/// so `port <n>` and `mac <n>` describe their lines for port n while `status`
-/// derives the port from the line index.
-function automatic logic [12:0] sw_console_line_info(
-    input var logic [3:0]  cmd,
-    input logic [6:0]      idx,
-    input logic [3:0]      arg,
-    input int unsigned     num_ports);
-  logic        last;
-  logic [3:0]  port;
-  sw_console_src_e src;
-  logic [3:0]  id;
-  int unsigned n;
-
-  n    = sw_console_line_count(cmd, num_ports);
-  last = (n == 0) || (32'(idx) == 32'(n - 1));
-  port = 4'd0;
-  id   = 4'd0;
-  src  = SW_SRC_ZERO;
-
-  case (cmd)
-    SW_CMD_HELP: begin
-      src = SW_SRC_TEXT;
-      id  = idx[3:0];
-    end
-    SW_CMD_VERSION: begin
-      case (idx)
-        7'd0:    begin src = SW_SRC_NUM_PORTS;  end
-        7'd1:    begin src = SW_SRC_CAM_CAP;    end
-        7'd2:    begin src = SW_SRC_MAC_IF;     end
-        default: begin src = SW_SRC_CONSOLE_ID; end
-      endcase
-    end
-    SW_CMD_STAT: begin
-      if (idx < 7'(SW_STAT_COUNT)) begin
-        src = SW_SRC_STAT_AGG;
-        id  = idx[3:0];
-      end else if (idx == 7'(SW_STAT_COUNT)) begin
-        src = SW_SRC_CAM_ENT;
-      end else begin
-        src = SW_SRC_CAM_CAP;
-      end
-    end
-    // `mac count` is a two-line answer: occupancy then capacity.  It shares the
-    // command family with `stat` but not its line table, so it is decoded here
-    // rather than falling through the counter range.
-    SW_CMD_MAC_COUNT: begin
-      if (idx == 7'd0) src = SW_SRC_CAM_ENT;
-      else             src = SW_SRC_CAM_CAP;
-    end
-    SW_CMD_PORT: begin
-      port = arg;
-      case (idx)
-        7'd0:    src = SW_SRC_PHY;
-        7'd1:    src = SW_SRC_LINK_UP;
-        7'd2:    src = SW_SRC_SPEED;
-        7'd3:    src = SW_SRC_DUPLEX;
-        default: begin
-          src = SW_SRC_STAT_PORT;
-          id  = 4'(idx - 7'd4);
-        end
-      endcase
-    end
-    SW_CMD_STATUS: begin
-      if (idx < 7'd2) begin
-        // Written as an if/else rather than a conditional expression: Icarus
-        // will not infer the enum type of a `?:` result even with both arms
-        // cast, and the plain assignment form is unambiguous everywhere.
-        if (idx == 7'd0) src = SW_SRC_CAM_ENT;
-        else             src = SW_SRC_CAM_CAP;
-      end else begin
-        port = 4'((idx - 7'd2) >> 2);
-        case ((idx - 7'd2) & 7'd3)
-          7'd0: src = SW_SRC_LINK_UP;
-          7'd1: src = SW_SRC_SPEED;
-          7'd2: begin src = SW_SRC_STAT_PORT; id = 4'(SW_STAT_RX_FRAMES); end
-          default: begin src = SW_SRC_STAT_PORT; id = 4'(SW_STAT_TX_FRAMES); end
-        endcase
-      end
-    end
-    SW_CMD_LINK: begin
-      port = 4'(idx);
-      src  = SW_SRC_PHY;
-    end
-    SW_CMD_CFG: begin
-      case (idx)
-        7'd0:    src = SW_SRC_CFG_FLOOD;
-        7'd1:    src = SW_SRC_CFG_LEARN;
-        7'd2:    src = SW_SRC_CFG_OVR;
-        default: src = SW_SRC_CAM_CAP;
-      endcase
-    end
-    default: begin
-      src = SW_SRC_ZERO;
-    end
-  endcase
-
-  sw_console_line_info = {last, port, src, id};
 endfunction
 
 // ============================================================================
@@ -284,6 +171,50 @@ function automatic logic [SW_CONSOLE_LABEL_BYTES*8-1:0] sw_console_named_label(
     4'd12: sw_console_named_label = "console_port";
     default: sw_console_named_label = "value";
   endcase
+endfunction
+
+// ============================================================================
+// 7.  Line rendering
+// ============================================================================
+/// Which fixed name a non-counter line carries, keyed by its value source.
+function automatic logic [3:0] sw_console_named_label_sel(input logic [3:0] src);
+  case (src)
+    SW_SRC_PHY:        sw_console_named_label_sel = 4'd0;
+    SW_SRC_LINK_UP:    sw_console_named_label_sel = 4'd1;
+    SW_SRC_SPEED:      sw_console_named_label_sel = 4'd2;
+    SW_SRC_DUPLEX:     sw_console_named_label_sel = 4'd3;
+    SW_SRC_CAM_ENT:    sw_console_named_label_sel = 4'd4;
+    SW_SRC_CAM_CAP:    sw_console_named_label_sel = 4'd5;
+    SW_SRC_NUM_PORTS:  sw_console_named_label_sel = 4'd6;
+    SW_SRC_MAC_IF:     sw_console_named_label_sel = 4'd7;
+    SW_SRC_CONSOLE_ID: sw_console_named_label_sel = 4'd12;
+    SW_SRC_CFG_FLOOD:  sw_console_named_label_sel = 4'd9;
+    SW_SRC_CFG_LEARN:  sw_console_named_label_sel = 4'd10;
+    SW_SRC_CFG_OVR:    sw_console_named_label_sel = 4'd11;
+    default:           sw_console_named_label_sel = 4'd12;
+  endcase
+endfunction
+
+/// Render the line a latched descriptor describes.
+///
+/// `desc` is the low byte of a response-line descriptor: `{src[3:0], id[3:0]}`
+/// with the port field already stripped (it is only needed to select the value,
+/// not to render it).  A text line ignores `value`; a counter line uses the
+/// counter label; every other line uses its named label.
+function automatic logic [SW_CONSOLE_LINE_BYTES*8-1:0] sw_console_render_line(
+    input var logic [7:0]  desc,
+    input var logic [31:0] value);
+  logic [SW_CONSOLE_LABEL_BYTES*8-1:0] label;
+  if (desc[7:4] == SW_SRC_TEXT) begin
+    sw_console_render_line = sw_console_help_line(desc[3:0]);
+  end else if ((desc[7:4] == SW_SRC_STAT_AGG) ||
+               (desc[7:4] == SW_SRC_STAT_PORT)) begin
+    label = sw_console_stat_label(desc[3:0]);
+    sw_console_render_line = sw_console_value_line(label, value);
+  end else begin
+    label = sw_console_named_label(sw_console_named_label_sel(desc[7:4]));
+    sw_console_render_line = sw_console_value_line(label, value);
+  end
 endfunction
 
 `default_nettype wire
