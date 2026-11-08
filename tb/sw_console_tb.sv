@@ -40,18 +40,22 @@ module sw_console_tb;
   int checks = 0, errors = 0;
 
   // ---- device under test ---------------------------------------------------
-  logic        rx_i = 1'b1;
-  logic        cts_ni = 1'b0;
+  // Console-side pins and the stub responses the console reads through them.
+  // The statistics read port answers with the per-port counter model below,
+  // and the CAM read port answers with a fixed entry - the console is the
+  // block under test, everything behind those ports is a stand-in.
+  logic        rx_i = 1'b1;   ///< console receive pin, idle mark level
+  logic        cts_ni = 1'b0; ///< flow control: always clear to send
   logic        tx_o, rts_o, fault;
-  logic [1:0]  stat_port;
-  logic [3:0]  stat_id;
-  logic [31:0] stat_data;
-  logic [31:0] cam_entries = 32'd7;
-  logic        cam_claim;
-  logic        cam_grant = 1'b0;
-  logic        cam_rd_req;
-  logic [31:0] cam_rd_index;
-  logic [127:0] cam_entry = '0;
+  logic [1:0]  stat_port;     ///< port index the console is reading
+  logic [3:0]  stat_id;       ///< counter id the console is reading
+  logic [31:0] stat_data;     ///< stubbed counter value, see the model below
+  logic [31:0] cam_entries = 32'd7;  ///< table occupancy reported to the panel
+  logic        cam_claim;     ///< console requests the CAM for learning
+  logic        cam_grant = 1'b0;   ///< no grant: the claim path stays idle
+  logic        cam_rd_req;    ///< indexed CAM read request
+  logic [31:0] cam_rd_index;  ///< entry index of the read request
+  logic [127:0] cam_entry = '0;    ///< stubbed CAM read data
 
   /// The aggregate bus carries one 32-bit word per `sw_stat_id_e`, so it is as
   /// wide as the counter set - not one word wide.  Declaring it 32 bits makes
@@ -94,6 +98,7 @@ module sw_console_tb;
     .fault_o(fault)
   );
 
+  /// Print one PASS/FAIL line and keep the counters for the final verdict.
   task check(input bit ok, input string label);
     checks++;
     if (!ok) begin errors++; $display("FAIL %s", label); end
@@ -179,9 +184,9 @@ module sw_console_tb;
   endfunction
 
   // ---- stimulus ------------------------------------------------------------
-  int  lines;
-  bit  saw_port2;
-  logic [1:0] port_hold;
+  int  lines;             ///< lines consumed by the current command exchange
+  bit  saw_port2;         ///< every `port 2` reply used the right descriptor
+  logic [1:0] port_hold;  ///< per-port descriptor sampled while reading a line
 
   initial begin
     agg_bus = '0;
@@ -244,4 +249,4 @@ module sw_console_tb;
     #40_000_000;
     $fatal(1, "sw_console_tb timeout");
   end
-endmodule
+endmodule : sw_console_tb

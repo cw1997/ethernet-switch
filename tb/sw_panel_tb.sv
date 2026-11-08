@@ -41,13 +41,19 @@ module sw_panel_tb;
 
   int checks = 0, errors = 0;
 
-  logic [SW_PANEL_DIP_W-1:0] dip = '0;
-  logic [NUM_PORTS-1:0]      link_up = '0;
-  logic [NUM_PORTS*8-1:0]    phy_status = '0;
-  logic [NUM_PORTS-1:0]      port_active = '0;
+  // ---- stimulus inputs -----------------------------------------------------
+  // Board positions and the status the fabric would report; every output the
+  // panel owes is a pure function of these.
+  logic [SW_PANEL_DIP_W-1:0] dip = '0;          ///< board switch positions
+  logic [NUM_PORTS-1:0]      link_up = '0;      ///< administrative link enables
+  logic [NUM_PORTS*8-1:0]    phy_status = '0;   ///< one status byte per port
+  logic [NUM_PORTS-1:0]      port_active = '0;  ///< per-port activity pulse
   logic [31:0]               rx_crc = 0, rx_runt = 0, rx_oversize = 0, rx_overflow = 0;
   logic [31:0]               cam_entries = 0;
 
+  // ---- observed outputs ----------------------------------------------------
+  // The decoded policy handed to the fabric, and the lamp image a board file
+  // would wire to the front panel.
   logic [1:0]  flood_mode;
   logic        learning_en, cfg_ovr, cam_flush;
   logic [NUM_PORTS-1:0]   led_link, led_act, led_duplex, led_fault;
@@ -83,6 +89,7 @@ module sw_panel_tb;
     .led_stat_o     (led_stat)
   );
 
+  /// Print one PASS/FAIL line and keep the counters for the final verdict.
   task check(input bit ok, input string label);
     checks++;
     if (!ok) begin

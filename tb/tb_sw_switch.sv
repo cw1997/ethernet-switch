@@ -259,6 +259,7 @@ module tb_sw_switch;
     ref_port.push_back(p);
   endfunction
 
+  /// Forget every station, mirroring a CAM flush on the DUT side.
   function automatic void ref_flush();
     ref_mac.delete();
     ref_port.delete();
@@ -309,11 +310,13 @@ module tb_sw_switch;
   int unsigned errors;
   int unsigned checks;
 
+  /// Record a scoreboard failure with its simulation time.
   task automatic note_error(input string msg);
     errors++;
     $display("  *** ERROR @%0t: %s", $time, msg);
   endtask
 
+  /// Count one passed comparison.
   task automatic note_check();
     checks++;
   endtask
@@ -580,6 +583,9 @@ module tb_sw_switch;
     end
   endtask
 
+  /// Wait out the single-frame settle bound, i.e. the slowest crossing of one
+  /// frame of `octets` through fabric and slowest egress.  Queued traffic adds
+  /// `queue_clocks` per extra frame, which `check_outputs` accounts for.
   task automatic settle(input int unsigned octets = DEFAULT_FRAME_OCTETS);
     repeat (settle_clocks(octets)) @(posedge clk_i);
   endtask
@@ -587,6 +593,8 @@ module tb_sw_switch;
   // ==========================================================================
   // Statistics access
   // ==========================================================================
+  /// Counter `idx` of the aggregate statistics bus, one 32-bit field per
+  /// `sw_stat_id_e`.
   function automatic int unsigned stat_get(input int unsigned idx);
     return stat[32*idx +: 32];
   endfunction

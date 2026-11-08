@@ -20,22 +20,28 @@
 
 module sw_sync_fifo_tb;
 
-  localparam int unsigned WIDTH = 16;
-  localparam int unsigned DEPTH = 8;
-  localparam int unsigned CNT_W = $clog2(DEPTH) + 1;
+  // --------------------------------------------------------------------------
+  // Configuration under test
+  //
+  // A small geometry keeps every boundary condition - full, empty, the free
+  // counter - within a handful of clocks.
+  // --------------------------------------------------------------------------
+  localparam int unsigned WIDTH = 16;   ///< entry width in bits
+  localparam int unsigned DEPTH = 8;    ///< entry count, deliberately not 2**n - 1
+  localparam int unsigned CNT_W = $clog2(DEPTH) + 1;  ///< occupancy width, DEPTH+1 states
 
   logic                    clk = 1'b0;
   logic                    rst_n = 1'b0;
-  logic                    undo;
-  logic        [CNT_W-1:0] undo_cnt;
-  logic                    flush;
-  logic                    wr_en;
-  logic        [WIDTH-1:0] wr_data;
-  logic                    full;
-  logic        [CNT_W-1:0] free_cnt;
-  logic                    rd_en;
-  logic        [WIDTH-1:0] rd_data;
-  logic                    empty;
+  logic                    undo;       ///< frame-granular write-pointer rewind request
+  logic        [CNT_W-1:0] undo_cnt;   ///< entries to discard on the rewind
+  logic                    flush;      ///< hard reset of both pointers
+  logic                    wr_en;      ///< write strobe
+  logic        [WIDTH-1:0] wr_data;    ///< write data
+  logic                    full;       ///< DUT: no free entry
+  logic        [CNT_W-1:0] free_cnt;   ///< DUT: entries that can still be written
+  logic                    rd_en;      ///< read strobe (fall-through port)
+  logic        [WIDTH-1:0] rd_data;    ///< DUT: current head, valid while !empty
+  logic                    empty;      ///< DUT: no entry held
 
   int unsigned             errors;
   int unsigned             checks;
@@ -59,7 +65,15 @@ module sw_sync_fifo_tb;
     .rd_data_o  (rd_data),
     .empty_o    (empty)
   );
-  // Frozen pre-extraction implementation checks every observable clock.
+  // --------------------------------------------------------------------------
+  // Frozen pre-extraction cycle reference
+  //
+  // `sw_sync_fifo_reference` is an independent re-implementation of the same
+  // observable contract, checked on every clock the design is out of reset:
+  // any deviation in the status flags, the free counter, the head data or the
+  // empty flag aborts the run immediately, so a regression cannot drift from
+  // the pre-extraction behaviour without naming the clock it happened on.
+  // --------------------------------------------------------------------------
   logic [$bits(full)-1:0] ref_full;
   logic [$bits(free_cnt)-1:0] ref_free_cnt;
   logic [$bits(rd_data)-1:0] ref_rd_data;
@@ -81,6 +95,12 @@ module sw_sync_fifo_tb;
     .rd_data_o  (ref_rd_data),
     .empty_o    (ref_empty)
   );
+  /// Cycle comparison against the frozen reference.
+  ///
+  /// Runs 1 ns after the negedge, i.e. after every update of the clock has
+  /// settled, and only while out of reset: the reference and the DUT must
+  /// agree on the status flags, the free counter, the head data and the empty
+  /// flag at every observable point.
   always @(negedge clk) begin
     #1;
     if (rst_n && (({full, free_cnt, empty} !== {ref_full, ref_free_cnt, ref_empty}) || (!empty && (rd_data !== ref_rd_data))))
@@ -88,6 +108,8 @@ module sw_sync_fifo_tb;
   end
 
 
+  /// Print one PASS/FAIL line for an integer expectation.
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -98,6 +120,7 @@ module sw_sync_fifo_tb;
     end
   endtask
 
+  /// Print one PASS/FAIL line for an entry-width data expectation.
   task automatic expect_data(input logic [WIDTH-1:0] got, input logic [WIDTH-1:0] exp,
                              input string what);
     checks++;

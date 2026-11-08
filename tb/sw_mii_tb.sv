@@ -52,20 +52,25 @@ module sw_mii_tb;
 
   // ---------------------------------------------------------------------------
   // DUT 1: the main instance, BYTE_PERIOD = 10 (nibble window 5 clocks).
+  //
+  // Pin groups: MII receive nibble stream in, transmit nibble stream out, and
+  // the canonical octet interface on both sides - `oct_en_o`/`oct_d_o` is the
+  // receive presentation the adapter owes es_mac_rx_frame, `oct_en_i`/`oct_d_i`
+  // the transmit request es_mac_tx_frame drives.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP  = 10;
   localparam int unsigned NPK = BP / 2;
 
-  logic       rx_dv;
-  logic       rx_er;
-  logic [3:0] rxd;
-  logic       tx_en;
-  logic [3:0] txd;
-  logic       tx_er_o;
-  logic       oct_en_o;
-  logic [7:0] oct_d_o;
-  logic       oct_en_i;
-  logic [7:0] oct_d_i;
+  logic       rx_dv;      ///< MII receive data valid (model driven)
+  logic       rx_er;      ///< MII receive error (model driven, see test 3/4)
+  logic [3:0] rxd;        ///< MII receive nibble
+  logic       tx_en;      ///< MII transmit enable (adapter driven)
+  logic [3:0] txd;        ///< MII transmit nibble
+  logic       tx_er_o;    ///< adapter transmit error; must stay low throughout
+  logic       oct_en_o;   ///< canonical receive octet valid
+  logic [7:0] oct_d_o;    ///< canonical receive octet
+  logic       oct_en_i;   ///< canonical transmit octet valid
+  logic [7:0] oct_d_i;    ///< canonical transmit octet
 
   es_mac_mii_serdes #(
     .BYTE_PERIOD(BP)
@@ -86,6 +91,10 @@ module sw_mii_tb;
 
   // ---------------------------------------------------------------------------
   // DUT 2: the edge configuration, BYTE_PERIOD = 2 (one clock per nibble).
+  //
+  // Same pin groups as DUT 1, `f_` prefixed.  At one clock per nibble there is
+  // no room for a late sample, which is why this configuration is elaborated
+  // separately.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP2  = 2;
   localparam int unsigned NPK2 = BP2 / 2;
@@ -124,6 +133,7 @@ module sw_mii_tb;
   int unsigned errors;
   int unsigned checks;
 
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -144,6 +154,7 @@ module sw_mii_tb;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a one-bit expectation.
   task automatic expect_1bit(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -161,12 +172,14 @@ module sw_mii_tb;
 
   // Icarus Verilog cannot take a part-select of a function call result, so the
   // nibble selectors below stage the octet through a local first.
+  /// Low nibble of octet `k`, as the MII carries it first on the wire.
   function automatic logic [3:0] get_lo(input logic [63:0] v, input int unsigned k);
     logic [7:0] o;
     o = get_oct(v, k);
     get_lo = o[3:0];
   endfunction
 
+  /// High nibble of octet `k`.
   function automatic logic [3:0] get_hi(input logic [63:0] v, input int unsigned k);
     logic [7:0] o;
     o = get_oct(v, k);
@@ -466,6 +479,8 @@ module sw_mii_tb;
     end
   end
 
+  // Watchdog: an adapter that stops presenting or serialising must fail the
+  // bench rather than hang the regression.
   initial begin
     #10_000_000;
     $fatal(1, "sw_mii_tb: timeout");

@@ -55,18 +55,23 @@ module sw_rmii_tb;
 
   // ---------------------------------------------------------------------------
   // DUT 1: the main instance, BYTE_PERIOD = 8 (chunk window 2 clocks).
+  //
+  // Pin groups: RMII receive chunk stream in, transmit chunk stream out, and
+  // the canonical octet interface on both sides - `oct_en_o`/`oct_d_o` is the
+  // receive presentation the adapter owes es_mac_rx_frame, `oct_en_i`/`oct_d_i`
+  // the transmit request es_mac_tx_frame drives.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP  = 8;
   localparam int unsigned CPK = BP / 4;
 
-  logic       rx_dv;
-  logic [1:0] rxd;
-  logic       tx_en;
-  logic [1:0] txd;
-  logic       oct_en_o;
-  logic [7:0] oct_d_o;
-  logic       oct_en_i;
-  logic [7:0] oct_d_i;
+  logic       rx_dv;      ///< RMII CRS_DV, carrier sense plus frame data
+  logic [1:0] rxd;        ///< RMII receive chunk
+  logic       tx_en;      ///< RMII transmit enable (adapter driven)
+  logic [1:0] txd;        ///< RMII transmit chunk
+  logic       oct_en_o;   ///< canonical receive octet valid
+  logic [7:0] oct_d_o;    ///< canonical receive octet
+  logic       oct_en_i;   ///< canonical transmit octet valid
+  logic [7:0] oct_d_i;    ///< canonical transmit octet
 
   es_mac_rmii_serdes #(
     .BYTE_PERIOD(BP)
@@ -85,6 +90,10 @@ module sw_rmii_tb;
 
   // ---------------------------------------------------------------------------
   // DUT 2: the edge configuration, BYTE_PERIOD = 4 (one clock per chunk).
+  //
+  // Same pin groups as DUT 1, `f_` prefixed.  At one clock per chunk there is
+  // no room for a late sample, which is why this configuration is elaborated
+  // separately.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP2  = 4;
   localparam int unsigned CPK2 = BP2 / 4;
@@ -119,6 +128,7 @@ module sw_rmii_tb;
   int unsigned errors;
   int unsigned checks;
 
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -139,6 +149,7 @@ module sw_rmii_tb;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a one-bit expectation.
   task automatic expect_1bit(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -431,6 +442,8 @@ module sw_rmii_tb;
     end
   end
 
+  // Watchdog: an adapter that stops presenting or serialising must fail the
+  // bench rather than hang the regression.
   initial begin
     #40_000_000;
     $fatal(1, "sw_rmii_tb: timeout");

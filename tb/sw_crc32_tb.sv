@@ -27,11 +27,11 @@ module sw_crc32_tb;
 
   logic               clk = 1'b0;
   logic               rst_n = 1'b0;
-  logic               en;
-  logic        [ 7:0] din;
-  logic               clr;
-  logic        [31:0] crc_fin;
-  logic               resid_ok;
+  logic               en;       ///< clock enable: one octet is absorbed per cycle
+  logic        [ 7:0] din;      ///< octet presented to the LFSR
+  logic               clr;      ///< one-clock re-seed of the LFSR
+  logic        [31:0] crc_fin;  ///< finished CRC of the absorbed octets
+  logic               resid_ok; ///< receiver verdict: magic residue after the FCS
 
   int unsigned        errors;
   int unsigned        checks;
@@ -143,6 +143,7 @@ module sw_crc32_tb;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a 32-bit expectation.
   task automatic expect_eq32(input logic [31:0] got, input logic [31:0] exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -153,6 +154,7 @@ module sw_crc32_tb;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a one-bit expectation.
   task automatic expect_eq1(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin

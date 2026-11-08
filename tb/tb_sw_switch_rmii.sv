@@ -32,6 +32,8 @@ module tb_sw_switch_rmii;
   localparam int unsigned CLK_HZ    = 50_000_000;
   /// Port 0 at 100 Mbit/s (BYTE_PERIOD 4), port 1 at 10 Mbit/s (40).
   localparam logic [NUM_PORTS*2-1:0] SPEEDS = {2'b00, 2'b01};
+  /// Core clocks per octet time of each port, derived with the same function
+  /// the DUT uses, so the models and the adapters cannot disagree.
   localparam int unsigned BP0 = sw_byte_period(CLK_HZ, SW_SPEED_100M);
   localparam int unsigned BP1 = sw_byte_period(CLK_HZ, SW_SPEED_10M);
 
@@ -42,6 +44,7 @@ module tb_sw_switch_rmii;
   always #10 clk = ~clk;
 
   // ---- DUT pins -------------------------------------------------------------
+  // Packed per-port RMII buses; port 0 occupies the low slice of each bus.
   logic [       NUM_PORTS-1:0] rmii_crs_dv_i;
   logic [     NUM_PORTS*2-1:0] rmii_rxd_i;
   logic [       NUM_PORTS-1:0] rmii_tx_en_o;
@@ -114,6 +117,7 @@ module tb_sw_switch_rmii;
   int unsigned errors;
   int unsigned checks;
 
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -124,6 +128,7 @@ module tb_sw_switch_rmii;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a one-bit expectation.
   task automatic expect_1bit(input logic got, input logic exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -134,6 +139,7 @@ module tb_sw_switch_rmii;
     end
   endtask
 
+  /// Print one PASS/FAIL line for a MAC address expectation.
   task automatic expect_mac(input sw_mac_t got, input sw_mac_t exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -171,9 +177,9 @@ module tb_sw_switch_rmii;
   // ---------------------------------------------------------------------------
   // Stimulus
   // ---------------------------------------------------------------------------
-  sw_mac_t STA0;
-  sw_mac_t STA1;
-  tb_rec_t r;
+  sw_mac_t STA0;   ///< station behind port 0
+  sw_mac_t STA1;   ///< station behind port 1
+  tb_rec_t r;      ///< the frame most recently popped off a monitor queue
 
   initial begin
     errors  = 0;
@@ -236,6 +242,8 @@ module tb_sw_switch_rmii;
     end
   end
 
+  // Watchdog: a fabric that deadlocks must not hang the regression.  The
+  // bound covers the slowest crossing (100 Mbit/s into a 10 Mbit/s egress).
   initial begin
     #80_000_000;
     $fatal(1, "tb_sw_switch_rmii: timeout");

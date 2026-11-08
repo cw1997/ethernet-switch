@@ -52,21 +52,28 @@ module sw_mac_table_tb #(
 
   logic clk = 1'b0;
   logic rst_n = 1'b0;
-  logic flush;
+  logic flush;  ///< whole-table invalidation
 
+  // ---- lookup ports ---------------------------------------------------------
+  /// Parallel destination-MAC queries and their registered results; port p
+  /// occupies packed slice p of each bus.
   logic [NUM_PORTS-1:0]    req;
   logic [NUM_PORTS*48-1:0] mac;
   logic [NUM_PORTS-1:0]    hit;
-  logic [NUM_PORTS*NUM_PORTS-1:0] port;
+  logic [NUM_PORTS*NUM_PORTS-1:0] port;  ///< one-hot learned egress per lookup port
 
+  // ---- learn ports ----------------------------------------------------------
+  /// Parallel source-address learns, serialised inside the CAM by its own
+  /// request queue.
   logic [NUM_PORTS-1:0]    learn;
   logic [NUM_PORTS*48-1:0] learn_mac;
   logic [NUM_PORTS*PW-1:0] learn_port;
 
+  // ---- status counters and indexed management read --------------------------
   logic [31:0] entries, hits, misses, learns;
-  logic rd_req = 0, rd_valid;
-  logic [31:0] rd_index = 0;
-  logic [127:0] rd_entry;
+  logic rd_req = 0, rd_valid;   ///< management read request / response valid
+  logic [31:0] rd_index = 0;    ///< flat entry index of the management read
+  logic [127:0] rd_entry;       ///< management read data, see `scan_mac`
 
   int unsigned errors;
   int unsigned checks;
@@ -100,7 +107,14 @@ module sw_mac_table_tb #(
     .misses_o     (misses),
     .learns_o     (learns)
   );
-  // Frozen pre-extraction implementation checks every observable clock.
+  // --------------------------------------------------------------------------
+  // Frozen pre-extraction cycle reference
+  //
+  // The independent `sw_mac_table_reference` model is wired to the identical
+  // stimulus and compared on every observable clock, so a regression cannot
+  // drift from the pre-extraction behaviour without naming the clock it
+  // happened on.
+  // --------------------------------------------------------------------------
   logic [$bits(hit)-1:0] ref_hit;
   logic [$bits(port)-1:0] ref_port;
   logic [$bits(entries)-1:0] ref_entries;
@@ -136,6 +150,8 @@ module sw_mac_table_tb #(
     .misses_o     (ref_misses),
     .learns_o     (ref_learns)
   );
+  /// Cycle comparison against the frozen reference, 1 ns after the negedge so
+  /// every update of the clock has settled, and only while out of reset.
   always @(negedge clk) begin
     #1;
     if (rst_n && (({hit, port, entries, hits, misses, learns, rd_valid, rd_entry} !== {ref_hit, ref_port, ref_entries, ref_hits, ref_misses, ref_learns, ref_rd_valid, ref_rd_entry})))
@@ -148,6 +164,7 @@ module sw_mac_table_tb #(
   localparam logic [47:0] MAC_B = 48'h02_00_00_00_00_0B;
   localparam logic [47:0] MAC_C = 48'h02_00_00_00_00_0C;
 
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -194,6 +211,9 @@ module sw_mac_table_tb #(
     @(negedge clk);
   endtask
 
+  /// Check the registered result of the last lookup of port `p`: the hit flag
+  /// and, when a hit is expected, the one-hot port vector of the learned
+  /// egress.
   task automatic expect_hit(input int unsigned p, input bit exp_hit, input int unsigned exp_port,
                             input string what);
     checks++;
@@ -207,6 +227,11 @@ module sw_mac_table_tb #(
     end
   endtask
 
+  /// Walk the whole table through the indexed management read and count the
+  /// entries matching `address`, expecting exactly one when `expected` is set
+  /// (relocation must update in place, never duplicate) or none otherwise.
+  /// The read data carries {valid, port, mac} at fixed offsets: valid at bit
+  /// 96, the learned port at bits 95:64, the address in the low 48 bits.
   task automatic scan_mac(input sw_mac_t address, input bit expected,
                           input int unsigned expected_port);
     int unsigned found;

@@ -44,13 +44,13 @@ module sw_if_array
   parameter int unsigned EXP_DEPTH = 256
 ) (
   /// Shared test clock/reset and per-port administrative link enables.
-  input logic                 clk_i,
-  input logic                 rst_ni,
-  input logic [NUM_PORTS-1:0] link_up,
+  input  logic                 clk_i,
+  input  logic                 rst_ni,
+  input  logic [NUM_PORTS-1:0] link_up,
   /// Packed receive and transmit buses; port zero occupies the low slice.
-  output logic [NUM_PORTS-1:0] rx_en,
+  output logic [NUM_PORTS-1:0]   rx_en,
   output logic [NUM_PORTS*8-1:0] rx_d,
-  input  logic [NUM_PORTS-1:0] tx_en,
+  input  logic [NUM_PORTS-1:0]   tx_en,
   input  logic [NUM_PORTS*8-1:0] tx_d
 );
 

@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb_es_switch_vivado_top.sv
+//  File        : tb/tb_sw_vivado_top.sv
 //  Description : Eight-port Vivado board-shell regression using the existing
 //                synchronous MII wire models at 50 MHz / 100 Mbit/s.
 //
@@ -33,6 +33,10 @@ module tb_sw_vivado_top;
   // Never used as a source, so this address must remain an unknown unicast
   // throughout the first phase even while the station addresses are learned.
   localparam sw_mac_t UNKNOWN_DST = 48'h02_EE_00_00_00_FF;
+  // Core clock at 50 MHz; the reserved PHY RX/TX clocks are deliberately not
+  // phase locked to it (20 ns / 19 ns periods) and no data is sampled from
+  // them - see the scope note in the header.  The button reset is released
+  // between edges on purpose, to expose an accidental asynchronous path.
   logic clk = 1'b0;
   logic rst_button_n = 1'b0;
   logic rx_clk = 1'b0;
@@ -299,4 +303,4 @@ module tb_sw_vivado_top;
     #20_000_000;
     $fatal(1, "tb_sw_vivado_top timeout");
   end
-endmodule
+endmodule : tb_sw_vivado_top

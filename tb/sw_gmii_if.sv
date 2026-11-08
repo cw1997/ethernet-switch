@@ -127,9 +127,11 @@ module sw_gmii_if
   // middle of a window - the switch registers the next octet on the *last* clock
   // of a window, so the last clock is exactly the wrong place to look.
   //
-  // Sampling also has to happen *after* the non-blocking update of the octet
-  // register has settled: a process that reads the pins in the active region of
-  // the clock edge still sees the previous octet, which shifts the whole
+  // Which clock inside the window the sample lands on is fixed by the
+  // localparams below: MSAMPLE_OFF puts the sample in the middle of the window
+  // and MPW sizes the counter that tracks the position.  The active-region
+  // rule that decides *when* the pins may be read is stated at the
+  // reassembly process further down.
   localparam int unsigned MPW = (BYTE_PERIOD <= 1) ? 1 : $clog2(BYTE_PERIOD);
   /// Position within the octet window at which the pins are sampled, counted
   /// from the clock on which the window opened.

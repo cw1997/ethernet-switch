@@ -22,19 +22,12 @@
 `timescale 1ns/1ps
 
 module sw_flood_tb #(
-
   /// Link speed of port 0.  2 = 1000 Mbit/s (the default, and the fast
-
   /// configuration), 0 = 10 Mbit/s.  The slow configuration is the one that
-
   /// matters: it makes port 0's egress buffer accumulate a long queue while the
-
   /// fabric is still pushing frames into it, which is the situation the
-
   /// four-port testbench runs into and the one a store-and-forward fabric is
-
   /// most likely to get wrong.  Elaborate it with
-
   ///     iverilog -P sw_flood_tb.SPEED0=0
   parameter int unsigned SPEED0 = 2
 );
@@ -45,21 +38,24 @@ module sw_flood_tb #(
   // Configuration: fast enough to iterate on, deep enough to hold four frames
   // per ingress queue so the fabric really does see a queue.
   // --------------------------------------------------------------------------
-  localparam int unsigned NUM_PORTS = 3;
+  localparam int unsigned NUM_PORTS = 3;        // deliberately not a power of two
   localparam int unsigned CLK_FREQ = 125_000_000;
-  localparam int unsigned RX_DEPTH = 64;  // 8 beats * 8 frames
-  localparam int unsigned TX_DEPTH = 64;
-  localparam int unsigned TAG_DEPTH = 8;
-  localparam int unsigned CAM_SETS = 16;
-  localparam int unsigned CAM_WAYS = 2;
-  localparam int unsigned PAYLOAD = 128;  // 16 beats
+  localparam int unsigned RX_DEPTH = 64;        // 8 beats * 8 frames
+  localparam int unsigned TX_DEPTH = 64;        // egress queue for several frames
+  localparam int unsigned TAG_DEPTH = 8;        // small descriptor queue
+  localparam int unsigned CAM_SETS = 16;        // deliberately small: replacement,
+  localparam int unsigned CAM_WAYS = 2;         // not capacity, is what is under test
+  localparam int unsigned PAYLOAD = 128;        // 16 beats of MAC client data
 
+  // Per-port MAC addresses, port p at packed slice p.
   localparam logic [NUM_PORTS*48-1:0] PORT_MAC = {
     48'h02_00_00_00_00_02, 48'h02_00_00_00_00_01, 48'h02_00_00_00_00_00
   };
 
+  // Ports 1 and 2 at 1000 Mbit/s; port 0's speed is the SPEED0 parameter.
   localparam logic [NUM_PORTS*2-1:0] PORT_SPEED = {2'd2, 2'd2, 2'(SPEED0)};
 
+  /// The address port `p` owns, taken straight from `PORT_MAC`.
   function automatic sw_mac_t port_mac(input int unsigned p);
     port_mac = PORT_MAC[p*48 +: 48];
   endfunction
@@ -84,19 +80,29 @@ module sw_flood_tb #(
   logic [7:0] dip;
   assign dip = {3'd0, cam_flush, cfg_ovr, learning_en, flood_mode};
 
+  // --------------------------------------------------------------------------
+  // Statistics read sweep and the cycle-exact quiet reference
+  //
   // The active instance is swept across every console read port and every
   // counter, forever.  This replaces the old CSR scan: the property under test
   // is unchanged - reading statistics must not move the datapath by so much as
   // one clock - but the reader is now the stateless per-port port instead of a
   // registered CSR.
-  logic [1:0]  stat_port_q;
-  logic [3:0]  stat_id_q;
-  logic [31:0] stat_read;
-  logic [NUM_PORTS-1:0] quiet_tx_en;
+  //
+  // `u_quiet` is an identically parameterised second instance that receives
+  // the same inputs but never a statistics read request, so at every negedge
+  // its outputs must match the active instance's exactly.  A read that so much
+  // as delays one beat aborts the run with the cycle it happened on.
+  // --------------------------------------------------------------------------
+  logic [1:0]  stat_port_q;    ///< port index currently presented to the reader
+  logic [3:0]  stat_id_q;      ///< counter id currently presented to the reader
+  logic [31:0] stat_read;      ///< the value the active read returned
+  logic [NUM_PORTS-1:0] quiet_tx_en;      ///< reference instance outputs
   logic [NUM_PORTS*8-1:0] quiet_tx_data;
   logic [32*SW_STAT_COUNT-1:0] quiet_stat;
-  int unsigned compared_cycles = 0;
+  int unsigned compared_cycles = 0;       ///< clocks the comparison has covered
 
+  // The sweep itself: every counter of every port, one per clock, wrapping.
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       stat_port_q <= '0;
@@ -107,6 +113,8 @@ module sw_flood_tb #(
     end
   end
 
+  // The comparison: the two instances must be indistinguishable on every
+  // observable output at every settled clock edge.
   always @(negedge clk)
     if (rst_n) begin
       compared_cycles++;
@@ -114,6 +122,7 @@ module sw_flood_tb #(
         $fatal(1, "statistics read changed output/latency at cycle %0d", compared_cycles);
     end
 
+  // Active instance: carries the traffic and is swept by the statistics reader.
   es_switch_gmii #(
     .NUM_PORTS      (NUM_PORTS),
     .CLK_FREQ_HZ    (CLK_FREQ),
@@ -153,6 +162,8 @@ module sw_flood_tb #(
     .cfg_ovr_o      ()
   );
 
+  // Quiet reference: same parameters, same inputs, no statistics read.  Any
+  // difference between the two instances at a settled edge is the failure.
   es_switch_gmii #(
     .NUM_PORTS      (NUM_PORTS),
     .CLK_FREQ_HZ    (CLK_FREQ),
@@ -240,11 +251,13 @@ module sw_flood_tb #(
   int unsigned errors;
   int unsigned checks;
 
+  /// Record a scoreboard failure.
   task automatic note_error(input string msg);
     errors++;
     $display("[%0t] ERROR %s", $time, msg);
   endtask
 
+  /// Print one PASS/FAIL line for an integer expectation.
   task automatic expect_eq(input int unsigned got, input int unsigned exp, input string what);
     checks++;
     if (got !== exp) begin
@@ -255,6 +268,8 @@ module sw_flood_tb #(
     end
   endtask
 
+  /// Present one frame on `port`; all frames use the IPv4 EtherType, since the
+  /// framing, not the payload, is what this regression is about.
   task automatic send_on(input int unsigned port, input sw_mac_t dst, input sw_mac_t src,
                          input int unsigned len);
     case (port)
@@ -269,6 +284,7 @@ module sw_flood_tb #(
   localparam int unsigned QW = 32;
   logic [NUM_PORTS*QW-1:0] exp_cnt;
 
+  /// Credit `n` expected copies to port `p`.
   task automatic exp_add(input int unsigned p, input int unsigned n);
     exp_cnt[p*QW +: QW] = exp_cnt[p*QW +: QW] + n;
   endtask
@@ -324,6 +340,7 @@ module sw_flood_tb #(
     end
   endtask
 
+  /// Drain every port's monitor, so one test cannot leak into the next.
   task automatic drain_all(input string what);
     drain_port(0, what);
     drain_port(1, what);
@@ -340,6 +357,8 @@ module sw_flood_tb #(
   localparam int unsigned SLOW_BP = (SPEED0 == 0) ? 100 : ((SPEED0 == 1) ? 10 : 1);
   localparam int unsigned FRAME_OCTETS = 8 + PAYLOAD + 4 + 12;
 
+  /// Wait out the drain of `frames` queued on the slowest port, returning
+  /// early once every expectation has been consumed.
   task automatic settle(input int unsigned frames);
     for (int unsigned w = 0; w < frames * FRAME_OCTETS * SLOW_BP + 20000; w++) begin
       if ((exp_cnt[0*QW +: QW] == 0) && (exp_cnt[1*QW +: QW] == 0) && (exp_cnt[2*QW +: QW] == 0)) w = 0;
@@ -347,6 +366,9 @@ module sw_flood_tb #(
     end
   endtask
 
+  // The stations the tests talk to.  HOST_D is the queue test's destination:
+  // learned behind the slow port 0, so a run of frames for it builds the
+  // backlog the fabric has to buffer.
   localparam sw_mac_t HOST_A = 48'h02_AA_00_00_00_01;
   localparam sw_mac_t HOST_B = 48'h02_AA_00_00_00_02;
   localparam sw_mac_t HOST_C = 48'h02_AA_00_00_00_03;

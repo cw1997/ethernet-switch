@@ -49,6 +49,9 @@ module sw_switch_param_tb;
   localparam int unsigned CLK_FREQ_HZ = 50_000_000;
   localparam int unsigned CLK_PERIOD = 20;  // ns -> 50 MHz
 
+  // Three distinct per-port addresses, port p at packed slice p: the
+  // reflection filter and the port-address consumption test below depend on
+  // them being distinct and correctly ordered.
   localparam logic [NUM_PORTS*48-1:0] PORT_MAC = {
     48'hDE_AD_00_00_00_03, 48'hDE_AD_00_00_00_02, 48'hDE_AD_00_00_00_01
   };
@@ -56,6 +59,7 @@ module sw_switch_param_tb;
   /// 10 Mbit/s on port 0, 100 Mbit/s on ports 1 and 2.
   localparam logic [NUM_PORTS*2-1:0] PORT_SPEED = {2'd1, 2'd1, 2'd0};
 
+  /// The address port `p` owns, taken straight from `PORT_MAC`.
   function automatic sw_mac_t port_mac(input int unsigned p);
     return PORT_MAC[p*48 +: 48];
   endfunction
@@ -279,6 +283,8 @@ module sw_switch_param_tb;
   localparam sw_mac_t HOST_B = 48'h02_BA_BA_00_00_02;
   localparam sw_mac_t HOST_C = 48'h02_BA_BA_00_00_03;
 
+  /// Present one frame on `port`, logging the injection so a late or missing
+  /// copy in the log can be matched to the send that produced it.
   task automatic send_on(input int unsigned port, input sw_mac_t dst, input sw_mac_t src,
                          input int unsigned len);
     case (port)
