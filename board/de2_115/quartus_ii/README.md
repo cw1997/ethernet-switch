@@ -1,119 +1,104 @@
 # DE2-115 双端口 MII 交换机
 
-两路 100 Mbit/s 全双工交换端口，两路互相独立的串口 Console，以及一块由板载
-拨码开关和 LED 构成的面板。
+`es_switch_de2_115_top`：Cyclone IV E `EP4CE115F29C7` 上的双端口 100 Mbit/s
+全双工 MII 交换机，固定 `NUM_PORTS=2`、`CLK_FREQ_HZ=50_000_000`。板级壳只是
+一张引脚表加 PHY 管理，交换逻辑来自同一个 `es_switch_mii` 分级流水线；板级
+不再有任何监控、指示或运行期配置路径。
 
-## 板上运行的内容
+## 1. 构建步骤
 
-| 端口 | PHY | 速率 | 备注 |
-|---|---|---|---|
-| 0 | ENET0（88E1111） | 100 Mbit/s 全双工 | JP1 必须置于 MII |
-| 1 | ENET1（88E1111） | 100 Mbit/s 全双工 | |
+工程为 Quartus II 项目（`ethernet_switch.qpf` / `.qsf` / `de2_115.sdc`）。在
+Windows 上直接用 `build.bat`：
 
-`CLOCK_50` 是唯一的 50 MHz 内核时钟。`KEY0` 释放同步后的复位；其余三个按键
-未使用。50 MHz 下 100 Mbit/s 端口每个八位组需要 4 个内核时钟，这正是 MII MAC
-所要求的偶数 `BYTE_PERIOD`。
-
-## Console
-
-两路完全独立的 Console，各自拥有 UART、行缓冲、解析器和响应时序器。任何一路
-都不会拖住另一路：某个口没插线、收到乱码、或正在被插拔，都触碰不到另一路能看见
-的任何状态。
-
-| Console | 连接器 | 电平 | 引脚 |
-|---|---|---|---|
-| 0 | 板载 RS-232 | RS-232 | `UART_RXD`、`UART_TXD`、`UART_CTS`、`UART_RTS` |
-| 1 | JP5 扩展排针 | 3.3 V TTL | `GPIO_RXD`、`GPIO_TXD`、`GPIO_CTS_N`、`GPIO_RTS_N` |
-
-Console 1 需要外接 USB-串口模块，它不是第二个 RS-232 口。引脚对应：
-
-| 信号 | FPGA 引脚 | 排针引脚 |
-|---|---|---|
-| `GPIO_RXD` | `PIN_AB22` | GPIO[0] |
-| `GPIO_CTS_N` | `PIN_AC15` | GPIO[1] |
-| `GPIO_TXD` | `PIN_AB21` | GPIO[2] |
-| `GPIO_RTS_N` | `PIN_Y17` | GPIO[3] |
-
-两路默认 115200 8N1、无流控；启用时 CTS/RTS 为低有效。`help` 列出命令集。
-所有命令都是查询——Console 没有任何写入交换机配置的路径。
-
-## 拨码开关
-
-`SW[7:0]` 驱动机前面板，`SW[17:8]` 未使用。
-
-| 位置 | 功能 |
-|---|---|
-| `SW[1:0]` | 洪泛策略：0 = 仅广播，1 = 未知单播也洪泛，2 = 未知组播也洪泛（3 被钳位为 2） |
-| `SW[2]` | 源地址学习使能 |
-| `SW[3]` | 配置覆盖。**该位为低时上面两位被忽略**，使用 elaboration 默认值，因此无论其它开关怎么拨，板上电后都处于已知状态 |
-| `SW[4]` | 清空转发表（电平；panel 把上升沿变成单拍脉冲） |
-| `SW[5]` | 灯测试：全部灯点亮（含每端口灯），用来区分坏灯与"本来就该灭"；无需链路和流量 |
-| `SW[7:6]` | 保留 |
-
-## LED
-
-| LED | 含义 |
-|---|---|
-| `LEDG[0]` | 端口 0 链路 |
-| `LEDG[1]` | 端口 1 链路 |
-| `LEDG[2]` | 端口 0 活动（最后一个八位组之后保持约 100 ms） |
-| `LEDG[3]` | 端口 1 活动 |
-| `LEDG[4]` | 端口 0 全双工 |
-| `LEDG[5]` | 端口 1 全双工 |
-| `LEDG[6]` | 端口 0 PHY 管理故障 |
-| `LEDG[7]` | 端口 1 PHY 管理故障 |
-| `LEDG[8]` | 转发表已满 |
-| `LEDR[1:0]` | 端口 0 速率：`[0]` = 100 Mbit/s，`[1]` = 1000 Mbit/s |
-| `LEDR[3:2]` | 端口 1 速率，编码相同 |
-| `LEDR[7:4]` | 转发表使用率条，每格四分之一 |
-| `LEDR[8]` | 转发表非空 |
-| `LEDR[9]` | 至少一个链路 up |
-| `LEDR[10]` | 洪泛策略 bit 0（解码后的实际值，仅在覆盖位有效时点亮） |
-| `LEDR[11]` | 学习使能（解码后的实际值） |
-| `LEDR[12]` | 配置覆盖生效 |
-| `LEDR[13]` | 本拍有清表请求 |
-| `LEDR[14]` | 心跳，约 4 Hz |
-| `LEDR[15]` | Console 0 收到非法输入（粘滞） |
-| `LEDR[16]` | Console 1 收到非法输入（粘滞） |
-| `LEDR[17]` | 任一接收错误计数器非零 |
-
-灯的含义在 `rtl/panel/es_panel.sv` 中决定，不在这里。本文件只说明哪个引脚点亮
-哪盏灯，因此某块板若把 LED 换了顺序，只改一行，行为不变。
-
-## PHY 管理
-
-两片 PHY 通过 MDIO 轮询（地址 16 和 17）。只有当 PHY 报告有效的 100 Mbit/s
-全双工链路时，该端口才被管理性使能。管理失败会显示在该端口的故障灯上，并出现在
-Console 的 `link` 和 `port <n>` 输出里，而不是悄悄关掉流量。
-
-`ENET0_RESET_N`、`ENET1_RESET_N` 跟随同步后的复位；没有额外的最短复位脉宽或
-晶振稳定延时，PHY 中断引脚未使用。
-
-## 构建
-
-```
-build.bat
+```bat
+build.bat                          :: 自动探测 Quartus 并完整编译
+build.bat C:\altera\13.1\quartus   :: 指定安装根目录，跳过探测
+build.bat clean                    :: 删除 db/、output_files/、报告等产物
 ```
 
-或在已把 Quartus 加入 `PATH` 的终端里：
+或把 Quartus 加入 `PATH` 后：
 
 ```
 quartus_sh --flow compile ethernet_switch
 ```
 
-工程固定 `SYNTHESIS=1` 和 `SEARCH_PATH ../../../rtl`，RTL 直接从仓库编译，
-不存在需要同步的源码副本。
+`build.bat` 要求带 Cyclone IV E 器件库的 Quartus II 13.0sp1 / 13.1 Web
+Edition，或 Quartus Prime 18.1 及更早版本（19.1 起移除了 Cyclone IV E）。
+产物在 `output_files/ethernet_switch.sof` 与 `.sta.rpt`。
 
-## 验证
+`.qsf` 固定 `TOP_LEVEL_ENTITY es_switch_de2_115_top`、宏 `SYNTHESIS=1`、
+`SEARCH_PATH ../../../rtl`，并逐项列出全部 RTL 源文件——RTL 直接从仓库编译，
+没有需要同步的源码副本。Quartus 前端与其余三个工具不同：模块级循环必须包在
+显式 `generate ... endgenerate` 中，genvar 要单独声明，注释行不能以
+`synthesis` 等词开头，elaboration 期表格要用函数计算而不是 `initial` 块。
 
-板级顶层属于每一道 RTL 门禁，因此不会悄悄腐烂：
+## 2. 引脚、时钟与复位
+
+| 项 | 设置 |
+|---|---|
+| 器件 | `EP4CE115F29C7`（Cyclone IV E），JP1 置于 MII 位置 |
+| 内核时钟 | `CLOCK_50` @ `PIN_Y2`，3.3-V LVTTL，50 MHz，唯一时钟域 |
+| 复位 | `KEY[0]` @ `PIN_M23`，2.5 V，低有效；经两级同步器产生 `rst_ni` |
+| 其余按键 | `KEY[3:1]` 未接入逻辑，仅作 `unused_*` 哑元消费 |
+| ENET 引脚 | 两路 88E1111 的 `RX_DATA/RX_DV/RX_ER`、`TX_DATA/TX_EN/TX_ER`，2.5 V Bank；具体编号见 `.qsf` |
+| MDIO | `ENET0/1_MDC`、`ENET0/1_MDIO`(inout, `tri logic`)，需外部上拉 |
+| PHY 复位 | `ENET0/1_RESET_N` 跟随同步后的 `rst_ni`，无额外最短脉宽或晶振稳定延时 |
+| 中断 | `ENET0/1_INT_N` 未使用 |
+
+50 MHz 下 100 Mbit/s 端口的 `BYTE_PERIOD = 4`：每个八位组 4 个内核时钟，是
+MII 串行器要求的偶数窗口。两路 `ENET*_TX_CLK` 由 `negedge CLOCK_50` 上的
+翻转寄存器二分频得到（25 MHz）；`de2_115.sdc` 以 `-edges {2 4 6}` 把它们声明为
+`clk_50` 的生成时钟，并对 PHY 驱动的 RX/MDIO/INT 输入设 `set_false_path`（这些
+信号与 `clk_50` 异步，是板级壳的已知单时钟限制），对 TX 数据按 `tx_clk0/1`
+设 max 5.000 ns / min 0.000 ns 输出延迟。
+
+## 3. PHY 管理
+
+两片 Marvell 88E1111 各由一个 `es_perips_phy_88e1111`（Clause 22 MDIO 轮询）
+管理；板级信号 `phy_enabled` 直接接到交换核的 `link_up_i`，即只有 PHY 报告
+有效链路时该端口才注入字节。管理器的状态字节、中断与闲置按键没有监控去处，
+统一汇入 `unused_board` 哑元消费。
+
+注意：本板级壳不包含消抖、上电初始化保证或 PHY 复位保持计时；MDIO 焊盘依赖
+板上（或测试台里的）弱上拉，否则管理器读到高阻会停在其管理错误状态。
+`ENET*_MDC` 由管理器驱动，无 PHY 从机时不会完成链路发现。
+
+## 4. 板级自检 TB 与 `phy_enabled` force
+
+`hdl/tb_es_switch_de2_115_top.sv` 由 `make board-unit` 运行，用两个独立的
+`sw_mii_if` 线模型在打包的 MII 半字节引脚上驱动**完整线上帧**（前导/SFD +
+client + FCS），并在出线侧按 `sw_tb_pkg` 独立重组、校验前导与 FCS。
+
+关键限制：测试台**没有外部 MDIO PHY 从机模型**。管理器仅 `RESET_WAIT_MS`
+就要 20 ms 内核时钟，且无响应时读回上拉电平、停在管理错误状态，
+`phy_enabled`（也就是 `link_up_i`）不会在实用仿真时间内拉高；而 `link_up_i`
+会门控 RX 注入，不拉高就一帧也转发不了。
+
+因此这个 bench：
+
+1. 先观察并打印 `u_dut.phy_enabled`（X/Z-free 检查），诚实报告未观测到自然
+   MDIO 链路建立；
+2. 随后显式 `force u_dut.phy_enabled = 2'b11`，**绕过** PHY 管理，跑一次广播
+   smoke（ENET0 → ENET1，校验无源端口回环、线模型收到的帧长度/MAC/EtherType/
+   FCS/前导），并做降级检查：TX_EN 曾被拉高、观察到的输出无 X/Z、`TX_ER`
+   恒低、MDIO 焊盘处于上拉电平；
+3. `release` 后以显式错误计数和 `$fatal` / `$finish` 结束。
+
+**这个 force 是刻意绕过 MDIO 管理，不是对 MDIO 管理的验证。** 它证明的是
+MII 引脚 → 交换核 → 引脚这条通路在链路建立后确实能转发；MDIO 管理本身需要
+带 PHY 从机模型的板级集成来验证。
+
+## 5. 门禁
+
+板级顶层纳入 `make lint` / `make rtl` / `make synth` 的五个顶层之列，
+`make board-unit` 运行上面的自检。Windows 下经 WSL：
 
 ```sh
-bash wsl.sh "make lint"   # Verilator -Wall，五个顶层
-bash wsl.sh "make rtl"    # Icarus elaboration，五个顶层
-bash wsl.sh "make synth"  # yosys，五个顶层
+bash wsl.sh "make lint"
+bash wsl.sh "make rtl"
+bash wsl.sh "make synth"
+bash wsl.sh "make board-unit"
 ```
 
-没有 testbench 实例化本顶层（它只是一张引脚表）；它背后的逻辑分别由
-`sw_panel_tb`（拨码解码与指示灯）、`sw_console_tb`（控制台）、`sw_mii_tb` 与
-`tb_sw_switch_mii`（MAC 与整机）覆盖，等价的板级壳由 `make vivado` 覆盖。
+`make synth` 不在 `make all` 内，需单独执行。板级时序与 PHY 适配的未完成项
+见 `de2_115.sdc` 与 `AGENTS.md`。

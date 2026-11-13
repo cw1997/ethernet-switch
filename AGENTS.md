@@ -17,40 +17,47 @@ this design in a way a testbench could not see.
 ## 1. Repository map
 
 ```
-rtl/           the design.  mac/, switch/, panel/, console/, perips/, mems/,
-               common/; es_<domain>_<block>.sv / matching module
-tb/            self-checking testbenches.  Never synthesised, never linted by CI
-board/         per-board FPGA shells.  de2_115/quartus_ii/ is a Quartus II
-               project (board top, pins, constraints, build.bat); its top
-               es_switch_de2_115_top is pure RTL and part of the same gates
-               vivado/ is a eight-port MII template; es_switch_vivado_top is in the same
-               gates and make unit, but physical PHY adaptation is unfinished
+rtl/           the design. common/, mac/, mems/, perips/, switch/;
+               es_<domain>_<block>.sv / matching module
+tb/            self-checking testbenches. Never synthesised, never linted by CI
+board/         per-board FPGA shells. de2_115/quartus_ii/ is a Quartus II
+               project (board top, pins, constraints, build.bat) with its own
+               self-checking TB; vivado/ is the eight-port MII template, also
+               with its own TB. Both tops join the same five-top gates.
 ci/            the CI toolchain contract (check-toolchain.sh)
 librelane/     the physical implementation flow (config.json + README.md)
 Makefile       every gate; the target list is documented in its own header
 ```
 
 `rtl/es_defs.sv` holds common interface declarations and includes the guarded
-`mac/es_mac_defs.sv`, `switch/es_switch_defs.sv`, `panel/es_panel_defs.sv` and
-`console/es_console_defs.sv` libraries in dependency order. Put new constants
-in the owning library, keeping cross-domain widths/statistics common. All
-libraries remain at compilation-unit scope; the umbrella include preserves
-standalone-module compilation and the existing declaration-only lint policy.
+`common/es_common_defs.sv`, `mac/es_mac_defs.sv`, `perips/es_perips_defs.sv`,
+`switch/es_switch_pl_defs.sv` and `switch/es_switch_defs.sv` libraries in
+dependency order. Put new constants in the owning library, keeping
+cross-domain widths common; pipeline stage identifiers and descriptor field
+offsets belong in `es_switch_pl_defs.sv`. All libraries remain at
+compilation-unit scope; the umbrella include preserves standalone-module
+compilation and the existing declaration-only lint policy. The pipeline
+library is included *before* `es_switch_defs.sv`, because that file closes the
+two declaration-only waivers at its end. There is no statistics register map,
+no console library and no panel library.
 
-**The datapath has one boundary that matters, and it is a 64-bit beat stream.**
-`rtl/mac/` owns everything the line interface implies - PHY pins, preamble and
-SFD, FCS, inter-frame gap, symbol serialisation and the elastic buffer a PHY
-needs because it cannot be stalled mid-frame. `rtl/switch/` owns the switching
-function: parse, learn, decide, arbitrate, buffer, hand a whole frame to a MAC.
-`es_switch_core` therefore holds no clock-enable, line-rate or symbol-order
-knowledge at all, and compiling it against a different MAC - including a future
-optical one - changes nothing below the boundary.
+**The datapath has one boundary that matters, and it is an 8-bit byte stream
+with valid/ready.** `rtl/mac/` owns everything the line interface implies -
+PHY pins, preamble and SFD (detected by the adapter, not pre-stripped by the
+PHY), FCS generation and checking, inter-frame gap, symbol serialisation and
+the clock-enable rate model. `rtl/switch/` owns the switching function as
+staged levels: receive bytes into a per-port frame buffer, look up the
+destination and learn the source in the same clock, decide the egress mask,
+copy the frame into the egress queues. `es_switch_fabric` therefore holds no
+clock-enable, line-rate or symbol-order knowledge at all, and compiling it
+against a different MAC - including a future optical one - changes nothing
+below the boundary. See "Pipeline architecture" at the end of this file.
 
 The interface in use is chosen by which wrapper is elaborated: `es_switch_gmii`
 (default GMII), `es_switch_mii` and `es_switch_rmii` each instantiate one
-`es_mac_*` per port plus the same `es_switch_core` and the same `es_panel`.
-`make lint`, `make rtl` and `make synth` each run **all five** top modules - the
-three `es_switch_*` wrappers plus board tops `es_switch_de2_115_top` and
+`es_mac_*_adapt` per port plus the same `es_switch_fabric`. `make lint`,
+`make rtl` and `make synth` each run **all five** top modules - the three
+`es_switch_*` wrappers plus board tops `es_switch_de2_115_top` and
 `es_switch_vivado_top` - so changing a wrapper means making it green in all
 five; a top that is never compiled silently rots.
 
@@ -218,7 +225,7 @@ to Verilator, Icarus or yosys:
   for a memory or a register file indexed by a constant, elaboration-time
   index. Icarus does not resolve an unpacked array that is indexed with a
   run-time value — the read comes back stale, and the failure surfaces far away
-  from the cause (see the `f_dst` comment in `es_switch_arbiter.sv`). Unpacked arrays
+  from the cause (see the packed-vector comments in `es_switch_cam_table.sv`). Unpacked arrays
   also cannot be passed to a subroutine; pack them first.
 
 ### 3.2 Width discipline — the rule this repository exists to enforce
@@ -245,8 +252,9 @@ and that width must be the one you mean.**
   the counter happens never to reach.
 - Do not use `*` between two 32-bit vectors to express "count × count". A
   synthesis tool cannot see that the multiplier only ever reaches `NUM_PORTS`
-  and will build the full array. Write the shift-add, or narrow the operand, as
-  `octets_x_copies` in `es_switch_arbiter.sv` does.
+  and will build the full array. Narrow the operand and write the wrap
+  explicitly instead - `cam_rr_add` in `es_switch_cam_table.sv` advances a
+  `WAYW`-bit pointer with `r + WAYW'(1)` rather than a 32-bit multiply.
 - An array/loop index in a comparison against a parameter is a sized cast of the
   parameter (`PW'(NUM_PORTS - 1)`), not a bare literal.
 
@@ -262,8 +270,8 @@ and that width must be the one you mean.**
   block's own implicit sensitivity list: the block re-triggers on its own output
   forever and the simulation hangs with time standing still, which looks like a
   dead clock and nothing else. Put accumulators in a **function** — a function
-  has no sensitivity list at all. `count_copies` and `octets_x_copies` in
-  `es_switch_arbiter.sv` are the reference examples.
+  has no sensitivity list at all. `cam_grant` and `cam_pick` in
+  `es_switch_cam_table.sv` are the reference examples.
 - **Never index a memory with a run-time value inside `always_comb`.** Stage the
   read into a flat vector with continuous assignments (in a generate loop, so
   the offset is a constant) and let the process read the vector. The generated
@@ -274,8 +282,8 @@ and that width must be the one you mean.**
   right-hand side of a non-blocking assign into an unpacked array makes the
   store silently never land. Both are documented at the site in the code.
 - **Writes into an unpacked array go through per-entry `always_ff` blocks in a
-  generate loop**, not a loop inside one process (see `g_mem_wr` in
-  `es_switch_mac_table.sv`). A loop-indexed store is dropped silently by Icarus and
+  generate loop**, not a loop inside one process (see `g_entry` in
+  `es_switch_cam_table.sv`). A loop-indexed store is dropped silently by Icarus and
   the per-entry form is also what a vendor tool wants to see to infer the
   storage.
 - Reset is **synchronous, active low, named `rst_ni`, and is the first branch of
@@ -283,6 +291,38 @@ and that width must be the one you mean.**
   design is single-clock-domain by construction, and a synchronous reset is
   portable to every target. Reset memories and register files deliberately or
   not at all, and say which in a comment.
+
+#### 3.3.1 The switch domain: assign-only modules, `es_mems_reg_bank` state
+
+`rtl/switch/` follows the E200 (`e200_opensource`) discipline instead: a
+module there contains only `logic` declarations, `assign` statements, pure
+functions and generate loops - **no `always` block of any kind**. Every
+sequential element is an `es_mems_reg_bank` instance, one per register
+(`DEPTH=1`) or one per array (`DEPTH=N`; the CAM entry array and the per-set
+round-robin pointers in `es_switch_cam_table.sv`). The greppable invariant is
+that no line in the domain *begins a statement* with `always` -
+`grep -rn '^\s*always' rtl/switch` comes back empty - so ordinary prose in
+comments may still use the word. The remaining procedural blocks live in the
+other domains and inside `es_mems_reg_bank.sv` itself.
+
+- Control signals follow the E200 lifecycle: `*_set` / `*_clr` / `*_ena`
+  compute the write enable, `*_d` is the combinational next value, `*_q` the
+  held value. Next-state logic is a chain of ternary `assign`s, ordered so the
+  later overrides of the single-process form they were derived from still win.
+- FSMs are binary-encoded `localparam logic [W-1:0]` constants, with the
+  reset state first and equal to zero so the bank's all-zero `RESET_VALUE` is
+  the reset encoding. There is **no `typedef enum` in the switch domain**
+  (see the yosys enum-cast hazard under "Shared RTL domains").
+- A register that deliberately holds no reset - the stage-register data
+  payloads, meaningless while their valid bit is low, which is the E203
+  `dffl` convention - ties the bank's `rst_ni` to `1'b1` and says so in a
+  comment.
+- Every bank instance is named `u_<role>_q`, so after `synth -flatten` the
+  netlist register names still read as
+  `<hierarchy>.u_<role>_q.g_entry[n].value_q` and the data flow stays
+  traceable through the combinational clouds.
+- New files keep every §2.4 rule: explicit `generate`, no inline `genvar`, no
+  comment line starting with a pragma word, tables computed in functions.
 
 ### 3.4 What must never appear in `rtl/`
 
@@ -299,9 +339,9 @@ Two narrow, documented exceptions exist:
   CPU-minutes *per instance* on an initial-block-initialised memory (§2.4);
   the function computes the identical value everywhere. Never reintroduce an
   `initial` block, and never let one produce a value that a write path depends
-  on — see the `WAY_LAST` comment in `es_switch_mac_table.sv` for a design that got
-  that wrong.
-- `es_switch_core.sv`, `es_console_port.sv` and the `es_switch_mii` /
+  on — see the power-of-two frame-buffer check in
+  `es_switch_frame_buf.sv`.
+- `es_switch_frame_buf.sv`, `es_switch_rx_engine.sv` and the `es_switch_mii` /
   `es_switch_rmii` wrappers report elaboration-time parameter checks with
   `$error` / `$warning` inside `` `ifndef SYNTHESIS ``, because yosys has no
   implementation for them and aborts on a design that contains one. Keep any new
@@ -312,13 +352,12 @@ Two narrow, documented exceptions exist:
 | Form | Meaning | Example |
 |---|---|---|
 | `clk_i`, `rst_ni` | clock, active-low reset | |
-| `<name>_i` / `<name>_o` | port direction | `beat_valid_i`, `gmii_d_o` |
-| `<name>_q` | registered value | `len_q`, `cam_hit_q` |
-| `<name>_d`, `<name>_n` | combinational *next value* | `count_d`, `crc_en_n` |
-| `S_XXX` | FSM state, in a `typedef enum logic [n:0]` | `S_PRE`, `S_TAIL` |
+| `<name>_i` / `<name>_o` | port direction | `rx_valid_i`, `gmii_tx_d_o` |
+| `<name>_q` | registered value | `state_q`, `cnt_q` |
+| `<name>_d`, `<name>_n` | combinational *next value* | `oct_cnt_n`, `dst_n` |
+| `S_XXX` | FSM state: `typedef enum logic [n:0]` outside the switch domain; binary `localparam logic [W-1:0]` inside `rtl/switch/` (§3.3.1) | `S_HUNT`, `S_IDLE` |
 | `es_<domain>_*` / `sw_*` | design module / shared declaration | `es_mems_sync_fifo`, `sw_is_unicast` |
-| `cnt_*`, `stat_o` | statistics | `cnt_tx_octets` |
-| `unused_*` | a deliberate dummy consumer for a signal nothing reads | `unused_crc_ok` |
+| `unused_*` | a deliberate dummy consumer for a signal nothing reads | `unused_board`, `unused_phy` |
 
 A `case` on an `enum` always carries a `default`, even when every encoding of
 the enum is covered. That is what `-Wall`'s `CASEINCOMPLETE` expects, and it
@@ -394,11 +433,12 @@ They are still held to:
   diagnosable from the log alone, which is why CI uploads the logs even when the
   job fails.
 - Model the wire, not the RTL. A testbench that shares an assumption with the
-  design cannot fail; `tb/sw_gmii_if.sv` re-assembles the octet stream and
-  checks the FCS independently for exactly that reason.
+  design cannot fail; `tb/tb_sw_pl_gmii.sv` re-assembles complete wire frames
+  and checks the preamble and FCS independently for exactly that reason. The
+  MII/RMII and board TBs use their own independent wire models too.
 - Cover the awkward configurations, not just the happy path: a port count that
-  is not a power of two, a core clock that is not 125 MHz, a slow port
-  (`make unit` runs the fabric regression at 10 Mbit/s for this reason).
+  is not a power of two, non-power-of-two CAM set/way counts, and every common
+  port count (`make param-scan` elaborates 4/8/16/32/48 ports).
 - `NUM_PORTS`-derived widths and index arithmetic in a testbench follow §3.2 too.
   A testbench with a width bug fails in a way that looks like an RTL bug.
 
@@ -412,10 +452,12 @@ Run these in order; they are ordered by how fast they fail.
 ci/check-toolchain.sh  # ~0.1 s  - the tools match the versions the gates assume
 make lint      # ~1 s    - Verilator -Wall, any warning is an error
 make rtl       # ~1 s    - Icarus elaboration of the RTL alone
-make unit      # ~25 s   - CRC-32, FIFO, CAM, and the fabric regression
-make param     # ~4 s    - 3 ports, 50 MHz, a port count that is not 2**n
-make sim       # ~6 min  - 4 ports at 10/100/1000/1000 Mbit/s, 158 checks
-make synth     # ~3 min  - yosys; needs yosys on PATH, not part of `make all`
+make unit      # ~25 s   - block-level and staged-fabric regressions
+make mii rmii vivado board-unit  # the four PHY/board front ends
+make sim       # ~1 min  - GMII system regression, complete wire frames
+make param     # ~1 min  - 3 ports, non-power-of-two CAM (96 sets x 3 ways)
+make param-scan# ~5 min  - 4/8/16/32/48 ports x CAM geometries
+make synth     # yosys; needs yosys on PATH, not part of `make all`
 ```
 
 On Windows the toolchain lives in WSL; `bash wsl.sh "make lint"` runs a command
@@ -440,9 +482,14 @@ contract in §2 exists to catch.
 Definition of done:
 
 - [ ] `ci/check-toolchain.sh`, `make lint`, `make rtl`, `make unit`, `make sim`,
-      `make param` all pass.
-- [ ] `make synth` elaborates and synthesises the three wrapper top modules
-      (`es_switch_gmii`, `es_switch_mii`, `es_switch_rmii`).
+      `make param`, `make param-scan`, `make mii`, `make rmii`, `make vivado`,
+      `make board-unit` all pass.
+- [ ] `make synth` elaborates and synthesises all five top modules
+      (`es_switch_gmii`, `es_switch_mii`, `es_switch_rmii`,
+      `es_switch_de2_115_top`, `es_switch_vivado_top`).
+- [ ] `rtl/switch/` still contains no procedural block (`grep -rn '^\s*always'
+      rtl/switch` comes back empty); new sequential state there is an
+      `es_mems_reg_bank` instance (§3.3.1).
 - [ ] A behavioural change has a test that fails without it.
 - [ ] No new `verilator lint_off`, and no new `initial` block.
 - [ ] New shared constants are in the appropriate `es_*_defs.sv` library; new module parameters are
@@ -472,6 +519,8 @@ this is the short list.
 | Accumulator in `always_comb` | self-retriggering sensitivity, simulation hangs | §3.3 |
 | Memory read in `always_comb` | same hang, less obviously | §3.3 |
 | Loop-indexed store into an array | store silently dropped, learned entry never appears | §3.3 |
+| `undo` with a non-power-of-two FIFO DEPTH | write pointer lands on an illegal encoding | Pipeline architecture |
+| More concurrent CAM learns than ways in one set | silently dropped learn unless `learn_ready_o` backpressures | Pipeline architecture |
 | `package` / `import` / `return` | passes every simulator, fails in the flow | §2.1 |
 | A comment key in `config.json` | hard error, after a multi-GB image pull | §2.3 |
 | A renamed flow variable | hard error, same cost; `removals.py` is the list | §2.3 |
@@ -483,19 +532,18 @@ this is the short list.
 
 ## Shared RTL domains
 
-`rtl/mac/` owns the line interface: preamble and SFD, FCS, inter-frame gap,
-symbol serialisation, the octet-to-beat packer and the elastic buffer a PHY
-needs because it cannot be stalled. It is the only domain that knows a clock
-enable or a symbol order exists.
-`rtl/switch/` owns the switching function: parse, learn, decide, arbitrate,
-buffer, and hand whole frames to a MAC.
-`rtl/panel/` owns what a board switch position means and what a lamp shows.
-`rtl/console/` owns the command language, one self-contained port per UART.
-`rtl/perips/` owns UART, MDIO and 88E1111 PHY management.
-`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel
-register banks. `rtl/common/` owns the two-stage sampler and CRC-32.
-Source lists use these paths; no ROM initialization or extra pipeline stage is
-introduced.
+`rtl/mac/` owns the line interface: preamble and SFD detection, FCS,
+inter-frame gap, symbol serialisation and clock-enable rate adaptation. It is
+the only domain that knows a clock enable or a symbol order exists.
+`rtl/switch/` owns the staged switching function: parse, learn, decide,
+buffer, copy into egress queues.
+`rtl/perips/` owns MDIO and 88E1111 PHY management.
+`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and
+parallel register banks. `rtl/common/` owns the two-stage sampler, CRC-32 and
+the pipeline register primitives (`es_common_dffs`, `es_common_pipe_stage`).
+Source lists use these paths; no ROM initialization is introduced -
+elaboration-time tables remain functions. There is no panel, console,
+statistics or monitoring domain.
 
 **Two synthesis hazards that only appear here.** Casting a *variable* to an enum
 type - `sw_console_cmd_e'(some_var)` - is rejected by yosys with "Static cast
@@ -503,4 +551,74 @@ with non constant expression"; compare the plain encoding against the enum's
 constants instead. And an enum-typed function argument has the same problem, so
 the console's table functions take `logic [3:0]` and compare against the
 `sw_console_*_e` members.
+
+## Pipeline architecture
+
+The switch is a **frame-level concurrent pipeline**: the legacy global arbiter
+moved one frame at a time for the entire fabric; the staged design lets one
+frame sit in each level at once, with all `NUM_PORTS` receive engines running
+in parallel. Each level owns its own valid/ready stage register (in the E203
+pipe-stage template, held in `es_mems_reg_bank` instances, §3.3.1), so no
+`es_common_pipe_stage` sits between the levels today; that primitive stays in
+the tree, regression-tested by `sw_pipe_stage_tb`, for timing repair if a
+level ever needs a deeper ready cut (`DP` register depth, 0 = bypass;
+`CUT_READY`).
+
+| Level | Module | Responsibility |
+|---|---|---|
+| S0/S1 | `es_switch_rx_engine` (=`es_switch_rx_ctrl` + `es_switch_rx_parse` + `es_switch_rx_check`) + `es_switch_frame_buf` | one byte per clock, header latch, eight malformed-frame checks (combinational), per-port byte FIFO + descriptor FIFO, legal-frame descriptor |
+| S2 | `es_switch_cam_stage` + `es_switch_cam_table` | `NUM_PORTS` destination lookups and `NUM_PORTS` source learns in the **same clock** |
+| S3 | `es_switch_decide` | broadcast / group / unknown-unicast policy, source-port filter, egress mask |
+| S4 | `es_switch_tx_writer` | several copy engines read their own frame slot and feed the egress queues |
+| S5 | `es_switch_tx_engine` | per-port TX FIFO, then the MAC adapter re-generates preamble, pad, FCS and IFG |
+
+Rules that keep this buildable by all four tools:
+
+- Handshakes are `<src>_o_valid/<src>_o_ready` ↔ `<dst>_i_valid/<dst>_i_ready`;
+  a local `<name>_hsked = valid & ready` is **declared `logic`** and assigned,
+  never `wire x = expr`. A transfer happens only on a handshake, so backpressure
+  can never drop a byte.
+- Inter-level payloads are **packed** `{}` vectors with `localparam` widths and
+  field-offset functions from `es_switch_pl_defs.sv`. No struct, interface or
+  package. `es_common_pipe_stage` resets its valid bit but deliberately not its
+  data register.
+- A frame becomes visible downstream **only** after it has been received in
+  full and passed every check; a bad or over-MTU frame is rewound out of the
+  byte FIFO and never produces a descriptor. Frame buffering is one byte FIFO
+  plus one descriptor FIFO per ingress port. **`SLOTS*SLOT_BYTES` must be a
+  power of two**: the rewind is `wr_ptr - undo_cnt` on an ADDR_W-wide pointer
+  while `next_slot` skips the unused encodings of a non-power-of-two DEPTH,
+  and mixing the two lands on an illegal encoding. `es_switch_frame_buf`
+  checks this at elaboration.
+- The CAM has `NUM_PORTS` read ports (combinational bucket read; `cam_stage`
+  registers the verdict together with its descriptor) and `NUM_PORTS` write
+  ports. The entry array and the round-robin pointers live in
+  `es_mems_reg_bank` instances whose per-entry write enables are decoded with
+  constant indices - the same constant-index form as a per-entry generate
+  `always_ff`, never a loop-indexed store.
+  Lookup is **read-first**. If more learns than `NUM_WAYS` land in one bucket in
+  one clock, `learn_ready_o` backpressures the excess for one clock; silently
+  dropping a learn is forbidden.
+- Parallelism is fixed by `NUM_PORTS`: the CAM has one lookup and one learn
+  lane per port, and `es_switch_tx_writer` has one copy engine per source port,
+  each reading its own ingress byte FIFO. There are no separate lane-count
+  parameters. Bucket selection uses a constant-index priority mux (never a
+  wide variable part-select), and the hash is a pure XOR fold with no
+  multiplier, divider or wide adder - both are there to keep `synth -flatten`
+  tractable.
+- **Simulation vs synthesis geometry.** `es_switch_pl_defs.sv` supplies two
+  sets of parameter defaults. With `SYNTHESIS` defined (`make synth` and
+  LibreLane) the frame buffer is `SLOTS=1 / SLOT_BYTES=512`, the CAM is 16x2
+  and `MAX_FRAME_LEN=256`; without it (all simulations) it is `2 / 2048`,
+  128x4 and 1518. A full-size buffer is about 131 000 flops and takes tens of
+  minutes to flatten. Never weaken a behavioural test to make a gate faster:
+  the simulations keep the full geometry.
+- There is **no status, statistics, panel, console, LED or DIP path** in the
+  new design. `FLOOD_MODE` and `LEARNING_EN` are pure parameters.
+- Regression is layered by geometry, not by scenario: `make param-scan`
+  elaborates the full system scenario suite at 4/8/16/32/48 ports with seven
+  CAM set/way combinations. `make param` adds a 3-port non-power-of-two case.
+  A full cross-product of scenarios, port counts and CAM geometries would
+  exceed the CI time budget, so the scan samples geometries rather than
+  trimming scenarios.
 

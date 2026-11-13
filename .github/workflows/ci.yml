@@ -17,10 +17,11 @@
 #                                 enforces the synthesis restrictions the
 #                                 simulators cannot see.  The toolchain is
 #                                 asserted against a written contract first.
-#                  2. test     - the full regression: three block level
-#                                 testbenches, the four-port mixed-speed switch
-#                                 testbench, and the three-port parameterisation
-#                                 testbench.  Logs are uploaded as an artifact.
+#                  2. test     - the full regression: block-level and
+#                                 staged-fabric testbenches, the GMII system
+#                                 regression, the parameterisation regression,
+#                                 the MII/RMII/board-level front ends and the
+#                                 port-count / CAM-geometry scan.
 #                  3. gds      - the LibreLane flow, producing a GDSII.  GATED
 #                                 BEHIND A MANUAL APPROVAL.
 #
@@ -312,7 +313,11 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: images
 
-    timeout-minutes: 10
+    # The lint job also runs `make synth`, whose yosys `-flatten` pass expands
+    # the per-port frame-buffer RAMs and the multi-port CAM into standard
+    # cells.  That is deliberately a full-size check, so it takes far longer
+    # than the lint and elaboration steps in front of it.
+    timeout-minutes: 60
 
     steps:
       - name: Check out the sources
@@ -346,7 +351,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: lint-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv') }}
+          key: lint-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv', 'board/**/*.sv', 'Makefile') }}
           restore-keys: lint-${{ runner.os }}-
 
       # Verilator with -Wall and the default error policy: any warning fails.
@@ -395,10 +400,10 @@ jobs:
     needs: lint
     runs-on: [self-hosted, linux, x64]
 
-    # The main testbench drives a 10 Mbit/s port on a 125 MHz core, so a single
-    # frame needs ~10 000 clocks and the suite has to wait for the slowest port
-    # between every test.  This is the reason the job needs a generous bound.
-    timeout-minutes: 45
+    # The port-count scan elaborates and runs the system regression at 4, 8,
+    # 16, 32 and 48 ports with several CAM geometries, so the job needs a
+    # generous bound even though every individual simulation is short.
+    timeout-minutes: 60
 
     steps:
       - name: Check out the sources
@@ -429,7 +434,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: test-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv', 'tb/*.sv') }}
+          key: test-${{ runner.os }}-${{ hashFiles('rtl/**/*.sv', 'tb/*.sv', 'board/**/*.sv', 'Makefile') }}
           restore-keys: test-${{ runner.os }}-
 
       # Block level testbenches first: they are milliseconds each and isolate a
@@ -444,7 +449,7 @@ jobs:
             "$TOOLCHAIN_IMAGE" \
             bash -lc 'make unit'
 
-      - name: Four-port mixed-speed switch testbench
+      - name: GMII staged-switch system regression
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
@@ -453,7 +458,7 @@ jobs:
             "$TOOLCHAIN_IMAGE" \
             bash -lc 'set -o pipefail; make sim 2>&1 | tee build/sim.log'
 
-      - name: Three-port parameterisation testbench
+      - name: Parameterisation regression (3 ports, non-power-of-two CAM)
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
@@ -461,6 +466,24 @@ jobs:
             -w /work \
             "$TOOLCHAIN_IMAGE" \
             bash -lc 'set -o pipefail; make param 2>&1 | tee build/param.log'
+
+      - name: MII / RMII / board-level front-end regressions
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'set -o pipefail; make mii rmii vivado board-unit 2>&1 | tee build/frontends.log'
+
+      - name: Port-count and CAM-geometry scan
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$TOOLCHAIN_IMAGE" \
+            bash -lc 'set -o pipefail; make param-scan 2>&1 | tee build/param-scan.log'
 
       # Always upload the logs, including on failure: a regression that fails at
       # 03:00 is only diagnosable with the log that says how.

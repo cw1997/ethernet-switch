@@ -56,10 +56,10 @@ set dirs [get_property include_dirs [get_filesets sources_1]]
 if {[lsearch -exact $dirs $rtl_dir] < 0} { lappend dirs $rtl_dir }
 set_property include_dirs $dirs [get_filesets sources_1]
 # ---- physical hierarchy selection -------------------------------------------
-# The bare es_switch_mii core exports a 448-bit statistics bus. Automatic top
-# selection can therefore produce hundreds of package pins instead of the
-# board template's 138 bits. Disable automatic selection in both file sets so
-# the design and simulation views explicitly use the same board hierarchy.
+# The pure-switching staged fabric exports no statistics, console or panel
+# buses. Automatic top selection can still pick a different hierarchy than the
+# board template, so disable it in both file sets and name the board top
+# explicitly in the design and simulation views.
 set_property top_auto_set false [get_filesets sources_1]
 set_property top es_switch_vivado_top [get_filesets sources_1]
 set sim_set [get_filesets -quiet sim_1]

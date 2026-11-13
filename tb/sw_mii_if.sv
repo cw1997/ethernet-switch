@@ -96,7 +96,9 @@ module sw_mii_if
     n     = tb_frame_octets(total_len, vlan_en);
     if (drop_fcs) n = n - 4;
 
-    for (i = SW_PREAMBLE_LEN; i < n; i++) begin
+    // Present the COMPLETE wire frame (preamble/SFD included): the MAC adapter
+    // hunts for the preamble itself (D5) rather than relying on the PHY.
+    for (i = 0; i < n; i++) begin
       o = tb_get_octet(frame, i);
       @(posedge clk_i);  // the low-nibble window opens here
       rx_dv_r <= 1'b1;

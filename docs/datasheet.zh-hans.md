@@ -1,278 +1,121 @@
-# ES-SWITCH 数据手册
+# es-switch 数据手册
 
-**参数化、存储转发式以太网二层交换核心**
+参数化以太网二层交换核心，8bit 字节流边界上的五级帧级并发流水线，单时钟域、
+同步低有效复位。MAC 适配器负责前导/SFD/FCS/pad/IFG，交换核只见 MAC client
+数据。本文描述可综合 RTL 的接口与行为，不是流片实测报告。
 
-| 项目 | 内容 |
-|---|---|
-| 文档编号 | ES-SWITCH-DS-001 |
-| 版本 | 0.1（初版） |
-| 目标工艺 | SkyWater SKY130（sky130A / sky130_fd_sc_hd） |
-| 文档状态 | 草案 — 物理实现数据为历史测量，待重测 |
+## 1. 参数表
 
-> **关于本文档中物理实现数据的说明**：第 8 节所列面积、单元数、时序、DRC/LVS 结果为早期 `sw_switch` 命名时代、LibreLane 2.4.2 流程的实测记录。本设计已重构为 `es_*` 命名体系，**重构后的面积 / 时序 / GDS 需重新测量**。凡引用历史数据处均以「⚠ 待重测」标注，请勿作为最终签核依据。
+三个通用 wrapper 共用同一套顶层参数；两个板级 top 把部分项固定为 `localparam`。
 
----
-
-## 1. 概述
-
-ES-SWITCH 是一款参数化、存储转发式（store-and-forward）以太网二层（Layer-2）交换核心，以可综合 SystemVerilog 编写，面向 SkyWater SKY130 开源工艺（sky130A、标准单元库 `sky130_fd_sc_hd`）实现。
-
-核心通过**单一时钟 + 时钟使能（octet strobe）**模型工作：所有端口共享一个 `clk_i`，10/100/1000 Mbit/s 三种线速率由 `BYTE_PERIOD` 时钟使能区分，因此整个设计**不含跨时钟域（CDC）**，也不含 PLL / DDR / 厂商原语——时钟生成与 PHY 引脚适配被显式划归板级外壳（board shell）。
-
-### 1.1 主要特性
-
-- 参数化端口数：任意 ≥ 1（默认 4），无需为 2 的幂
-- 三种线接口：**GMII**（10/100/1000 M）、**MII**（10/100 M）、**RMII**（10/100 M）
-- 千兆接入：GMII 接口在 125 MHz 核心时钟下于 `BYTE_PERIOD = 1` 处达 1000BASE-T 线速
-- 64-bit 节拍（beat）数据通路：1 beat = 8 字节，octet0 位于 `[63:56]`
-- 存储转发 + 源地址自学习 + 洪泛 / 已知单播转发
-- 转发表（CAM）：128 组 × 4 路 = **512 项**（参数化，支持可选老化）
-- 帧长：最大 1518 字节、最小 64 字节；FCS（CRC-32）在入口校验、出口生成
-- 14 个统计计数器（聚合 + 每端口可读）
-- UART 控制台命令接口（10 条命令，只读查询）
-- MDIO 接口与 88E1111 PHY 管理
-- 面板（DIP 开关 → 配置解码；语义化 LED 输出）
-
-### 1.2 应用场景
-
-- 开源 ASIC / FPGA 原型与教学
-- 工业以太网交换、嵌入式多端口二层交换
-- 作为更大 SoC 的二层交换子系统 IP
-
----
-
-## 2. 功能框图
-
-```
-                        ┌────────────────────────────────────────────────────┐
-   GMII  ──┐            │   es_mac_gmii  ┐                                   │
-   MII   ──┼── es_mac_* ├───────────────▶│  es_mac_core ──┐                  │
-   RMII  ──┘   (每端口)  │   serdes       │ (octet↔beat)   │  beat 契约        │
-                        └──────────────────────────────────┼──────────────────┤
-                                                            ▼                  │
-                                              ┌─────────────────────────┐     │
-                                              │      es_switch_core      │     │
-                                              │  rx_port · mac_table ·   │     │
-                                              │  arbiter · tx_port       │     │
-                                              └─────────────────────────┘     │
-                                                            ▲                  │
-                        ┌──────────────────────────────────────────────────────┤
-                        │   es_panel（DIP 解码 + LED）   es_console（UART）     │
-                        │   es_perips_mdio / 88e1111（PHY 管理）               │
-                        └──────────────────────────────────────────────────────┘
-```
-
-数据通路有一条关键边界：**64-bit 节拍流**。`rtl/mac/` 拥有线接口所暗示的一切（PHY 引脚、前导码/SFD、FCS、帧间间隔、符号串行化、PHY 所需的弹性缓冲）；`rtl/switch/` 拥有交换功能（解析、学习、判决、仲裁、缓冲、整帧交付）。`es_switch_core` 不含任何时钟使能、线速率或符号序知识——换一种 MAC（含未来的光接口）不改变边界以下任何东西。
-
----
-
-## 3. 引脚与接口
-
-### 3.1 时钟与复位
-
-| 信号 | 方向 | 说明 |
-|---|---|---|
-| `clk_i` | 输入 | 单一同步核心时钟；默认 125 MHz（GMII 千兆）|
-| `rst_ni` | 输入 | 同步低有效复位，作用于所有 `always_ff` 状态 |
-
-### 3.2 线接口（由所选顶层 wrapper 决定）
-
-| 接口 | 数据宽 | 速率 | 说明 |
+| 参数 | 类型 / 位宽 | 默认值 | 说明 |
 |---|---|---|---|
-| GMII | 8-bit | 10/100/1000 M | 字节对齐，`BYTE_PERIOD=1` @ 125 MHz 达千兆线速 |
-| MII | 4-bit 半字节 | 10/100 M | 低半字节先发，`RX_ER` 粘性截断 |
-| RMII | 2-bit | 10/100 M | 每字节 4 个双比特块，无独立错误引脚 |
+| `NUM_PORTS` | `int unsigned` | 4 | 端口数，所有宽度由此派生 |
+| `CLK_FREQ_HZ` | `int unsigned` | GMII 125_000_000；MII/RMII 50_000_000 | 核心时钟频率 |
+| `PORT_SPEED` | `logic [N*2-1:0]` | GMII `{N{2'd2}}`；MII/RMII `{N{2'd1}}` | 每端口速率枚举 `sw_speed_e`（0=10M、1=100M、2=1000M、3=down） |
+| `PORT_MAC` | `logic [N*48-1:0]` | `'0` | 每端口 MAC；为零时由 `sw_default_mac(PORT_ID)` 派生本地地址 |
+| `MIN_FRAME_LEN` | `int unsigned` | 64 | 接受的最小 MAC client 字节数 |
+| `MAX_FRAME_LEN` | `int unsigned` | 1518 | 接受的最大 MAC client 字节数 |
+| `SLOTS` | `int unsigned` | 2 | 每入口缓冲的帧槽数 |
+| `SLOT_BYTES` | `int unsigned` | 2048 | 每槽字节数；`SLOTS*SLOT_BYTES` **必须是 2 的幂** |
+| `DESC_DEPTH` | `int unsigned` | 8 | 描述符 FIFO 深度（≥2） |
+| `TX_QUEUE_DEPTH` | `int unsigned` | 256 | 每端口 TX FIFO 深度（≥2） |
+| `CAM_SETS` | `int unsigned` | 128 | CAM 组数 |
+| `CAM_WAYS` | `int unsigned` | 4 | 每组路数 |
+| `LEARNING_EN` | `int unsigned` | 1 | 0 关闭源地址学习 |
+| `FLOOD_MODE` | `logic [1:0]` | `2'd1` | 0=只广播；1=洪泛未知单播；2=也洪泛未知组播 |
+| `IFG_OCTETS` | `int unsigned` | 12 | 帧间隔八位组数 |
 
-### 3.3 控制与状态
+`FLOOD_MODE` 与 `LEARNING_EN` 是纯 elaboration 参数，无运行期配置路径；`link_up_i` 只是数据门控。
 
-| 信号 | 方向 | 说明 |
-|---|---|---|
-| `link_up_i` | 输入 | 每端口管理使能；下行端口不接收、不学习 |
-| `dip_i` | 输入 | 面板 DIP 开关（洪泛模式 / 学习使能 / 覆盖）|
-| `led_*_o` | 输出 | 语义化状态灯（link/act/speed/duplex/fault/stat）|
-| `cfg_*_o` | 输出 | 面板解码后的实际生效配置（供控制台回读）|
-| `stat_o` | 输出 | 打包的聚合 32-bit 计数器（按 `sw_stat_id_e` 索引）|
+上表为**仿真**默认几何。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 的 `VERILOG_DEFINES`），`es_switch_pl_defs.sv` 改提供缩小默认：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`（`MIN_FRAME_LEN=64`、`DESC_DEPTH=8` 不变）。原因是全尺寸 4×2048×8 帧缓冲约合 13 万触发器，yosys `synth -flatten` 展开极慢；仿真不定义该宏，故行为回归始终用全尺寸。LibreLane 的 `SYNTH_PARAMETERS` 与这组值一致。
 
-### 3.4 管理接口
+## 2. 端口表
 
-| 信号 | 说明 |
-|---|---|
-| MDIO（`mdc_o` / `mdio_io`） | 88E1111 PHY 管理总线 |
-| UART 控制台（`rx_i` / `tx_o` / `cts_ni` / `rts_no`） | 命令查询接口，每端口独立，默认 115200-8N1 |
+### 2.1 内部字节流边界（MAC 适配器 ↔ 交换核）
 
----
-
-## 4. 功能描述
-
-### 4.1 存储转发与学习
-
-1. 入口 MAC 将 PHY 引脚重组成规范字节流，经 `es_mac_rx_frame` 组帧为 64-bit 节拍并在字节速率校验 FCS。
-2. 弹性 FIFO 吸收解析器的短暂停顿（PHY 无法中途停流）。
-3. `es_switch_core` 解析目的/源 MAC，查询 CAM；未命中则洪泛（受 `FLOOD_MODE` 约束），命中则单播转发。
-4. 源地址被学习写入 CAM；入口 FIFO 满则丢弃帧并计数。
-
-### 4.2 转发表（CAM）
-
-- 组织：`CAM_SETS`（默认 128）组 × `CAM_WAYS`（默认 4）路 = 512 项
-- 老化：默认关闭（`CAM_AGE_EN=0`）；使能后按 `CAM_AGE_CYCLES × CAM_SETS × CAM_WAYS × (CAM_AGE_LIMIT+1)` 时钟的等效空闲超时淘汰
-- 每项：48-bit MAC + 端口号 + 有效位
-
-### 4.3 洪泛 / 过滤策略
-
-`FLOOD_MODE`：0 = 阻塞未知单播；1 = 洪泛未知单播；2 = 连未知组播一并洪泛。`STALL_LIMIT` 控制队首阻塞帧在拥塞出口前可等待的时钟数（0 = 永久阻塞不丢弃）。
-
-### 4.4 统计计数器（`SW_STAT_COUNT = 14`）
-
-| 索引 | 名称 | 含义 |
-|---|---|---|
-| 0 | `rx_frames` | 通过接收过滤的帧数 |
-| 1 | `rx_octets` | 送入交换矩阵的字节数 |
-| 2 | `rx_filtered` | 入口过滤丢弃的帧数 |
-| 3 | `rx_crc_error` | FCS 校验失败的帧数 |
-| 4 | `rx_runt` | 短于 64 字节的帧数 |
-| 5 | `rx_oversize` | 超长帧数 |
-| 6 | `rx_overflow` | 入口缓冲耗尽丢弃的帧数 |
-| 7 | `tx_frames` | 注入发送端口的帧副本数 |
-| 8 | `tx_octets` | 注入发送端口的字节数 |
-| 9 | `tx_stalled` | 出口阻塞丢弃的帧数 |
-| 10 | `cam_hit` | 命中转发表的查找数 |
-| 11 | `cam_miss` | 落入洪泛的查找数 |
-| 12 | `cam_learn` | 写入 CAM 的地址数 |
-| 13 | `cam_flush` | CAM 刷新次数 |
-
-### 4.5 控制台命令
-
-UART 控制台为**只读查询**接口（无写入配置路径，多控制台永不冲突）：
-
-| 命令 | 说明 |
-|---|---|
-| `help` | 命令集帮助 |
-| `version` | 端口数 / CAM 容量 / 线接口 / 控制台编号 |
-| `status` | 聚合概要 + 每端口 link/rate/rx/tx |
-| `port <n>` | 端口 n 的 PHY 状态 + 全部 14 计数器 |
-| `stat` | 聚合计数器 |
-| `link` | 每端口 PHY 状态字节 |
-| `cfg` | 实际生效配置（flood/learn/override/CAM 容量）|
-| `mac all` | 遍历全部有效转发表项 |
-| `mac <n>` | 遍历端口 n 学到的表项 |
-| `mac count` | 表占用 / 容量 |
-
----
-
-## 5. 配置
-
-### 5.1 关键参数（编译期）
-
-| 参数 | 默认 | 说明 |
-|---|---|---|
-| `NUM_PORTS` | 4 | 端口数，任意 ≥ 1 |
-| `CLK_FREQ_HZ` | 125_000_000 | 核心时钟频率 |
-| `RX_FIFO_DEPTH` / `TX_FIFO_DEPTH` | 256 | 入口 / 出口节拍缓冲深度 |
-| `TAG_FIFO_DEPTH` | 16 | 入口帧描述符深度 |
-| `MAX_FRAME_LEN` | 1518 | 最大帧长（不含 FCS）|
-| `CAM_SETS` × `CAM_WAYS` | 128 × 4 | 转发表规模（=512 项）|
-| `WF_DEPTH` | 16 | MAC 内弹性节拍 FIFO |
-
-### 5.2 运行时配置（面板 DIP）
-
-| 项 | 说明 |
-|---|---|
-| 洪泛模式 | 0/1/2（见 4.3）|
-| 学习使能 | 源地址学习开关 |
-| 配置覆盖 | 覆盖面板解码值 |
-| CAM 刷新 | 立即刷新转发表 |
-
----
-
-## 6. 电气特性（SKY130）
-
-以下为基于 sky130A 工艺的**目标规格**；实测值见第 8 节。
-
-| 参数 | 值 |
-|---|---|
-| 工艺 | SkyWater SKY130（sky130A）|
-| 标准单元库 | `sky130_fd_sc_hd` |
-| 核心电源 | 1.8 V（sky130 HD 单元，标称）|
-| 目标时钟 | 100 MHz（`CLOCK_PERIOD = 10 ns`）|
-| 目标利用率 | 40%（`FP_CORE_UTIL`）|
-| 布线层 | met1–met5 |
-
-> ⚠ 本设计为可综合 RTL + LibreLane 物理实现流程，非已流片硬核。电气/时序参数为流程目标值。
-
----
-
-## 7. 时序特性
-
-| 参数 | 目标 / 实测 | 说明 |
-|---|---|---|
-| 目标时钟周期 | 10 ns（100 MHz） | LibreLane `CLOCK_PERIOD` |
-| 布线后 fmax（实测）| ~71.1 MHz（14.07 ns） | ⚠ 待重测 |
-| 布局后 fmax（实测）| 66.8–75.6 MHz | ⚠ 待重测 |
-| 收敛状态 | **未在 100 MHz 收敛** | 10 ns 为防御性目标，实测落在 66–76 MHz 区间 |
-
-> ⚠ 上述 fmax 为早期测量；当前重构版本未重测。100 MHz 目标在旧版未达成，重构后需重新做 STA 收敛评估。
-
----
-
-## 8. 物理实现（实测数据，⚠ 待重测）
-
-数据来源：早期 `sw_switch` 命名时代、LibreLane 2.4.2 / 3.0.14 流程产物。
-
-### 8.1 综合（yosys）
-
-| 实例 | 单元数 | 触发器 | 单元面积 |
+| 信号 | 方向 | 位宽 | 说明 |
 |---|---|---|---|
-| 全尺寸（模块默认参数）| 663,923 | 168,593 | ~3.59 mm² |
-| 综合缩小实例（`SYNTH_PARAMETERS`）| 132,678 | 42,748 | 1.911 mm² |
-| 本地 yosys 0.33（参考）| 137,413 | — | — |
+| `clk_i` | in | 1 | 单一时钟 |
+| `rst_ni` | in | 1 | 同步低有效复位 |
+| `link_up_i` | in | `[N-1:0]` | 数据门控；down 端口不能注入字节 |
+| `rx_valid_i` / `rx_ready_o` | in / out | `[N-1:0]` | 接收握手，反压无损 |
+| `rx_data_i` | in | `[N*8-1:0]` | 每端口一个八位组 |
+| `rx_sof_i` / `rx_eof_i` / `rx_err_i` | in | `[N-1:0]` | 帧边界与 FCS/RX_ER/截断裁决 |
+| `tx_valid_o` / `tx_ready_i` | out / in | `[N-1:0]` | 发送握手 |
+| `tx_data_o` | out | `[N*8-1:0]` | 每端口一个八位组 |
+| `tx_sof_o` / `tx_eof_o` | out | `[N-1:0]` | 帧边界 |
 
-> 注：容器内 yosys 0.62 与本地 yosys 0.33 的 ABC 映射差异约 ±3.5%。
+### 2.2 各 top 的物理端口
 
-### 8.2 布局与面积
+| Top | 输入 | 输出 |
+|---|---|---|
+| `es_switch_gmii` | `clk_i`、`rst_ni`、`link_up_i[N]`、`gmii_rx_en_i[N]`、`gmii_rx_data_i[N*8]` | `gmii_tx_en_o[N]`、`gmii_tx_data_o[N*8]` |
+| `es_switch_mii` | `mii_rx_dv_i[N]`、`mii_rx_er_i[N]`、`mii_rxd_i[N*4]` | `mii_tx_en_o[N]`、`mii_tx_er_o[N]`、`mii_txd_o[N*4]` |
+| `es_switch_rmii` | `rmii_crs_dv_i[N]`、`rmii_rxd_i[N*2]` | `rmii_tx_en_o[N]`、`rmii_txd_o[N*2]` |
+| `es_switch_de2_115_top` | `CLOCK_50`、`KEY[3:0]`、两路 `ENET*_RX_*`、`ENET*_MDIO`(inout)、`ENET*_INT_N` | 两路 `ENET*_TX_*`、`ENET*_TX_CLK`、`ENET*_RESET_N`、`ENET*_MDC`、`ENET*_MDIO`(inout) |
+| `es_switch_vivado_top` | `clk_i`、`rst_button_ni`、`mii_rx_clk_i[7:0]`、`mii_tx_clk_i[7:0]`、`mii_rxd_i[31:0]`、`mii_rx_dv_i/er_i[7:0]` | `mii_txd_o[31:0]`、`mii_tx_en_o/er_o[7:0]`、`phy_reset_no[7:0]`、`phy_mdc_o[7:0]`、`phy_mdio_io[7:0]`(inout) |
 
-| 参数 | 值 |
+## 3. 性能指标与资源说明
+
+| 项目 | 说明 |
 |---|---|
-| Die | 2196.8 × 2207.6 µm |
-| Core | ~4.77 mm² |
-| 利用率 | 40–41.8% |
+| 内部吞吐 | 每端口每时钟 1 字节，`N` 端口并行即 `N` 字节/clk；级间握手无损；约 5 帧可同时在各级驻留 |
+| 线速模型 | `BYTE_PERIOD = sw_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，由时钟使能表达；125 MHz 下 1000BASE-T=1、100BASE-TX=10、10BASE-T=100 周期/八位组 |
+| 单端口理论线速 | `8 bit × CLK_FREQ_HZ / BYTE_PERIOD`，如 125 MHz / 1 周期 = 1000 Mbit/s；50 MHz / 4 周期 = 100 Mbit/s |
+| 帧缓冲 / 队列 | 每入口端口 1 个 `SLOTS*SLOT_BYTES` 字节 FIFO + 1 个 `DESC_DEPTH` 描述符 FIFO（坏帧单拍 `undo` 回卷）；每端口 1 个 `TX_QUEUE_DEPTH` 深 FIFO，字为 `{sof, eof, data[7:0]}` |
+| 转发表 | `CAM_SETS × CAM_WAYS` 表项，同拍 `N` 查 + `N` 学；单时钟无 CDC，复位同步低有效 |
+| 资源构成 | 存储占主导；`sky130_fd_sc_hd` 无 SRAM 宏，以寄存器 + 读 mux 实现 |
+| 物理实现 | LibreLane 用缩小实例 `SYNTH_PARAMETERS`（`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`），`CLOCK_PERIOD=10` |
 
-### 8.3 签核检查
+以上是由参数与结构推导的设计指标，不是硅后实测；`make synth` 的 `stat` 与流程报告才是对应实例的资源数字。
 
-| 检查 | 结果 |
+## 4. 异形包丢弃规则（八类）
+
+`MIN_FRAME_LEN` / `MAX_FRAME_LEN` 以 MAC client 字节计（不含前导/SFD/FCS）；帧仅在完整收齐并通过全部检查后才对下游可见，坏帧回卷、不产生描述符。
+
+| # | 丢弃条件 |
 |---|---|
-| LVS | ✅ 通过 |
-| DRC | ✅ 通过 |
-| Antenna | ❌ 未通过（471 pin + 343 net 违例）|
+| 1 | FCS 错 / RX_ER / 截断（`b_err_i` 裁决，FCS 只在 MAC 适配器校验一次） |
+| 2 | runt：`client_len < MIN_FRAME_LEN` |
+| 3 | 超 MTU：`client_len > MAX_FRAME_LEN`（继续排空线上剩余字节） |
+| 4 | 802.3 length 字段与实测 client 长度不符（`l2type ≤ 1500` 时校验） |
+| 5 | VLAN tag 残缺：标记 VLAN 但长度不足 `SW_HDR_LEN_VLAN`(18) |
+| 6 | 源 MAC 为组播/广播地址 |
+| 7 | 源 MAC 等于本端口 MAC |
+| 8 | 目的 MAC 等于本端口 MAC |
 
-> ⚠ 上述四项（综合 / 布局 / 面积 / 签核）均为旧命名时代测量，重构后需经 LibreLane 3.0.14 重新跑通并重测。
+## 5. CAM 行为
 
----
-
-## 9. 订购信息
-
-| 器件型号 | 说明 |
+| 项目 | 行为 |
 |---|---|
-| ES-SWITCH-4P-GMII | 4 端口 GMII 配置（默认，千兆）|
-| ES-SWITCH-2P-MII | 2 端口 MII 配置 |
-| ES-SWITCH-8P-RMII | 8 端口 RMII 配置 |
+| 容量 | `CAM_SETS × CAM_WAYS` 表项，`{valid, port, mac}` |
+| 并行度 | `NUM_PORTS` 路组合查找 + `NUM_PORTS` 路学习，同拍完成 |
+| 语义 | **read-first**：同拍学习对该拍查找不可见；帧查目的 MAC、学自身源 MAC |
+| 哈希 | 纯 XOR 折叠六个地址字节（无乘法器/除法器），`SETW=$clog2(NUM_SETS+1)` + 一次条件减法回绕到 `[0, NUM_SETS)`；桶读取用常量索引优先级 mux，不生成宽 `$shiftx` |
+| 替换 | 组相联 + round-robin 指针；精确命中就地重定位、不推进指针 |
+| 冲突 | 同 bucket 学习多于 `NUM_WAYS` 时 `learn_ready_o` 反压一拍，`cam_stage` 保持 `valid` 直到批准；禁止静默丢弃 |
 
-> 型号为占位约定；实际配置由参数化综合决定。
+转发决策（S3）：广播 → 除源端口外全发；组播 → 仅 `FLOOD_MODE=2` 时全发；
+单播命中 → 命中掩码去掉源端口；单播未命中 → `FLOOD_MODE≠0` 时全发；源端口始终被过滤。egress mask 为零的帧仍被 TX writer 读空丢弃。
 
----
+## 6. 五个 top 差异
 
-## 10. 术语表
+| Top | 端口数 | 时钟 | 速率 | 管理/门控 | 用途 |
+|---|---|---|---|---|---|
+| `es_switch_gmii` | 4（默认，可改） | 125 MHz | 1000M | `link_up_i` | ASIC 默认 / LibreLane `DESIGN_NAME` |
+| `es_switch_mii` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | MII 前端；1000M 端口 elaboration 报错 |
+| `es_switch_rmii` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | RMII 前端；拒绝 1000M，`BYTE_PERIOD` 需可整除 |
+| `es_switch_de2_115_top` | 2（固定） | 50 MHz | 100M | 88E1111 MDIO 管理 → `phy_enabled` | DE2-115 双口，TX_CLK 分频、KEY0 复位 |
+| `es_switch_vivado_top` | 8（固定） | 50 MHz | 100M | `link_up_i` 固定拉高，MDIO 未驱动 | Vivado 8 口 MII 模板 |
 
-| 术语 | 说明 |
-|---|---|
-| GMII / MII / RMII | 千兆 / 百兆 / 精简百兆媒体无关接口 |
-| beat | 64-bit 节拍，数据通路最小传输单位（8 字节）|
-| BYTE_PERIOD | 一个字节时间对应的 `clk_i` 周期数（时钟使能）|
-| CAM | 内容可寻址存储器，此处实现 MAC 转发表 |
-| FCS | 帧校验序列（CRC-32）|
-| MDIO | 管理数据输入输出总线（PHY 管理）|
-| store-and-forward | 存储转发：整帧收齐并校验后再转发 |
-| sky130A | SkyWater 130 nm 开源 PDK |
+五个 top 都进 `lint` / `rtl` / `synth` 门禁；`make sim`/`param`/`param-scan` 覆盖 GMII，`make mii`/`rmii`/`vivado`/`board-unit` 覆盖其余前端与板级。
 
----
+## 7. 已知限制
 
-*本数据手册随 RTL 一起维护；物理实现数据更新时同步刷新第 7、8 节并去除「待重测」标注。*
+* 不提供运行期状态、统计或配置接口；`FLOOD_MODE`/`LEARNING_EN` 只能在 elaboration 时确定。帧缓冲要求 `SLOTS*SLOT_BYTES` 为 2 的幂，且 `MAX_FRAME_LEN` 必须装进 `SW_LEN_W`(11 bit)，否则 elaboration 报错。
+* CAM 是哈希组相联、无老化与显式删除；表项只被覆盖或复位清空。
+* 板级 PHY 时钟捕获 / CDC / 时序适配未全部完成：Vivado 模板是同步 MII 模型；
+  DE2-115 板级 TB 因无外部 MDIO PHY 从机模型而 `force phy_enabled`，**不验证
+  MDIO 管理**。
+* LibreLane 物理流程跑缩小实例，不能据此声称全尺寸配置已布局布线或已流片；`make synth` 用本机 yosys，与镜像内版本可能不同，资源数字不可直接互换。

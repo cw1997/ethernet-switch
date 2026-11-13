@@ -1,7 +1,8 @@
 // ============================================================================
 //  File        : es_defs.sv
-//  Description : Common switch interface widths, the statistics map and the
-//                declarations every domain shares.
+//  Description : Common switch interface widths and the declarations every
+//                domain shares.  Umbrella header for the staged 8-bit
+//                pipeline.  There is no statistics map or status surface.
 //
 //                Compilation-unit declarations keep port ranges readable by
 //                yosys read_verilog -sv.  Include guards prevent redefinition;
@@ -98,48 +99,23 @@ function automatic int unsigned sw_byte_period(input int unsigned clk_freq_hz,
 endfunction
 
 // ============================================================================
-// 3.  Statistics register map exported on the read-only `stat_o` bus
-// ============================================================================
-// Every statistics word in the design is a 32-bit field on this packed bus,
-// selected by its own `sw_stat_id_e` index.  The order is part of the console
-// interface - `stat` prints one line per ID in this order - so a new counter is
-// appended rather than inserted.
-typedef enum int unsigned {
-  SW_STAT_RX_FRAMES   = 0,   ///< frames accepted by the receive filter
-  SW_STAT_RX_OCTETS   = 1,   ///< octets forwarded into the switching fabric
-  SW_STAT_RX_FILTERED = 2,   ///< frames dropped by the ingress filter
-  SW_STAT_RX_CRC_ERR  = 3,   ///< frames failing the FCS check
-  SW_STAT_RX_RUNT     = 4,   ///< frames shorter than 64 octets
-  SW_STAT_RX_OVERSIZE = 5,   ///< frames longer than the configured maximum
-  SW_STAT_RX_OVERFLOW = 6,   ///< frames dropped: ingress buffer exhausted
-  SW_STAT_TX_FRAMES   = 7,   ///< frame copies injected into a transmit port
-  SW_STAT_TX_OCTETS   = 8,   ///< octets injected into a transmit port
-  SW_STAT_TX_STALLED  = 9,   ///< frames discarded because egress was blocked
-  SW_STAT_CAM_HIT     = 10,  ///< CAM lookups that resolved to a port
-  SW_STAT_CAM_MISS    = 11,  ///< CAM lookups that fell through to flooding
-  SW_STAT_CAM_LEARN   = 12,  ///< address insertions written into the CAM
-  SW_STAT_CAM_FLUSH   = 13   ///< CAM flush operations performed
-} sw_stat_id_e;
-
-/// Number of statistics registers carried on `stat_o`.
-localparam int unsigned SW_STAT_COUNT = 14;
-
-// ============================================================================
-// 4.  Domain declaration libraries
+// 3.  Domain declaration libraries
 // ============================================================================
 // Included, not compiled separately: each file is guarded, and pulling them in
 // here is what lets a module be compiled on its own.  Dependency order is
-// common -> mac -> perips -> panel -> console -> switch; the switch library
-// depends on `sw_port_w` from common and on `SW_LEN_W` above, and borrows the
-// CRC helpers that common declares.  The mac library is intentionally ahead of
-// the switch library so that its declarations sit inside the two
-// declaration-only lint waivers opened above - a new `SW_MAC_*` constant that
-// nothing reads yet must not fail `make lint` as UNUSEDPARAM.
+// common -> mac -> perips -> pl -> switch.  The pipeline library (pl) is
+// deliberately BEFORE switch/es_switch_defs.sv: that file closes the two
+// declaration-only lint waivers at its end, so a `sw_pl_*` helper that a
+// particular top does not read yet would otherwise fail `make lint` as
+// UNUSEDPARAM.  pl needs only `SW_LEN_W` above and `sw_port_w()` from common.
+//
+// The statistics register map and the panel/console libraries are gone: the
+// staged switch is pure switching logic and exports no status, counters,
+// commands or lamp outputs.
 `include "common/es_common_defs.sv"
 `include "mac/es_mac_defs.sv"
 `include "perips/es_perips_defs.sv"
-`include "panel/es_panel_defs.sv"
-`include "console/es_console_defs.sv"
+`include "switch/es_switch_pl_defs.sv"
 `include "switch/es_switch_defs.sv"
 
 // Every included library hands the nettype default back before returning, so

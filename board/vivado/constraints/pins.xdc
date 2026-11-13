@@ -7,8 +7,10 @@
 #
 #               Replace <PIN>/<STANDARD> using the board schematic, bank VCCO
 #               and PHY I/O voltage before enabling each assignment. There are
-#               2 + 8*17 = 138 port bits; statistics/control stay inside the FPGA.
-#               Port p uses data [4*p +: 4] and bit p of each status/clock bus.
+#               2 + 8*17 = 138 port bits; the pure-switching design exports no
+#               statistics, console or panel bus, so every pin is a PHY, clock
+#               or reset signal. Port p uses data [4*p +: 4] and bit p of each
+#               per-port control bus.
 #               Keep this inventory in step with the HDL and timing templates.
 #
 #               Preserve UCIO-1/NSTD-1 severity: an incomplete template must

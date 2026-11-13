@@ -32,12 +32,12 @@ set_false_path -from [get_ports {ENET0_RX_DV ENET0_RX_ER ENET0_RX_DATA[*] \
                                  ENET1_RX_DV ENET1_RX_ER ENET1_RX_DATA[*] \
                                  ENET0_MDIO ENET1_MDIO \
                                  ENET0_INT_N ENET1_INT_N \
-                                 KEY[*] UART_RXD UART_CTS}]
+                                 KEY[*]}]
 
-# The PHY reset outputs and the LEDs have no meaningful clocked relationship
-# with clk_50 from the outside.
-set_false_path -to [get_ports {ENET0_RESET_N ENET1_RESET_N \
-                               LEDR[*] LEDG[*]}]
+# The PHY reset outputs have no meaningful clocked relationship with clk_50
+# from the outside.  (Console and LED ports were removed with the pure-switch
+# rewrite.)
+set_false_path -to [get_ports {ENET0_RESET_N ENET1_RESET_N}]
 
 # ---- MII transmit outputs -------------------------------------------------------
 # The PHY latches TXD/TX_EN/TX_ER on rising TX_CLK.  Data changes on clk_50
@@ -59,5 +59,4 @@ set_output_delay -clock tx_clk1 -min 0.000 [get_ports {ENET1_TX_DATA[*] ENET1_TX
 # Only the ports this design actually drives are listed: a name that matches no
 # pin makes Quartus report an unmatched collection, and the board's HEX and LCD
 # displays are no longer driven by anything.
-set_false_path -to [get_ports {ENET0_MDC ENET1_MDC ENET0_MDIO ENET1_MDIO \
-  UART_TXD UART_RTS GPIO_TXD GPIO_RTS_N}]
+set_false_path -to [get_ports {ENET0_MDC ENET1_MDC ENET0_MDIO ENET1_MDIO}]

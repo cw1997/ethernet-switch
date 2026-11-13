@@ -97,13 +97,10 @@ module sw_gmii_if
     n     = tb_frame_octets(total_len, vlan_en);
     if (drop_fcs) n = n - 4;
 
-    // The switch's receive contract states that the preamble and the
-    // start-of-frame delimiter have already been removed by the PHY, exactly as
-    // a real GMII MAC expects, so the model presents the frame body from the
-    // first destination MAC octet onwards.  `tb_build_frame` still produces the
-    // preamble because the same builder is used for the transmit monitor, which
-    // has to see the octets the switch puts on the wire.
-    for (i = SW_PREAMBLE_LEN; i < n; i++) begin
+    // The MAC adapter hunts for the preamble/SFD itself (D5), so the model
+    // presents the COMPLETE wire frame - all eight preamble/SFD octets, the
+    // MAC client data and the FCS - exactly as a real PHY would.
+    for (i = 0; i < n; i++) begin
       o = tb_get_octet(frame, i);
       @(posedge clk_i);
       rx_en_r <= 1'b1;

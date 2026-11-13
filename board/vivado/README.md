@@ -1,133 +1,110 @@
-# Vivado 八端口 MII 网口模板
+# Vivado 八端口 MII 模板
 
-为 `xc7k160tffg676-3` 提供八个固定 100 Mbps 端口的板级骨架，系统时钟为
-50 MHz。这是通用适配模板，**不能直接连接真实 PHY 或下载上板**。
+`es_switch_vivado_top`：面向 `xc7k160tffg676-3` 的八端口固定 100 Mbit/s
+MII 板级骨架，50 MHz 系统时钟，138 个端口位。设计是纯交换逻辑，没有监控、
+指示或运行期配置路径。**这是通用适配模板，不能直接连接真实 PHY 或下载上板。**
 
-## 环境与使用
+## 1. 工程与 `configure.tcl`
 
-现有 `vivado.xpr` 由 Vivado 2026.1 创建；请使用能读取该工程并支持目标器件的版本。
-在仓库根目录启动 Vivado Tcl Console，执行：
+现有 `vivado.xpr` 由 Vivado 2026.1 创建，请用能读取该工程并支持目标器件的
+版本。在仓库根目录的 Vivado Tcl Console 执行：
 
 ```tcl
 source board/vivado/configure.tcl
 ```
 
-也可在配置好 Vivado 环境的终端执行：
+或在配置好 Vivado 环境的终端：
 
 ```sh
 vivado -mode batch -source board/vivado/configure.tcl
 ```
 
-脚本重复执行不会重复添加文件，保留工程器件和已有运行设置。可直接打开
-`vivado.xpr`，设计顶层为 `es_switch_vivado_top`。约束分为 `constraints/pins.xdc`
-和 `constraints/timing.xdc`：仅 20 ns 系统时钟约束生效，所有管脚、电压及
-PHY 时序占位均为注释，不会把占位符传给 Vivado。
+`configure.tcl` 以脚本自身路径锚定工程目录，重复执行不会重复添加文件或
+include 路径，且保留器件、run 策略与已有 run 产物。它做四件事：
 
-配置后可在 Tcl Console 检查综合和时钟约束：
+1. 用 `glob` 重新登记 `rtl/*.sv` 与 `rtl/*/*.sv`，加上
+   `hdl/es_switch_vivado_top.sv`；只移除已失效的仓库管理源节点，保留无关的
+   工程文件，并把所有 `*defs.sv` 标为 `Verilog Header`。
+2. 关闭自动顶层选择（`top_auto_set false`），把设计视图 `sources_1` 和仿真
+   视图 `sim_1` 的顶层都固定为 `es_switch_vivado_top`。
+3. 附加 `constraints/pins.xdc` 与 `constraints/timing.xdc`（引脚占位保持注释，
+   仅 20 ns 系统时钟约束生效），保留 UCIO-1/NSTD-1 的 DRC 严重级别。
+4. `update_compile_order -fileset sources_1` 解析依赖关系。
 
-```tcl
-synth_design -no_timing_driven -top es_switch_vivado_top -part xc7k160tffg676-3
-report_clocks
-report_utilization
-```
+脚本**不会** `reset_run`：配置是可重复的，丢弃缓存 checkpoint 是另一项显式
+动作。若工程里还留着早期以内部核心顶层跑出的 `synth_1` 结果，先
+`close_design`、`reset_run synth_1`，再 `launch_runs synth_1` 重跑综合，
+不能复用旧的 `.dcp`。
 
-模板综合检查关闭时序驱动优化以减少运行时间，不代表时序收敛。完成实际 PHY
-适配及完整约束后，使用默认综合、实现和时序分析检查可上板性。
-预留的 PHY 时钟、未驱动的 MDIO 和固定为低的 MDC 会产生预期的综合告警。
+## 2. `.xpr` 源节点已清理
 
-## 排查 507 个 I/O 的放置错误
+仓库管理源列表中的陈旧节点已从 `vivado.xpr` 清除，脚本每次重新用 `glob`
+附着当前分级流水线 RTL。旧状态曾让实现误把内部核心顶层当成物理顶层，产生
+I/O 数量不匹配；现在设计/仿真顶层都固定为 `es_switch_vivado_top`，
+自动顶层选择已关闭。修正顶层并不补全物理引脚与 PHY 时序——接板要求见下。
 
-如果出现 `[Place 30-415]`，且报告列出 `stat_o[447:0]`，说明实现使用了
-`es_switch_mii` 核心顶层。其默认四端口加上统计／控制总线共 507 个端口位；
-板级顶层 `es_switch_vivado_top` 只有 138 个端口位，统计总线保留在 FPGA 内部。
+## 3. 顶层连接
 
-在已经打开此工程的 Vivado Tcl Console 中执行：
+| 信号 | 说明 |
+|---|---|
+| `clk_i` | 50 MHz 单端系统时钟；差分晶振需另加输入缓冲 |
+| `rst_button_ni` | 异步低有效按钮，经两级带 `ASYNC_REG` 的触发器同步；不含消抖，不假设上电初值，配置后需保持低电平至少三个上升沿再释放 |
+| `mii_rx_clk_i[7:0]` / `mii_tx_clk_i[7:0]` | PHY 驱动的时钟输入，当前仅预留、不驱动任何逻辑；不得接到 FPGA 输出时钟 |
+| `mii_rxd_i[31:0]` / `mii_txd_o[31:0]` | 端口 p(0–7) 占 `[4*p +: 4]`，低位半字节在前 |
+| `mii_rx_dv_i/er_i[7:0]`、`mii_tx_en_o/er_o[7:0]` | 按端口号索引的状态位；`mii_tx_er_o` 恒低 |
+| `phy_reset_no[7:0]` | 跟随同步复位，不额外延长脉冲 |
+| `phy_mdc_o[7:0]` / `phy_mdio_io[7:0]` | MDC 固定低、MDIO 始终高阻，需要板上外部上拉；无 MDIO 管理事务 |
+| `link_up_i` | 模板无管理控制器，八端口在壳内固定拉高 |
 
-```tcl
-source [file join [get_property DIRECTORY [current_project]] configure.tcl]
-# Close any old synthesized/implemented design before discarding run products.
-if {[current_design -quiet] ne ""} { close_design }
-reset_run synth_1
-launch_runs synth_1 -jobs 4
-wait_on_run synth_1
-```
+Vivado 在 `default_nettype none` 下要求显式声明输入端口种类，因此 RTL 输入用
+`input var logic`、双向 MDIO 用显式 `tri logic` 网络。
 
-`reset_run synth_1` 会清除可重新生成的综合结果并重置依赖它的实现运行。
-综合成功后再启动实现，不能继续使用旧的 `es_switch_mii.dcp`。
-配置脚本将设计和仿真顶层固定为 `es_switch_vivado_top`，关闭自动顶层选择；若另一个
-Vivado 窗口仍打开旧工程状态，应在那个窗口也重新执行配置脚本，避免旧设置再次保存。
-修正顶层并不补全模板中的物理引脚和 PHY 时序，接板要求仍见下文。
+## 4. 物理 PHY 适配未完成
 
-## 顶层连接
+以下是明确的**未完成板级工作**，模板没有声称它们已被解决：
 
-- `clk_i`：50 MHz 单端系统时钟输入；差分晶振需要另加适当输入缓冲。
-- `rst_button_ni`：低有效按钮，经两级带 `ASYNC_REG` 属性的触发器同步。
-  不假设上电初值；配置后先保持按钮低电平至少三个时钟上升沿，再释放。
-  复位按下和释放都需两个采样沿传播，核心在后续上升沿采样同步复位。
-- `mii_rx_clk_i[7:0]`、`mii_tx_clk_i[7:0]`：PHY 驱动的时钟输入，当前仅预留，
-  不驱动核心逻辑；不得连接到 FPGA 输出时钟。
-- `mii_rxd_i[31:0]`、`mii_rx_dv_i[7:0]`、`mii_rx_er_i[7:0]`：接收数据和状态。
-  `mii_txd_o[31:0]`、`mii_tx_en_o[7:0]`、`mii_tx_er_o[7:0]`：发送数据和状态。
-  端口 p（0–7）对应数据位 `[4*p +: 4]`；状态位按端口号索引。
-- `phy_reset_no[7:0]`：跟随同步复位的低有效 PHY 复位，不额外延长脉冲。
-- `phy_mdc_o[7:0]` 固定为低；`phy_mdio_io[7:0]` 始终高阻，需板上外部上拉。
-  没有 MDIO 管理、自动协商监测或动态速率切换，八端口逻辑使能始终有效。
+1. 按原理图填写每个信号的 `PACKAGE_PIN` / `IOSTANDARD`，核对 Bank VCCO、
+   PHY I/O 电压与时钟引脚能力；模板不猜测任何真实引脚。
+2. 实现每端口 PHY RX/TX 时钟捕获与 CDC。当前是把同步 MII 模型直接接到
+   `es_switch_mii`；简单同步各数据位或忽略 PHY 时钟不能保证多位一致性和
+   持续线速接收。
+3. 按所选 PHY 实现复位保持、时钟稳定等待、上电初始化、速率配置与链路检测；
+   按钮同步链不替代 PHY 上电/复位时序。
+4. 填写八端口外部时钟、输入延迟、输出 setup/hold 预算，确认采样/发射边沿，
+   检查 `report_cdc`、`check_timing`、`report_timing_summary`；不要用全局
+   false path 掩盖缺失逻辑。`timing.xdc` 里 PHY 相关示例全部是注释占位。
 
-FPGA 的这些信号连接 PHY 数字侧；RJ45 通过 PHY 及相应磁性器件连接，不能直接接 FPGA。
+前导码/SFD 识别、FCS 校验与生成、pad 与 IFG 都由 `rtl/mac/` 的字节流适配器
+完成，不属于这里待补的 PHY 工作。预留的 PHY 时钟、未驱动的 MDIO 与固定为
+低的 MDC 会产生预期的综合告警。
 
-## 接板前必须完成
+## 5. 八端口 MII 自检 TB
 
-1. 根据板卡原理图填写每个管脚的 `PACKAGE_PIN` 和 `IOSTANDARD`，检查 Bank
-   VCCO、PHY I/O 电压和时钟管脚能力；模板不猜测任何真实管脚。
-2. 实现每端口 PHY RX/TX 时钟适配及 CDC。当前直接连接到 `es_switch_mii`
-   的同步模型：每个半字节保持两个核心周期，从 RX_DV 上升开始按连续窗口送入。
-   简单同步各数据位或忽略 PHY 时钟不能保证多位数据一致性和持续线速接收。
-3. 在 RX 路径识别并去除真实线上的前导码和 SFD，保留目的 MAC 起始的帧及 FCS。
-   现有核心 TX 已生成前导码、SFD 和 FCS；发送适配还需保证 MII TX_CLK 对齐和帧间隔。
-4. 根据所选 PHY 实现复位保持时间、时钟稳定等待、上电初始化、速率配置和链路检测。
-   模板按钮同步不含消抖，不能替代 PHY 上电／复位时序控制。
-5. 根据 PHY 数据手册和 PCB 延迟填写八端口外部时钟、输入延迟及输出 setup/hold
-   预算，确认发射／采样边沿。添加准确的 CDC 约束并检查 `report_cdc`、
-   `check_timing` 和 `report_timing_summary`，不能用全局 false path 掩盖缺失逻辑。
+`hdl/tb_es_switch_vivado_top.sv` 由 `make vivado` 运行，不需要安装 Vivado。
+八个独立的 `sw_mii_if` 线模型驱动完整线上帧，并在出线侧按 `sw_tb_pkg`
+独立重组、校验前导与 FCS；`BYTE_PERIOD = 4`（50 MHz / 100 Mbit/s），
+`link_up_i` 固定拉高，预留的 PHY 时钟接低。
 
-模板保留 UCIO-1、NSTD-1 等 DRC 的默认严重级别。不完整的管脚约束会阻止正常
-bitstream 生成；填写引脚也不代表上述 PHY 适配和时序工作已经完成。
+场景：复位/空闲检查；从最高端口广播，验证跨 7 → 0 环回边界泛洪且不回送源
+端口；一次学习广播把站点登记到端口 0；随后从端口 7 发已知单播，只应到端口
+0（再次覆盖环回边界）。它检查按钮同步、PHY 复位、MDIO 高阻与 MDC 空闲。
 
-## 开发验证
+该回归**不验证真实 PHY CDC、板级时序或硬件多时钟域**；线模型只是同步 MII
+边界的独立参考。每个检查打印 PASS/FAIL，带超时看门狗、显式错误计数和
+`$fatal`/`$finish`。
 
-在 Linux／WSL 工具链环境中，从仓库根目录执行：
+## 6. 门禁
+
+板级顶层纳入 `make lint` / `make rtl` / `make synth` 的五个顶层之列；
 
 ```sh
 ci/check-toolchain.sh
 make lint
 make rtl
-make unit
-make param
-make sim
 make synth
 make vivado
 ```
 
-`make vivado` 是 Icarus 板级模板回归，无需安装 Vivado，并已纳入 `make unit` 和 `make all`。
-它检查按钮同步、PHY 复位、MDIO 高阻、MDC 空闲，以及 50 MHz 同步接口模型下
-的全端口泛洪、环形已知单播、学习和独立线模型重组得到的 FCS。该回归不验证真实 PHY CDC 或板级时序。
-新顶层同时纳入 lint、RTL elaboration 和 yosys 综合检查。
-
-仓库工程规范见 [AGENTS.md](../../AGENTS.md)，交换核心说明见
-[中文 README](../../README.zh-Hans.md)。
-
-Vivado 在 `default_nettype none` 下要求显式声明输入端口种类。因此 RTL 模块输入
-采用 `input var logic`，MDIO 采用显式 `tri logic` 网络；这些声明保留核心行为和隐式网络检查。
-
-
-## Shared RTL domains
-
-`rtl/mac/` owns the line interfaces: GMII, MII and RMII pins to the 64-bit beat
-contract, including preamble, FCS, inter-frame gap and the elastic beat buffer.
-`rtl/switch/` owns the interface-agnostic switching function only.
-`rtl/panel/` owns what a board switch position means and what a lamp shows.
-`rtl/console/` owns the ASCII queries, one self-contained port per UART.
-`rtl/perips/` owns UART, MDIO and 88E1111 PHY management.
-`rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and parallel register banks.
-`rtl/common/` owns the two-stage sampler and CRC-32.
-Source lists use these paths; no ROM initialization or extra pipeline stage is introduced.
+Windows 下统一用 `bash wsl.sh "make vivado"` 这类形式。`make synth` 不在
+`make all` 内，需单独执行。工程规范见 [AGENTS.md](../../AGENTS.md)，交换核
+说明见 [中文 README](../../README.zh-Hans.md)。
