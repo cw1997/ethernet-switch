@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_rmii_if.sv
 //  Description : Bus functional model of an RMII PHY, instantiated once per
-//                switch port by the `es_switch_rmii` top wrapper.
+//                switch port by the `es_rmii_top` top wrapper.
 //
 //                The model drives the switch's RMII receive pins and monitors
 //                its RMII transmit pins, exactly as a real PHY would:
@@ -78,7 +78,7 @@ module sw_rmii_if
   // ==========================================================================
   // One chunk is launched on the first clock of a chunk window and held for
   // CPK clocks; an octet is four consecutive chunk windows in ascending bit
-  // order, exactly the contract stated in es_switch_rmii (the adapter samples at the
+  // order, exactly the contract stated in es_rmii_top (the adapter samples at the
   // end of each window and counts every frame's windows from the CRS_DV rise).
   //
   // The cadence idiom is the one sw_mii_if and sw_gmii_if use, and getting it
@@ -203,7 +203,7 @@ module sw_rmii_if
   // Received-frame queue
   // ==========================================================================
   sw_rec_q #(
-    .DEPTH(MON_DEPTH)
+    .DEPTH (MON_DEPTH)
   ) u_mon (
     .clk_i       (clk_i),
     .rst_ni      (rst_ni),
@@ -254,7 +254,7 @@ module sw_rmii_if
           mon_last     <= mon_buf;
           mon_last_n   <= mon_n;
         end
-        if (mon_n > 0 && mon_n < 8 + 64 + 4) mon_short <= mon_short + 1;
+        if (mon_n > 0 && mon_n < 8 + 60 + 4) mon_short <= mon_short + 1;
         mon_buf    = '0;
         mon_n      = 0;
         mon_active = 1'b0;

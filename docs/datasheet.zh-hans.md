@@ -50,9 +50,9 @@
 
 | Top | 输入 | 输出 |
 |---|---|---|
-| `es_switch_gmii` | `clk_i`、`rst_ni`、`link_up_i[N]`、`gmii_rx_en_i[N]`、`gmii_rx_data_i[N*8]` | `gmii_tx_en_o[N]`、`gmii_tx_data_o[N*8]` |
-| `es_switch_mii` | `mii_rx_dv_i[N]`、`mii_rx_er_i[N]`、`mii_rxd_i[N*4]` | `mii_tx_en_o[N]`、`mii_tx_er_o[N]`、`mii_txd_o[N*4]` |
-| `es_switch_rmii` | `rmii_crs_dv_i[N]`、`rmii_rxd_i[N*2]` | `rmii_tx_en_o[N]`、`rmii_txd_o[N*2]` |
+| `es_gmii_top` | `clk_i`、`rst_ni`、`link_up_i[N]`、`gmii_rx_en_i[N]`、`gmii_rx_data_i[N*8]` | `gmii_tx_en_o[N]`、`gmii_tx_data_o[N*8]` |
+| `es_mii_top` | `mii_rx_dv_i[N]`、`mii_rx_er_i[N]`、`mii_rxd_i[N*4]` | `mii_tx_en_o[N]`、`mii_tx_er_o[N]`、`mii_txd_o[N*4]` |
+| `es_rmii_top` | `rmii_crs_dv_i[N]`、`rmii_rxd_i[N*2]` | `rmii_tx_en_o[N]`、`rmii_txd_o[N*2]` |
 | `es_switch_de2_115_top` | `CLOCK_50`、`KEY[3:0]`、两路 `ENET*_RX_*`、`ENET*_MDIO`(inout)、`ENET*_INT_N` | 两路 `ENET*_TX_*`、`ENET*_TX_CLK`、`ENET*_RESET_N`、`ENET*_MDC`、`ENET*_MDIO`(inout) |
 | `es_switch_vivado_top` | `clk_i`、`rst_button_ni`、`mii_rx_clk_i[7:0]`、`mii_tx_clk_i[7:0]`、`mii_rxd_i[31:0]`、`mii_rx_dv_i/er_i[7:0]` | `mii_txd_o[31:0]`、`mii_tx_en_o/er_o[7:0]`、`phy_reset_no[7:0]`、`phy_mdc_o[7:0]`、`phy_mdio_io[7:0]`(inout) |
 
@@ -103,9 +103,9 @@
 
 | Top | 端口数 | 时钟 | 速率 | 管理/门控 | 用途 |
 |---|---|---|---|---|---|
-| `es_switch_gmii` | 4（默认，可改） | 125 MHz | 1000M | `link_up_i` | ASIC 默认 / LibreLane `DESIGN_NAME` |
-| `es_switch_mii` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | MII 前端；1000M 端口 elaboration 报错 |
-| `es_switch_rmii` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | RMII 前端；拒绝 1000M，`BYTE_PERIOD` 需可整除 |
+| `es_gmii_top` | 4（默认，可改） | 125 MHz | 1000M | `link_up_i` | ASIC 默认 / LibreLane `DESIGN_NAME` |
+| `es_mii_top` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | MII 前端；1000M 端口 elaboration 报错 |
+| `es_rmii_top` | 4（默认，可改） | 50 MHz | 100M | `link_up_i` | RMII 前端；拒绝 1000M，`BYTE_PERIOD` 需可整除 |
 | `es_switch_de2_115_top` | 2（固定） | 50 MHz | 100M | 88E1111 MDIO 管理 → `phy_enabled` | DE2-115 双口，TX_CLK 分频、KEY0 复位 |
 | `es_switch_vivado_top` | 8（固定） | 50 MHz | 100M | `link_up_i` 固定拉高，MDIO 未驱动 | Vivado 8 口 MII 模板 |
 

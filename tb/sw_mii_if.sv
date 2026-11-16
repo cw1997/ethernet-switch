@@ -1,7 +1,7 @@
 // ============================================================================
 //  File        : tb/sw_mii_if.sv
 //  Description : Bus functional model of an MII PHY, instantiated once per
-//                switch port by the `es_switch_mii` top wrapper.
+//                switch port by the `es_mii_top` top wrapper.
 //
 //                The model drives the switch's MII receive pins and monitors
 //                its MII transmit pins, exactly as a real PHY would:
@@ -71,12 +71,13 @@ module sw_mii_if
   // ==========================================================================
   // One nibble is launched on the first clock of a nibble window and held for
   // NPK clocks; each octet is a low-nibble window followed by a high-nibble
-  // window, exactly the contract stated in es_switch_mii (the adapter samples at the
+  // window, exactly the contract stated in es_mii_top (the adapter samples at the
   // end of each window and counts every frame's windows from the DV rise).
   logic       rx_dv_r;
+  logic       rx_er_r;
   logic [3:0] rx_d_r;
   assign mii_rx_dv = enable_i && rx_dv_r;
-  assign mii_rx_er = 1'b0;  // the unit testbench covers RX_ER
+  assign mii_rx_er = enable_i && rx_dv_r && rx_er_r;
   assign mii_rxd   = rx_d_r;
 
   /// Present one frame on the receive pins.
@@ -86,7 +87,8 @@ module sw_mii_if
   /// obtained by forking the task.
   task automatic send(input sw_mac_t dst, input sw_mac_t src, input logic [15:0] l2type,
                       input int unsigned total_len, input bit vlan_en = 1'b0,
-                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0);
+                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0,
+                      input bit error_tail = 1'b0);
     tb_frame_buf_t frame;
     int unsigned   n;
     int unsigned   i;
@@ -95,6 +97,8 @@ module sw_mii_if
     frame = tb_build_frame(dst, src, l2type, total_len, vlan_en, corrupt_fcs);
     n     = tb_frame_octets(total_len, vlan_en);
     if (drop_fcs) n = n - 4;
+
+    rx_er_r = 1'b0;
 
     // Present the COMPLETE wire frame (preamble/SFD included): the MAC adapter
     // hunts for the preamble itself (D5) rather than relying on the PHY.
@@ -107,7 +111,16 @@ module sw_mii_if
       rx_d_r <= o[7:4];
       repeat (NPK - 1) @(posedge clk_i);
     end
+    // Present an errored extra octet after a valid prefix and FCS. A
+    // receiver that merely truncates the stream would accept that prefix.
+    if (error_tail) begin
+      @(posedge clk_i);
+      rx_er_r <= 1'b1;
+      rx_d_r <= '0;
+      repeat (BYTE_PERIOD - 1) @(posedge clk_i);
+    end
     @(posedge clk_i);  // the enable drops for the gap
+    rx_er_r <= 1'b0;
     rx_dv_r <= 1'b0;
     rx_d_r  <= 4'h0;
     repeat (IFG_OCTETS * BYTE_PERIOD) @(posedge clk_i);
@@ -173,7 +186,7 @@ module sw_mii_if
   // Received-frame queue
   // ==========================================================================
   sw_rec_q #(
-    .DEPTH(MON_DEPTH)
+    .DEPTH (MON_DEPTH)
   ) u_mon (
     .clk_i       (clk_i),
     .rst_ni      (rst_ni),
@@ -220,7 +233,7 @@ module sw_mii_if
           mon_last     <= mon_buf;
           mon_last_n   <= mon_n;
         end
-        if (mon_n > 0 && mon_n < 8 + 64 + 4) mon_short <= mon_short + 1;
+        if (mon_n > 0 && mon_n < 8 + 60 + 4) mon_short <= mon_short + 1;
         mon_buf    = '0;
         mon_n      = 0;
         mon_active = 1'b0;

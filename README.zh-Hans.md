@@ -10,72 +10,46 @@
 
 ## 目录
 
-[1 边界](#1-唯一重要的边界) · [2 流水线](#2-五级流水线架构) · [3 丢弃规则](#3-帧准入与八类异形包丢弃) · [4 CAM](#4-cam-行为) · [5 五个顶层](#5-五个顶层模块) · [6 参数](#6-参数) · [7 端口](#7-端口与速率模型) · [8 仓库结构](#8-仓库结构) · [9 门禁](#9-构建门禁与验证) · [10 硬约束](#10-rtl-硬约束) · [11 板级与流程](#11-板级壳与物理流程) · [12 旧版差异](#12-与旧版本差异) · [13 已知限制](#13-已知限制)
+[1 边界](#1-mac-接口) · [2 流水线](#2-五级流水线) · [3 丢弃规则](#3-帧准入和丢弃规则) · [4 CAM](#4-cam-行为) · [5 五个顶层](#5-五个顶层模块) · [6 参数](#6-参数) · [7 端口](#7-端口与速率模型) · [8 仓库结构](#8-仓库结构) · [9 门禁](#9-构建门禁与验证) · [10 硬约束](#10-rtl-硬约束) · [11 板级与流程](#11-板级壳与物理流程) · [12 旧版差异](#12-与旧版本差异) · [13 已知限制](#13-已知限制)
 
 ---
 
-## 1. 唯一重要的边界
+## 1. MAC 接口
 
-`rtl/mac/` 与 `rtl/switch/` 之间只有一条刻意收窄的契约：**8bit 字节流**，带 `valid/ready` 握手和 `sof/eof/err` 边带信号。交换核只见 **MAC client 数据**——没有前导码、SFD、FCS 或帧间隔。线路相关的一切都在 `rtl/mac/`：
+每口使用带 `sof/eof/err` 的 8 位 `valid/ready` 字节流。接收 MAC 识别前导码和 SFD，并在 EOF 提供原始 32 位 FCS，首个 FCS 字节在最低 8 位。发送 MAC 生成前导码、必要填充、FCS 和帧间隔。交换核心使用一个时钟，PHY 符号速率由 MAC 适配。
 
-* RX 成帧器自行搜索 **7 × 0x55 + 0xD5**（不假设 PHY 已剥掉前导码），并校验 CRC-32 FCS；
-* TX 成帧器生成前导码/SFD、补齐短帧、重算 FCS、插入帧间隔；
-* MII / RMII 适配器复用半字节/双比特串行器还原八位组流，时钟使能速率模型也在这一层。
+## 2. 五级流水线
 
-因此 `es_switch_fabric` 完全不含时钟使能、线速或符号顺序知识；换一个 MAC 去例化它，边界以下的代码一行都不用改。`link_up_i` 只是**数据门控**，不是可观测接口。
+1. **`es_switch_stage_1_rx`** 每个入端在 SOF 预留字节及描述符空间，在 EOF 或确认错误时发布描述符。错误后停写，继续吞掉剩余字节。SOF 时空间不足由 MAC 整帧丢弃。
+2. **`es_switch_stage_2_validate`** 并行检查帧头和长度。拒绝时将转发长度置零，保留实际入队字节数。
+3. **`es_switch_stage_3_checksum`** 随 RX 写入累积 CRC32，再与原始 FCS 比较。失败时保留用于顺序回收的字节数。
+4. **`es_switch_stage_4_lookup`** 仅为合法帧查询和学习 CAM，按顺序回收非法帧和无目标帧。整帧轮询一次预留全部目标及所需空间，目标不重叠的帧可以并行复制。
+5. **`es_switch_stage_5_tx`** 在 EOF 写入后提交整帧，上一帧发送时可复制下一帧。
 
-## 2. 五级流水线架构
+背压期间描述符保持稳定。Payload 保存在入端字节队列中，由复制引擎按描述符顺序读取。慢速出端可能推迟广播复制，但各出端可以独立发送已经提交的整帧。
 
-旧版那种「整个交换结构一次只搬一帧」的全局仲裁器已经取消。现在每一级都可以同时驻留一帧，并且 `NUM_PORTS` 个接收引擎并行工作。级间由 `es_common_pipe_stage` 连接（`valid/ready` 寄存器，带 `DP` 与 `CUT_READY` 参数）。
+## 3. 帧准入和丢弃规则
 
-| 级 | 模块 | 职责 |
-|---|---|---|
-| S0/S1 | `es_switch_rx_engine`（=`es_switch_rx_ctrl` + `es_switch_rx_parse` + `es_switch_rx_check`）+ `es_switch_frame_buf` | 每拍一个字节、头部锁存、八类丢弃检查（纯组合）、每端口字节 FIFO + descriptor FIFO、合法帧描述符 |
-| S2 | `es_switch_cam_stage` + `es_switch_cam_table` | **同拍**完成 `NUM_PORTS` 路目的查找与 `NUM_PORTS` 路源学习 |
-| S3 | `es_switch_decide` | 广播/组播/未知单播策略、源端口过滤、生成 egress mask |
-| S4 | `es_switch_tx_writer` | 每个源端口一个搬运引擎，读各自的帧槽；目标写口按「编号最小者胜出」仲裁 |
-| S5 | `es_switch_tx_engine` | 每端口 TX 队列；随后由 MAC 适配器重新生成前导码、pad、FCS 和 IFG |
+`MIN_FRAME_LEN` 和 `MAX_FRAME_LEN` 从目的 MAC 开始计到最后一个负载或填充字节，排除 FCS。默认最短长度为 60 字节，达到配置上限且收到 EOF 的帧仍可接受。
 
-保持各级无损、且能被四种工具综合的不变量：
-
-* 一帧只有在**完整收齐且通过全部检查**之后才对下游可见。坏帧或超 MTU 帧用 **单拍 `undo` 脉冲**把字节 FIFO 写指针回卷掉已写字节，不产生描述符。
-* **`SLOTS * SLOT_BYTES` 必须是 2 的幂**。回卷是在 `ADDR_W` 位指针上做 `wr_ptr - undo_cnt`，而 `next_slot` 会跳过非 2ⁿ 深度的非法编码；两者混用会落到非法编码上。`es_switch_frame_buf` 在 elaboration 阶段检查这一点。
-* 级间载荷是 **packed** `{}` 向量，宽度用 `localparam`、字段偏移用 `es_switch_pl_defs.sv` 中的函数；不用 struct、interface 或 package。一次传输只在握手成立时发生，因此反压永远不会丢字节。
-* egress mask 为零的帧**不会**在 S3 被丢弃：TX writer 仍会逐字节把它读空，保证下一个描述符从正确的偏移开始。
-
-## 3. 帧准入与八类异形包丢弃
-
-`MIN_FRAME_LEN` / `MAX_FRAME_LEN` 约束的是 MAC client 字节数（不含前导码/SFD 与 FCS）。只有当字节 FIFO 能容纳一整帧最大长度、且 descriptor FIFO 有空位时，一帧才被准入；准入后 `b_ready_o` 整帧保持有效。八类丢弃规则：
-
-| # | 类别 | 判定位置 |
-|---|---|---|
-| 1 | FCS 错 / RX_ER / 截断（`b_err_i` 裁决） | MAC 适配器裁决，RX 引擎消费 |
-| 2 | runt（短于 `MIN_FRAME_LEN`） | RX 引擎 |
-| 3 | 超 MTU（长于 `MAX_FRAME_LEN`） | RX 引擎（把线上剩余字节排空） |
-| 4 | 802.3 length 字段与实测 client 长度不符 | RX 引擎 |
-| 5 | VLAN tag 在内层 EtherType 之前残缺 | RX 引擎 |
-| 6 | 源 MAC 为组播/广播地址 | RX 引擎 |
-| 7 | 源 MAC 等于本端口 MAC | RX 引擎 |
-| 8 | 目的 MAC 等于本端口 MAC | RX 引擎 |
-
-FCS **只在 MAC 适配器校验一次**，RX 引擎只消费裁决结果，因此同一批字节上 CRC LFSR 不会被例化两遍。
+拒绝条件包括接收错误、帧长超界、首个 VLAN 标签头截断、组播或广播源地址、源或目的等于入端本机地址、源和目的相同、任一地址全零，以及 Length/Type 的 1501–1535 区间。无标签 802.3 帧的实收长度须等于 60 与「14 加声明长度」两者中的较大值。FCS 通过后才允许操作 CAM。
 
 ## 4. CAM 行为
 
 * `NUM_PORTS` 路组合查找与 `NUM_PORTS` 路学习**同拍**完成。查找是 **read-first**：同一拍写入的学习对这一拍的查找不可见。
 * `CAM_SETS × CAM_WAYS` 个表项；桶哈希是纯 XOR 折叠（无乘法器、无除法器、无宽加法链），桶选择用常量索引的优先级 mux；组相联并带 round-robin 替换指针。精确命中就地表项重定位，不推进指针。
 * 若同一拍落在同一 bucket 的学习多于 `NUM_WAYS`，由 `learn_ready_o` 对超额者反压一拍；`cam_stage` 会保持 `valid` 直到学习被批准。**禁止静默丢弃学习**。
-* 并行度由 `NUM_PORTS` 决定：每端口一路 CAM 查、一路学，`es_switch_tx_writer` 每个源端口一个搬运引擎（各自读自己的入口字节 FIFO），没有单独的 lane 数旋钮。桶选择用常量索引优先级 mux，哈希为纯 XOR 折叠，以保证 `synth -flatten` 可完成。
+* 并行度由 `NUM_PORTS` 决定：每端口一路 CAM 查、一路学，Stage 4 每个源端口一个搬运引擎（各自读自己的入口字节 FIFO），没有单独的 lane 数旋钮。桶选择用常量索引优先级 mux，哈希为纯 XOR 折叠，以保证 `synth -flatten` 可完成。
 
 ## 5. 五个顶层模块
 
-五个顶层名保持不变。`lint`、`rtl`、`synth` 都会 elaboration **全部五个**，任何一个从不被编译的 wrapper 都无法悄悄腐烂。
+三个接口顶层命名为 `es_*_top` 并位于 `rtl/`；两个板级顶层保持原名。`lint`、`rtl`、`synth` 都会 elaboration **全部五个**，任何一个从不被编译的 wrapper 都无法悄悄腐烂。
 
 | 顶层 | 接口 | 例化位置 | 说明 |
 |---|---|---|---|
-| `es_switch_gmii` | GMII，8bit 引脚 | ASIC / 默认 | LibreLane 的 `DESIGN_NAME` |
-| `es_switch_mii` | MII，4bit 半字节 | DE2-115 板级壳 | 1000 Mbit/s 端口在 elaboration 时报错 |
-| `es_switch_rmii` | RMII，2bit 双比特 | — | 拒绝 1000 Mbit/s，且要求 `BYTE_PERIOD` 可整除 |
+| `es_gmii_top` | GMII，8bit 引脚 | ASIC / 默认 | LibreLane 的 `DESIGN_NAME` |
+| `es_mii_top` | MII，4bit 半字节 | DE2-115 板级壳 | 1000 Mbit/s 端口在 elaboration 时报错 |
+| `es_rmii_top` | RMII，2bit 双比特 | — | 拒绝 1000 Mbit/s，且要求 `BYTE_PERIOD` 可整除 |
 | `es_switch_de2_115_top` | 2 × MII PHY 引脚 | Quartus II 板级 | 50 MHz、100 Mbit/s、MDIO PHY 管理 |
 | `es_switch_vivado_top` | 8 × MII 模板 | Vivado 板级 | 50 MHz、100 Mbit/s，`link_up_i` 固定拉高 |
 
@@ -89,19 +63,19 @@ FCS **只在 MAC 适配器校验一次**，RX 引擎只消费裁决结果，因�
 | `CLK_FREQ_HZ` | GMII 125 MHz / MII、RMII 50 MHz | 核心时钟频率 |
 | `PORT_SPEED` | GMII `2'd2` / MII、RMII `2'd1` | 每端口 `sw_speed_e`，packed `N*2` 位 |
 | `PORT_MAC` | `'0` | 每端口 MAC，packed `N*48`；为零则派生本地地址 |
-| `MIN_FRAME_LEN` | 64 | 接受的最小 client 字节数 |
+| `MIN_FRAME_LEN` | 60 | 接受的最小 client 字节数 |
 | `MAX_FRAME_LEN` | 1518 | 接受的最大 client 字节数 |
 | `SLOTS` | 2 | 每入口缓冲的帧槽数 |
-| `SLOT_BYTES` | 2048 | 每槽字节数；`SLOTS*SLOT_BYTES` 必须是 2ⁿ |
+| `SLOT_BYTES` | 2048 | 每槽字节数，入端总容量为 SLOTS×SLOT_BYTES |
 | `DESC_DEPTH` | 8 | descriptor FIFO 深度 |
-| `TX_QUEUE_DEPTH` | 256 | 每端口 TX FIFO 深度 |
+| `TX_QUEUE_DEPTH` | 256 | 每端口 TX FIFO 的配置下限 |
 | `CAM_SETS` | 128 | CAM 组数 |
 | `CAM_WAYS` | 4 | 每组路数 |
 | `LEARNING_EN` | 1 | 使能源地址学习 |
 | `FLOOD_MODE` | `2'd1` | 洪泛策略（见下） |
 | `IFG_OCTETS` | 12 | 帧间隔八位组数 |
 
-**仿真与综合的默认几何不同。** 上表是**仿真**默认值。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 都会定义），`es_switch_pl_defs.sv` 提供一组缩小几何：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`。全尺寸帧缓冲为 4×2048×8 ≈ 13 万触发器，yosys 的 `synth -flatten` 需要几十分钟才能展开；综合门禁只需证明前端能读入并 elaboration。仿真仍用完整默认值，因此行为测试没有被削弱。LibreLane 另在 `SYNTH_PARAMETERS` 中重申同一组缩小值。
+**仿真与综合的默认几何不同。** 上表是**仿真**默认值。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 都会定义），`es_switch_pl_defs.sv` 提供一组缩小几何：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`。实际 TX 深度为 max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN)，综合为每口 512 字节，完整仿真默认值为每口 3036 字节。LibreLane 另在 `SYNTH_PARAMETERS` 中重申同一组缩小值。
 
 `FLOOD_MODE`：**0** = 只转发广播；**1** = 同时洪泛未知单播（默认）；**2** = 连未知组播/组地址也洪泛。`LEARNING_EN` 与 `FLOOD_MODE` 是纯 elaboration 参数，没有任何运行期配置路径。
 
@@ -118,8 +92,8 @@ rtl/common/     两级采样器、CRC-32、DFF / pipe-stage 原语
 rtl/mac/        字节流成帧器、GMII/MII/RMII 适配器、串行器
 rtl/mems/       FWFT FIFO、1R1W RAM、并行寄存器堆
 rtl/perips/     MDIO 与 88E1111 PHY 管理
-rtl/switch/     分级结构：rx_engine（ctrl/parse/check 三片）、frame_buf、
-                cam_stage/table、decide、tx_writer、tx_engine、fabric、三个 wrapper
+rtl/*.sv        三个接口顶层：es_gmii_top / es_mii_top / es_rmii_top
+rtl/switch/     五级流水线、CAM 和 fabric
 tb/             自校验回归（不综合、不进 CI lint）
 board/          DE2-115（Quartus II）与 Vivado 8 口 MII 板级壳，各带一个 TB
 ci/             工具链契约（check-toolchain.sh）
@@ -184,7 +158,7 @@ CI 直接用 Linux 跑 make，不需要 `wsl.sh`。完成标准见 `AGENTS.md` �
 
 ## 12. 与旧版本差异
 
-本次是数据通路的完全改写。旧版的宽位数据通路、全局单帧仲裁，以及与之配套的全部监控／状态／命令／指示路径已整体移除，代之以上面的字节流帧级并发流水线。配置现在纯粹是 elaboration 期参数（`FLOOD_MODE`、`LEARNING_EN`），`link_up_i` 仅作数据门控。五个顶层名保持不变。
+本次是数据通路的完全改写。旧版的宽位数据通路、全局单帧仲裁，以及与之配套的全部监控／状态／命令／指示路径已整体移除，代之以上面的字节流帧级并发流水线。配置现在纯粹是 elaboration 期参数（`FLOOD_MODE`、`LEARNING_EN`），`link_up_i` 仅作数据门控。三个接口顶层现命名为 `es_gmii_top` / `es_mii_top` / `es_rmii_top`，两个板级顶层保持原名。
 
 ## 13. 已知限制
 

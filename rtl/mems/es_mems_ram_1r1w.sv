@@ -13,9 +13,9 @@
 
 module es_mems_ram_1r1w #(
   /// Stored word width in bits.
-  parameter int unsigned WIDTH = 64,
+  parameter int unsigned WIDTH  = 64,
   /// Number of entries; addresses must remain below DEPTH.
-  parameter int unsigned DEPTH = 16,
+  parameter int unsigned DEPTH  = 16,
   /// Address width must represent every entry in DEPTH.
   parameter int unsigned ADDR_W = (DEPTH <= 2) ? 1 : $clog2(DEPTH)
 ) (
@@ -23,7 +23,8 @@ module es_mems_ram_1r1w #(
   input var logic clk_i,
   input var logic wr_en_i,
   /// Both addresses must remain in [0, DEPTH); the read address is asynchronous.
-  input var logic [ADDR_W-1:0] wr_addr_i, rd_addr_i,
+  input var logic [ADDR_W-1:0] wr_addr_i,
+  rd_addr_i,
   /// Data captured on clk_i when wr_en_i is asserted.
   input var logic [WIDTH-1:0] wr_data_i,
   /// Asynchronous read of the addressed word; contents are not reset.

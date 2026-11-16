@@ -22,16 +22,20 @@
 
 module es_perips_phy_88e1111 #(
   /// Core clock frequency in hertz; timing counters use this value.
-  parameter int unsigned CLK_FREQ_HZ = 50_000_000,
+  parameter int unsigned CLK_FREQ_HZ      = 50_000_000,
   /// Delay between PHY status polls, in milliseconds.
   parameter int unsigned POLL_INTERVAL_MS = 100,
   /// Startup delay before the first PHY discovery request, in milliseconds.
-  parameter int unsigned RESET_WAIT_MS = 20
+  parameter int unsigned RESET_WAIT_MS    = 20
 ) (
   /// Clock, synchronous active-low reset, and sampled value from the MDIO pad.
-  input var logic clk_i, rst_ni, mdio_i,
+  input var logic clk_i,
+  rst_ni,
+  mdio_i,
   /// MDC plus MDIO output value and active-high pad output enable.
-  output    logic mdc_o, mdio_o, mdio_oe_o,
+  output    logic mdc_o,
+  mdio_o,
+  mdio_oe_o,
   /// PHY discovery and negotiated status; validity qualifies every field.
   /// Bits 0..5: valid, link, duplex, two-bit speed, management error.  The
   /// board may enable its MII path only for a valid 100-Mbit full-duplex link.

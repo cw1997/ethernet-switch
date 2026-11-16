@@ -127,7 +127,7 @@ module tb_sw_pl_gmii
     forever #5 clk = ~clk;
   end
 
-  es_switch_gmii #(
+  es_gmii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (125_000_000),
     .PORT_SPEED  ({NUM_PORTS{2'd2}}),
@@ -146,13 +146,19 @@ module tb_sw_pl_gmii
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_mon
-      sw_pl_gmii_mon #(.PORT_ID(g)) u_mon (
-        .clk_i  (clk),        .rst_ni (rst_n),
-        .clear_i(clear),
-        .tx_en_i(tx_en[g]),   .tx_d_i (tx_d[g*8 +: 8]),
-        .cnt_o  (mon_cnt[g*16 +: 16]), .len_o(mon_len[g*12 +: 12]),
-        .dst_o  (mon_dst[g*48 +: 48]), .src_o(mon_src[g*48 +: 48]),
-        .ok_o   (mon_ok[g])
+      sw_pl_gmii_mon #(
+        .PORT_ID (g)
+      ) u_mon (
+        .clk_i   (clk),
+        .rst_ni  (rst_n),
+        .clear_i (clear),
+        .tx_en_i (tx_en[g]),
+        .tx_d_i  (tx_d[g*8 +: 8]),
+        .cnt_o   (mon_cnt[g*16 +: 16]),
+        .len_o   (mon_len[g*12 +: 12]),
+        .dst_o   (mon_dst[g*48 +: 48]),
+        .src_o   (mon_src[g*48 +: 48]),
+        .ok_o    (mon_ok[g])
       );
     end
   endgenerate
@@ -216,6 +222,19 @@ module tb_sw_pl_gmii
       check(mon_ok[port] == 1'b1,                     {label, ": preamble/FCS"});
     end
   endtask
+
+  logic mixed_done;
+  generate
+    if ((NUM_PORTS == 4) && (CAM_SETS == 16) && (CAM_WAYS == 2)) begin : g_mixed
+      sw_mixed_gmii_check u_check (
+        .clk_i  (clk),
+        .rst_ni (rst_n),
+        .done_o (mixed_done)
+      );
+    end else begin : g_uniform
+      assign mixed_done = 1'b1;
+    end
+  endgenerate
 
   sw_mac_t host_a;
   sw_mac_t host_b;
@@ -296,12 +315,12 @@ module tb_sw_pl_gmii
 
     // ---- 7. exactly MTU is legal, one over MTU is dropped ----------------
     send_frame(0, bcast, host_a, 1518, 0, 0);
-    idle(1800);
+    idle(3400);
     for (p = 1; p < NUM_PORTS; p++)
       expect_on(p, 1, bcast, host_a, 1518, "max MTU");
     clear_monitors();
     send_frame(0, bcast, host_a, 1519, 0, 0);
-    idle(1800);
+    idle(3400);
     for (p = 0; p < NUM_PORTS; p++)
       expect_on(p, 0, bcast, host_a, 1519, "over MTU");
     clear_monitors();
@@ -327,6 +346,41 @@ module tb_sw_pl_gmii
       else        expect_on(p, 0, host_a, host_b, 64, "moved unicast others");
     end
 
+    // The regular geometry exercises a burst at one byte per clock.
+    // Reconstruct all bytes of each frame, including the outbound FCS.
+    if ((NUM_PORTS == 4) && (CAM_SETS == 16) && (CAM_WAYS == 2)) begin : max_burst
+      tb_frame_buf_t expected;
+      int unsigned wire_len;
+      time previous_end;
+      bit exact;
+      expected = tb_build_frame(host_a, host_b, TB_ET_IPV4, 1518, 0, 0);
+      wire_len = tb_frame_octets(1518, 0);
+      previous_end = 0;
+      fork
+        begin
+          repeat (3) send_frame(0, host_a, host_b, 1518, 0, 0);
+        end
+        begin
+          repeat (3) begin
+            do @(negedge clk); while (!tx_en[2]);
+            if (previous_end != 0)
+              check(($time - previous_end <= 32*10) && ($time - previous_end >= 11*10),
+                    "maximum-frame burst preserves wire cadence");
+            exact = 1;
+            for (int unsigned i = 0; i < wire_len; i++) begin
+              if (i != 0) @(negedge clk);
+              exact &= tx_en[2] && (tx_d[2*8 +: 8] == tb_get_octet(expected, i));
+            end
+            previous_end = $time;
+            check(exact, "maximum-frame burst is byte-exact on GMII");
+            @(negedge clk);
+            check(!tx_en[2], "maximum-frame burst ends at FCS");
+          end
+        end
+      join
+    end
+
+    wait (mixed_done);
     if (errors == 0)
       $display("tb_sw_pl_gmii: PASSED (%0d checks, %0d ports, CAM %0dx%0d)",
                checks, NUM_PORTS, CAM_SETS, CAM_WAYS);
@@ -342,3 +396,89 @@ module tb_sw_pl_gmii
   end
 
 endmodule : tb_sw_pl_gmii
+
+// ============================================================================
+// Mixed-speed wire check. A burst of three broadcasts crosses a 1x and a
+// 10x transmit octet window while competing for the slow queue's byte credit.
+// ============================================================================
+module sw_mixed_gmii_check
+  import sw_tb_pkg::*;
+(
+  input var logic clk_i, rst_ni,
+  output logic done_o = 0
+);
+  localparam int unsigned CLIENT = 128;
+  localparam int unsigned N = 3;
+  logic [N-1:0] rx_en = '0, tx_en;
+  logic [N*8-1:0] rx_d = '0, tx_d;
+  time fast_second_done = 0, slow_first_done = 0;
+
+  es_gmii_top #(
+    .NUM_PORTS      (N),
+    .PORT_SPEED     ({2'd1, 2'd2, 2'd2}),
+    .MAX_FRAME_LEN  (CLIENT),
+    .SLOT_BYTES     (256),
+    .TX_QUEUE_DEPTH (2),
+    .CAM_SETS       (16),
+    .CAM_WAYS       (2)
+  ) dut (
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .link_up_i      ({N{1'b1}}),
+    .gmii_rx_en_i   (rx_en),
+    .gmii_rx_data_i (rx_d),
+    .gmii_tx_en_o   (tx_en),
+    .gmii_tx_data_o (tx_d)
+  );
+
+  function automatic tb_frame_buf_t wire_image(input int unsigned seq);
+    return tb_build_frame(48'hffff_ffff_ffff, 48'h0211_2233_4400 | 48'(seq),
+                          TB_ET_IPV4, CLIENT, 0, 0);
+  endfunction
+
+  task automatic check_lane(input int unsigned port_id, input int unsigned period);
+    tb_frame_buf_t expected;
+    bit exact;
+    for (int unsigned seq = 0; seq < 3; seq++) begin
+      expected = wire_image(seq);
+      do @(negedge clk_i); while (!tx_en[port_id]);
+      exact = 1;
+      for (int unsigned octet = 0; octet < tb_frame_octets(CLIENT, 0); octet++)
+        for (int unsigned beat = 0; beat < period; beat++) begin
+          if (octet != 0 || beat != 0) @(negedge clk_i);
+          exact &= tx_en[port_id] && tx_d[port_id*8 +: 8] == tb_get_octet(expected, octet);
+        end
+      if (port_id == 1 && seq == 1) fast_second_done = $time;
+      if (port_id == 2 && seq == 0) slow_first_done = $time;
+      @(negedge clk_i);
+      if (exact !== 1'b1 || tx_en[port_id] !== 1'b0)
+        $fatal(1, "FAIL mixed-speed GMII port %0d frame %0d", port_id, seq);
+      $display("PASS mixed-speed GMII port %0d frame %0d", port_id, seq);
+    end
+  endtask
+
+  initial begin
+    wait (rst_ni);
+    fork
+      begin : drive
+        tb_frame_buf_t frame;
+        for (int unsigned seq = 0; seq < 3; seq++) begin
+          frame = wire_image(seq);
+          for (int unsigned octet = 0; octet < tb_frame_octets(CLIENT, 0); octet++) begin
+            @(negedge clk_i);
+            rx_en[0] = 1;
+            rx_d[7:0] = tb_get_octet(frame, octet);
+          end
+          @(negedge clk_i); rx_en[0] = 0;
+          repeat (12) @(negedge clk_i);
+        end
+      end
+      check_lane(1, 1);
+      check_lane(2, 10);
+    join
+    if (fast_second_done >= slow_first_done)
+      $fatal(1, "FAIL fast GMII egress waited for slow line transmission");
+    $display("PASS fast GMII egress progresses independently");
+    done_o = 1;
+  end
+endmodule

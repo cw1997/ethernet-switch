@@ -4,7 +4,7 @@
 //                Pure switching logic - no console, statistics, panel or LED
 //                buses.  The physical pin list is unchanged (138 port bits).
 //
-//                Direct data wiring below assumes the synchronous es_switch_mii
+//                Direct data wiring below assumes the synchronous es_mii_top
 //                contract; physical PHY clock capture and CDC remain board
 //                integration work, as before.
 // ============================================================================
@@ -17,19 +17,19 @@
 `default_nettype none
 
 module es_switch_vivado_top (
-  input  var logic        clk_i,          ///< 50 MHz; always running during reset
+  input  var logic        clk_i,  ///< 50 MHz; always running during reset
   input  var logic        rst_button_ni,  ///< asynchronous, active-low button
-  input  var logic [7:0]  mii_rx_clk_i,   ///< PHY RX clocks; currently unused
-  input  var logic [7:0]  mii_tx_clk_i,   ///< PHY TX clocks, not FPGA outputs
-  input  var logic [7:0]  mii_rx_dv_i,    ///< valid for whole octets in this model
-  input  var logic [7:0]  mii_rx_er_i,    ///< per-port receive error indication
-  input  var logic [31:0] mii_rxd_i,      ///< low nibble first, port 0 in [3:0]
-  output      logic [7:0] mii_tx_en_o,    ///< per-port transmit frame enable
-  output      logic [7:0] mii_tx_er_o,    ///< held low: adapter has no TX error source
-  output      logic [31:0] mii_txd_o,     ///< port 7 in [31:28], low nibble first
-  output      logic [7:0] phy_reset_no,   ///< follows synchronised button reset
-  output      logic [7:0] phy_mdc_o,      ///< idle low; no management transactions
-  inout   tri logic [7:0] phy_mdio_io     ///< released; requires external pull-ups
+  input  var logic [7:0]  mii_rx_clk_i,  ///< PHY RX clocks; currently unused
+  input  var logic [7:0]  mii_tx_clk_i,  ///< PHY TX clocks, not FPGA outputs
+  input  var logic [7:0]  mii_rx_dv_i,  ///< valid for whole octets in this model
+  input  var logic [7:0]  mii_rx_er_i,  ///< per-port receive error indication
+  input  var logic [31:0] mii_rxd_i,  ///< low nibble first, port 0 in [3:0]
+  output logic     [7:0]  mii_tx_en_o,  ///< per-port transmit frame enable
+  output logic     [7:0]  mii_tx_er_o,  ///< held low: adapter has no TX error source
+  output logic     [31:0] mii_txd_o,  ///< port 7 in [31:28], low nibble first
+  output logic     [7:0]  phy_reset_no,  ///< follows synchronised button reset
+  output logic     [7:0]  phy_mdc_o,  ///< idle low; no management transactions
+  inout  tri logic [7:0]  phy_mdio_io  ///< released; requires external pull-ups
 );
 
   localparam int unsigned NUM_PORTS   = 8;
@@ -50,7 +50,7 @@ module es_switch_vivado_top (
   assign phy_mdc_o    = '0;
   assign phy_mdio_io  = {NUM_PORTS{1'bz}};
 
-  es_switch_mii #(
+  es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
     .PORT_SPEED  ({NUM_PORTS{2'(SW_SPEED_100M)}})

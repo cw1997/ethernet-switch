@@ -1,57 +1,33 @@
 // ============================================================================
-//  File        : es_switch_rx_parse.sv
-//  Description : Header slice of the S0/S1 receive level - one instance per
-//                ingress port, instantiated by es_switch_rx_engine.
-//
-//                Latches the destination MAC (octets 0-5), the source MAC
-//                (octets 6-11) and the length/type field (octets 12-13) off
-//                the byte stream in wire order, and derives the VLAN flag
-//                from the completed EtherType.  The first octet on the wire
-//                is mac[47:40], so a left shift assembles each address.
-//
-//                Both the held values (dst/src - what the commit descriptor
-//                carries) and the next values (dst_d/src_d/l2type_d/vlan_d -
-//                what the eof checks examine) are exported; es_switch_rx_ctrl
-//                drives byte_fire_i, the octet count this module compares
-//                against, and clear_i (S_COMMIT clears every header register,
-//                matching the commit branch of the single-process form this
-//                was split from).
-//
-//                Switch-domain style (AGENTS.md): `logic`/`assign` clouds
-//                only; every sequential element is an es_mems_reg_bank
-//                instance.  The destination and source MAC share one
-//                two-entry bank because they have the same width and reset
-//                value and are cleared together.
+//  File        : es_switch_stage_1_rx_parse.sv
+//  Description : Accumulates MAC addresses and the outer Length/Type field
+//                on each buffered RX byte. The next values include the current
+//                byte so Stage 1 can publish on the same edge as EOF.
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_RX_PARSE_SV
-`define ES_SWITCH_RX_PARSE_SV
+`ifndef ES_SWITCH_STAGE_1_RX_PARSE_SV
+`define ES_SWITCH_STAGE_1_RX_PARSE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_rx_parse (
+module es_switch_stage_1_rx_parse (
   input  var logic              clk_i,
   input  var logic              rst_ni,
 
-  // ---- per-byte work strobes from es_switch_rx_ctrl ----------------------
+  // ---- per-byte work strobes from Stage 1 ----------------------
   input  var logic              byte_fire_i,  ///< a byte is consumed this clock
-  input  var logic [SW_LEN_W:0] oct_cnt_i,    ///< octets buffered so far (held count)
+  input  var logic [SW_LEN_W:0] oct_cnt_i,  ///< octets buffered so far (held count)
   input  var logic [7:0]        b_data_i,
-  input  var logic              clear_i,      ///< S_COMMIT: clear all header regs
+  input  var logic              clear_i,  ///< descriptor publication clears header state
 
-  // ---- held header fields (the commit descriptor carries these) ----------
-  output      logic [47:0]      dst_q_o,
-  output      logic [47:0]      src_q_o,
-
-  // ---- next header fields (the eof checks examine these) -----------------
-  output      logic [47:0]      dst_d_o,
-  output      logic [47:0]      src_d_o,
-  output      logic [15:0]      l2type_d_o,
-  output      logic             vlan_d_o
+  output logic     [47:0]       dst_d_o,
+  output logic     [47:0]       src_d_o,
+  output logic     [15:0]       l2type_d_o,
+  output logic                  vlan_d_o
 );
 
   // --------------------------------------------------------------------------
@@ -96,8 +72,6 @@ module es_switch_rx_parse (
   assign vlan_d = (byte_fire_i && (oct_cnt_i == OCTW'(13)))
                       ? sw_is_vlan_type(l2type_d) : vlan_q;
 
-  assign dst_q_o    = dst_q;
-  assign src_q_o    = src_q;
   assign dst_d_o    = dst_d;
   assign src_d_o    = src_d;
   assign l2type_d_o = l2type_d;
@@ -125,8 +99,8 @@ module es_switch_rx_parse (
   );
 
   es_mems_reg_bank #(
-    .WIDTH (16),
-    .DEPTH (1),
+    .WIDTH       (16),
+    .DEPTH       (1),
     .RESET_VALUE ('0)
   ) u_l2type_q (
     .clk_i     (clk_i),
@@ -138,8 +112,8 @@ module es_switch_rx_parse (
   );
 
   es_mems_reg_bank #(
-    .WIDTH (1),
-    .DEPTH (1),
+    .WIDTH       (1),
+    .DEPTH       (1),
     .RESET_VALUE ('0)
   ) u_vlan_q (
     .clk_i     (clk_i),
@@ -153,8 +127,8 @@ module es_switch_rx_parse (
   assign dst_q = mac_flat[47:0];
   assign src_q = mac_flat[95:48];
 
-endmodule : es_switch_rx_parse
+endmodule : es_switch_stage_1_rx_parse
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_RX_PARSE_SV
+`endif  // ES_SWITCH_STAGE_1_RX_PARSE_SV

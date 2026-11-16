@@ -101,24 +101,30 @@ module tb_es_switch_de2_115_top
 
   // ---- board shell ----------------------------------------------------------
   es_switch_de2_115_top u_dut (
-    .CLOCK_50       (CLOCK_50),
-    .KEY            (KEY),
-    .ENET0_RX_DATA  (ENET0_RX_DATA),
-    .ENET0_RX_DV    (ENET0_RX_DV),   .ENET0_RX_ER (ENET0_RX_ER),
-    .ENET0_TX_DATA  (ENET0_TX_DATA),
-    .ENET0_TX_EN    (ENET0_TX_EN),   .ENET0_TX_ER (ENET0_TX_ER),
-    .ENET0_TX_CLK   (ENET0_TX_CLK),
-    .ENET0_RESET_N  (ENET0_RESET_N), .ENET0_MDC   (ENET0_MDC),
-    .ENET0_MDIO     (ENET0_MDIO),
-    .ENET0_INT_N    (ENET0_INT_N),
-    .ENET1_RX_DATA  (ENET1_RX_DATA),
-    .ENET1_RX_DV    (ENET1_RX_DV),   .ENET1_RX_ER (ENET1_RX_ER),
-    .ENET1_TX_DATA  (ENET1_TX_DATA),
-    .ENET1_TX_EN    (ENET1_TX_EN),   .ENET1_TX_ER (ENET1_TX_ER),
-    .ENET1_TX_CLK   (ENET1_TX_CLK),
-    .ENET1_RESET_N  (ENET1_RESET_N), .ENET1_MDC   (ENET1_MDC),
-    .ENET1_MDIO     (ENET1_MDIO),
-    .ENET1_INT_N    (ENET1_INT_N)
+    .CLOCK_50      (CLOCK_50),
+    .KEY           (KEY),
+    .ENET0_RX_DATA (ENET0_RX_DATA),
+    .ENET0_RX_DV   (ENET0_RX_DV),
+    .ENET0_RX_ER   (ENET0_RX_ER),
+    .ENET0_TX_DATA (ENET0_TX_DATA),
+    .ENET0_TX_EN   (ENET0_TX_EN),
+    .ENET0_TX_ER   (ENET0_TX_ER),
+    .ENET0_TX_CLK  (ENET0_TX_CLK),
+    .ENET0_RESET_N (ENET0_RESET_N),
+    .ENET0_MDC     (ENET0_MDC),
+    .ENET0_MDIO    (ENET0_MDIO),
+    .ENET0_INT_N   (ENET0_INT_N),
+    .ENET1_RX_DATA (ENET1_RX_DATA),
+    .ENET1_RX_DV   (ENET1_RX_DV),
+    .ENET1_RX_ER   (ENET1_RX_ER),
+    .ENET1_TX_DATA (ENET1_TX_DATA),
+    .ENET1_TX_EN   (ENET1_TX_EN),
+    .ENET1_TX_ER   (ENET1_TX_ER),
+    .ENET1_TX_CLK  (ENET1_TX_CLK),
+    .ENET1_RESET_N (ENET1_RESET_N),
+    .ENET1_MDC     (ENET1_MDC),
+    .ENET1_MDIO    (ENET1_MDIO),
+    .ENET1_INT_N   (ENET1_INT_N)
   );
 
   // ---- two independent MII wire models -------------------------------------

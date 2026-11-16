@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_cam_stage.sv
+//  File        : es_switch_stage_4_cam_stage.sv
 //  Description : S2 - NUM_PORTS independent pipeline lanes, each issuing a
 //                destination lookup and a source learn in the SAME clock.
 //
@@ -25,32 +25,32 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_CAM_STAGE_SV
-`define ES_SWITCH_CAM_STAGE_SV
+`ifndef ES_SWITCH_STAGE_4_CAM_STAGE_SV
+`define ES_SWITCH_STAGE_4_CAM_STAGE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_cam_stage #(
+module es_switch_stage_4_cam_stage #(
   parameter int unsigned NUM_PORTS   = 4,
   parameter int unsigned NUM_SETS    = 128,
   parameter int unsigned NUM_WAYS    = 4,
   parameter int unsigned LEARNING_EN = 1
 ) (
-  input  var logic                                    clk_i,
-  input  var logic                                    rst_ni,
+  input  var logic                                         clk_i,
+  input  var logic                                         rst_ni,
 
   // ---- descriptors from the N receive engines ---------------------------
-  input  var logic [NUM_PORTS-1:0]                    d_i_valid,
-  output      logic [NUM_PORTS-1:0]                   d_i_ready,
+  input  var logic [NUM_PORTS-1:0]                         d_i_valid,
+  output logic     [NUM_PORTS-1:0]                         d_i_ready,
   input  var logic [NUM_PORTS*sw_pl_desc_w(NUM_PORTS)-1:0] d_i_desc,
 
   // ---- packages toward the decide level ---------------------------------
-  output      logic [NUM_PORTS-1:0]                   o_valid,
-  input  var logic [NUM_PORTS-1:0]                    o_ready,
-  output      logic [NUM_PORTS*sw_pl_cam_w(NUM_PORTS)-1:0] o_pkg
+  output logic     [NUM_PORTS-1:0]                         o_valid,
+  input  var logic [NUM_PORTS-1:0]                         o_ready,
+  output logic     [NUM_PORTS*sw_pl_cam_w(NUM_PORTS)-1:0]  o_pkg
 );
 
   localparam int unsigned PW        = sw_port_w(NUM_PORTS);
@@ -80,10 +80,13 @@ module es_switch_cam_stage #(
       logic [NUM_PORTS-1:0] port_mask;
       logic [CAM_W-1:0]  dat_d;
 
-      assign req[gp]        = d_i_valid[gp];
+      // Look up and learn only when this lane has a slot for the result.
+      // Otherwise a stalled descriptor would relearn every clock.
+      assign req[gp]        = d_i_valid[gp] && !d_i_desc[gp*DESC_W + DESC_W-1] &&
+                              (!vld_q || vld_clr);
       assign lookup_mac[gp*48 +: 48] =
           d_i_desc[gp*DESC_W + DST_LSB +: 48];
-      assign learn[gp]      = d_i_valid[gp] && (LEARNING_EN != 0);
+      assign learn[gp]      = req[gp] && (LEARNING_EN != 0);
       assign learn_mac[gp*48 +: 48] =
           d_i_desc[gp*DESC_W + SRC_LSB +: 48];
       // src_port is the descriptor's low field; using it rather than the lane
@@ -96,7 +99,7 @@ module es_switch_cam_stage #(
                                  : '0;
       assign dat_d = {port_mask, hit[gp], d_i_desc[gp*DESC_W +: DESC_W]};
 
-      assign grant_ok[gp]   = (LEARNING_EN != 0) ? learn_ready[gp] : 1'b1;
+      assign grant_ok[gp]   = !learn[gp] || learn_ready[gp];
       assign vld_set        = d_i_valid[gp] && d_i_ready[gp];
       assign vld_clr        = o_valid[gp] && o_ready[gp];
       assign d_i_ready[gp]  = grant_ok[gp] && (!vld_q || vld_clr);
@@ -135,25 +138,25 @@ module es_switch_cam_stage #(
     end
   endgenerate
 
-  es_switch_cam_table #(
+  es_switch_stage_4_cam_table #(
     .NUM_PORTS (NUM_PORTS),
     .NUM_SETS  (NUM_SETS),
     .NUM_WAYS  (NUM_WAYS)
   ) u_cam (
-    .clk_i          (clk_i),
-    .rst_ni         (rst_ni),
-    .req_i          (req),
-    .mac_i          (lookup_mac),
-    .hit_o          (hit),
-    .port_o         (hit_port),
-    .learn_i        (learn),
-    .learn_mac_i    (learn_mac),
-    .learn_port_i   (learn_port),
-    .learn_ready_o  (learn_ready)
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .req_i         (req),
+    .mac_i         (lookup_mac),
+    .hit_o         (hit),
+    .port_o        (hit_port),
+    .learn_i       (learn),
+    .learn_mac_i   (learn_mac),
+    .learn_port_i  (learn_port),
+    .learn_ready_o (learn_ready)
   );
 
-endmodule : es_switch_cam_stage
+endmodule : es_switch_stage_4_cam_stage
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_CAM_STAGE_SV
+`endif  // ES_SWITCH_STAGE_4_CAM_STAGE_SV

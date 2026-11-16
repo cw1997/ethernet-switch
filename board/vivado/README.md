@@ -66,7 +66,7 @@ Vivado 在 `default_nettype none` 下要求显式声明输入端口种类，因�
 1. 按原理图填写每个信号的 `PACKAGE_PIN` / `IOSTANDARD`，核对 Bank VCCO、
    PHY I/O 电压与时钟引脚能力；模板不猜测任何真实引脚。
 2. 实现每端口 PHY RX/TX 时钟捕获与 CDC。当前是把同步 MII 模型直接接到
-   `es_switch_mii`；简单同步各数据位或忽略 PHY 时钟不能保证多位一致性和
+   `es_mii_top`；简单同步各数据位或忽略 PHY 时钟不能保证多位一致性和
    持续线速接收。
 3. 按所选 PHY 实现复位保持、时钟稳定等待、上电初始化、速率配置与链路检测；
    按钮同步链不替代 PHY 上电/复位时序。

@@ -60,19 +60,19 @@ module es_common_pipe_stage #(
   /// threshold (AGENTS.md 3.2).
   parameter int unsigned FLUSH_EN  = 0
 ) (
-  input  var logic             clk_i,
-  input  var logic             rst_ni,
+  input  var logic          clk_i,
+  input  var logic          rst_ni,
 
-  input  var logic             i_valid,
-  output      logic            i_ready,
-  input  var logic [DW-1:0]    i_dat,
+  input  var logic          i_valid,
+  output logic              i_ready,
+  input  var logic [DW-1:0] i_dat,
 
-  output      logic            o_valid,
-  input  var logic             o_ready,
-  output      logic [DW-1:0]   o_dat,
+  output logic              o_valid,
+  input  var logic          o_ready,
+  output logic     [DW-1:0] o_dat,
 
-  input  var logic             flush_req_i,
-  output      logic            flush_ack_o
+  input  var logic          flush_req_i,
+  output logic              flush_ack_o
 );
 
   logic flush_now;
@@ -122,7 +122,9 @@ module es_common_pipe_stage #(
         assign vld_ena = vld_set | vld_clr | flush_now;
         assign vld_nxt = flush_now ? 1'b0 : (vld_set | (~vld_clr));
 
-        es_common_dfflr #(.WIDTH(1)) u_vld (
+        es_common_dfflr #(
+          .WIDTH (1)
+        ) u_vld (
           .clk_i  (clk_i),
           .rst_ni (rst_ni),
           .lden_i (vld_ena),
@@ -130,7 +132,9 @@ module es_common_pipe_stage #(
           .qout_o (vld_r)
         );
 
-        es_common_dffl #(.WIDTH(DW)) u_dat (
+        es_common_dffl #(
+          .WIDTH (DW)
+        ) u_dat (
           .clk_i  (clk_i),
           .lden_i (vld_set),
           .dnxt_i (d[g*DW +: DW]),

@@ -13,19 +13,22 @@
 
 module es_mems_reg_bank #(
   /// Word width in bits.
-  parameter int unsigned WIDTH = 32,
+  parameter int unsigned WIDTH            = 32,
   /// Number of independently writable entries.
-  parameter int unsigned DEPTH = 16,
+  parameter int unsigned DEPTH            = 16,
   /// Synchronous reset/clear contents for each word.
   parameter logic [WIDTH-1:0] RESET_VALUE = '0
 ) (
   /// Clock, synchronous active-low reset, and synchronous bank-wide clear.
-  input var logic clk_i, rst_ni, clear_i,
+  input var logic clk_i,
+  rst_ni,
+  clear_i,
   /// Per-entry write enables and packed words; entry zero occupies the low slice.
   input var logic [DEPTH-1:0] wr_en_i,
   input var logic [DEPTH*WIDTH-1:0] wr_data_i,
   /// Packed register contents, with entry zero in the least-significant slice.
-  output    logic [DEPTH*WIDTH-1:0] data_o);
+  output    logic [DEPTH*WIDTH-1:0] data_o
+);
 
   // --------------------------------------------------------------------------
   // One flop group per entry

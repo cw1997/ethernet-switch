@@ -2,7 +2,7 @@
 
 `es_switch_de2_115_top`：Cyclone IV E `EP4CE115F29C7` 上的双端口 100 Mbit/s
 全双工 MII 交换机，固定 `NUM_PORTS=2`、`CLK_FREQ_HZ=50_000_000`。板级壳只是
-一张引脚表加 PHY 管理，交换逻辑来自同一个 `es_switch_mii` 分级流水线；板级
+一张引脚表加 PHY 管理，交换逻辑来自同一个 `es_mii_top` 分级流水线；板级
 不再有任何监控、指示或运行期配置路径。
 
 ## 1. 构建步骤

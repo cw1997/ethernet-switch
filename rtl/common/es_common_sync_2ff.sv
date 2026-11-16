@@ -14,16 +14,18 @@
 
 module es_common_sync_2ff #(
   /// Number of independently sampled input bits.
-  parameter int unsigned WIDTH = 1,
+  parameter int unsigned WIDTH            = 1,
   /// Synchronous reset value for both sampling stages.
   parameter logic [WIDTH-1:0] RESET_VALUE = '1
 ) (
   /// Clock and synchronous active-low reset for both sampling stages.
-  input var logic clk_i, rst_ni,
+  input var logic clk_i,
+  rst_ni,
   /// Independently sampled asynchronous bits; this is not a coherent bus CDC.
   input var logic [WIDTH-1:0] async_i,
   /// Input vector after two rising edges in the clk_i domain.
-  output    logic [WIDTH-1:0] sync_o);
+  output    logic [WIDTH-1:0] sync_o
+);
 
   // --------------------------------------------------------------------------
   // Sampling stages

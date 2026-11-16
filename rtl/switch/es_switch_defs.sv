@@ -26,9 +26,9 @@
 // added by one of three top-level wrappers, one per interface, each in its own
 // file, and the interface in use is chosen by which wrapper is elaborated:
 //
-//   es_switch_gmii     GMII-style 8-bit pins (`gmii_*`; the default top)
-//   es_switch_mii      MII pins, two 4-bit nibbles per octet (`mii_*`)
-//   es_switch_rmii     RMII pins, four 2-bit chunks per octet (`rmii_*`)
+//   es_gmii_top        GMII-style 8-bit pins (`gmii_*`; the default top)
+//   es_mii_top         MII pins, two 4-bit nibbles per octet (`mii_*`)
+//   es_rmii_top        RMII pins, four 2-bit chunks per octet (`rmii_*`)
 //
 // All three wrap the same core: the MII/RMII pin groups are adapted onto the
 // canonical octet stream by es_mac_mii_serdes / es_mac_rmii_serdes, so

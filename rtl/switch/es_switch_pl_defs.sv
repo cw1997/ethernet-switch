@@ -38,7 +38,7 @@
 // ============================================================================
 // One octet per handshake.  Sideband travels in the same packed word so a
 // pipe_stage can carry the whole boundary with one instance.  The switch core
-// sees MAC client data only: no preamble, no SFD, no FCS.
+// sees MAC client data only: no preamble or SFD. RX FCS travels separately with EOF.
 localparam int unsigned SW_PL_BYTE_W = 8;
 localparam int unsigned SW_PL_BS_W   = SW_PL_BYTE_W + 3;  // {err, eof, sof, data}
 
@@ -56,11 +56,11 @@ localparam logic [7:0] SW_PL_SFD_OCTET      = 8'hD5;
 // ============================================================================
 // 2.  Pipeline level identifiers (documentation and test labels)
 // ============================================================================
-localparam int unsigned SW_PL_STAGE_RX     = 0;  ///< S0/S1 receive + frame buffer
-localparam int unsigned SW_PL_STAGE_CAM    = 2;  ///< S2 lookup + learn
-localparam int unsigned SW_PL_STAGE_DECIDE = 3;  ///< S3 egress mask
-localparam int unsigned SW_PL_STAGE_WRITE  = 4;  ///< S4 frame copy engines
-localparam int unsigned SW_PL_STAGE_TX     = 5;  ///< S5 per-port TX queue
+localparam int unsigned SW_PL_STAGE_RX       = 1;
+localparam int unsigned SW_PL_STAGE_VALIDATE = 2;
+localparam int unsigned SW_PL_STAGE_CHECKSUM = 3;
+localparam int unsigned SW_PL_STAGE_LOOKUP   = 4;
+localparam int unsigned SW_PL_STAGE_TX       = 5;
 
 /// Default inter-stage register depth, overridable per level.
 localparam int unsigned SW_PL_DEFAULT_DP = 1;
@@ -75,13 +75,11 @@ function automatic int unsigned sw_pl_fifo_cnt_w(input int unsigned depth);
   sw_pl_fifo_cnt_w = ((depth <= 2) ? 1 : $clog2(depth)) + 1;
 endfunction
 
-// Descriptor = {dst_mac, src_mac, len, src_port}, LSB-first order as listed
-// below.  `len` counts MAC client octets (preamble and FCS excluded).  The
-// frame bytes themselves live in a per-port FIFO, so no slot id is needed:
-// descriptors and frames are consumed in the same order (AGENTS.md: a
-// run-time-indexed unpacked array would silently return stale data in Icarus).
+// Forward descriptor = {drop, stored_len, dst_mac, src_mac, len, src_port}.
+// The frame bytes live in a per-port FIFO. stored_len remains nonzero for
+// rejected frames whose prefix must still be consumed in order.
 function automatic int unsigned sw_pl_desc_w(input int unsigned nports);
-  sw_pl_desc_w = 48 + 48 + SW_LEN_W + sw_port_w(nports);
+  sw_pl_desc_w = 1 + 48 + 48 + 2 * SW_LEN_W + sw_port_w(nports);
 endfunction
 
 function automatic int unsigned sw_pl_desc_len_lsb(input int unsigned nports);
@@ -94,6 +92,26 @@ endfunction
 
 function automatic int unsigned sw_pl_desc_dstm_lsb(input int unsigned nports);
   sw_pl_desc_dstm_lsb = sw_port_w(nports) + SW_LEN_W + 48;
+endfunction
+
+function automatic int unsigned sw_pl_desc_stored_lsb(input int unsigned nports);
+  sw_pl_desc_stored_lsb = sw_pl_desc_dstm_lsb(nports) + 48;
+endfunction
+
+// RX/validate append {computed CRC, wire FCS, error, VLAN, Length/Type,
+// measured length}. The count includes the failing beat for an early abort.
+localparam int unsigned SW_PL_MIN_WIRE_CLIENT = 60;
+localparam int unsigned SW_PL_RX_TYPE_LSB = SW_LEN_W + 1;
+localparam int unsigned SW_PL_RX_VLAN_LSB = SW_PL_RX_TYPE_LSB + 16;
+localparam int unsigned SW_PL_RX_ERR_LSB  = SW_PL_RX_VLAN_LSB + 1;
+
+function automatic int unsigned sw_pl_rx_desc_w(input int unsigned nports);
+  sw_pl_rx_desc_w = sw_pl_desc_w(nports) + SW_PL_RX_ERR_LSB + 1 + 64;
+endfunction
+
+function automatic int unsigned sw_pl_tx_depth(input int unsigned depth,
+                                              input int unsigned max_len);
+  sw_pl_tx_depth = (depth < 2 * max_len) ? 2 * max_len : depth;
 endfunction
 
 // ============================================================================
@@ -131,7 +149,7 @@ endfunction
 // same reduced geometry as librelane/config.json.  Simulations (SYNTHESIS
 // undefined) keep the full defaults, so no behavioural test is weakened.
 `ifdef SYNTHESIS
-localparam int unsigned SW_PL_DEF_MIN_FRAME_LEN   = 64;
+localparam int unsigned SW_PL_DEF_MIN_FRAME_LEN   = SW_PL_MIN_WIRE_CLIENT;
 localparam int unsigned SW_PL_DEF_MAX_FRAME_LEN   = 256;
 localparam int unsigned SW_PL_DEF_SLOTS          = 1;
 localparam int unsigned SW_PL_DEF_SLOT_BYTES     = 512;
@@ -140,7 +158,7 @@ localparam int unsigned SW_PL_DEF_TX_QUEUE_DEPTH = 64;
 localparam int unsigned SW_PL_DEF_CAM_SETS       = 16;
 localparam int unsigned SW_PL_DEF_CAM_WAYS       = 2;
 `else
-localparam int unsigned SW_PL_DEF_MIN_FRAME_LEN   = 64;
+localparam int unsigned SW_PL_DEF_MIN_FRAME_LEN   = SW_PL_MIN_WIRE_CLIENT;
 localparam int unsigned SW_PL_DEF_MAX_FRAME_LEN   = 1518;
 localparam int unsigned SW_PL_DEF_SLOTS          = 2;
 localparam int unsigned SW_PL_DEF_SLOT_BYTES     = 2048;

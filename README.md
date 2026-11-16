@@ -10,55 +10,29 @@ The generic RTL defaults to **four ports** (parameter-overridable). The DE2-115 
 
 ## Contents
 
-[1 Boundary](#1-the-one-boundary-that-matters) · [2 Pipeline](#2-pipeline-architecture) · [3 Drop rules](#3-frame-admission-and-the-eight-drop-rules) · [4 CAM](#4-cam-behaviour) · [5 Tops](#5-five-top-level-modules) · [6 Parameters](#6-parameters) · [7 Ports](#7-ports-and-the-rate-model) · [8 Map](#8-repository-map) · [9 Gates](#9-build-gates-and-verification) · [10 Constraints](#10-rtl-hard-constraints) · [11 Boards](#11-board-shells-and-the-physical-flow) · [12 Migration](#12-migration-from-the-previous-architecture) · [13 Limits](#13-known-limitations)
+[1 Boundary](#1-mac-boundary) · [2 Pipeline](#2-pipeline-architecture) · [3 Drop rules](#3-frame-admission-and-drop-rules) · [4 CAM](#4-cam-behaviour) · [5 Tops](#5-five-top-level-modules) · [6 Parameters](#6-parameters) · [7 Ports](#7-ports-and-the-rate-model) · [8 Map](#8-repository-map) · [9 Gates](#9-build-gates-and-verification) · [10 Constraints](#10-rtl-hard-constraints) · [11 Boards](#11-board-shells-and-the-physical-flow) · [12 Migration](#12-migration-from-the-previous-architecture) · [13 Limits](#13-known-limitations)
 
 ---
 
-## 1. The one boundary that matters
+## 1. MAC boundary
 
-`rtl/mac/` and `rtl/switch/` meet at one deliberately narrow contract: an **8-bit byte stream** with `valid/ready` handshakes and `sof/eof/err` sideband. The switch core sees **MAC client data only** — no preamble, SFD, FCS or inter-frame gap. Everything the line implies lives in `rtl/mac/`:
-
-* the RX framer hunts for **7 × 0x55 + 0xD5** itself (the PHY is not assumed to have stripped the preamble) and checks the CRC-32 FCS;
-* the TX framer generates preamble/SFD, pads short client data, recomputes the FCS and inserts the inter-frame gap;
-* MII/RMII adapters reuse nibble/dibit serialisers to reconstruct the octet stream, and the clock-enable rate model lives here too.
-
-`es_switch_fabric` therefore holds no clock-enable, line-rate or symbol-order knowledge; compiling it against a different MAC changes nothing below the boundary. `link_up_i` is a **data gate**, not an observability surface.
+Each port uses an 8-bit `valid/ready` stream with `sof/eof/err`. The receive MAC finds the seven preamble octets and SFD, reconstructs octets, and supplies the four original FCS octets as 32-bit sideband on EOF. The first FCS octet occupies bits 7:0. The transmit MAC generates preamble, any required pad, FCS and IFG. The switch stages share one core clock, independent of the PHY symbol rate.
 
 ## 2. Pipeline architecture
 
-The single-frame global arbiter is gone. One frame can sit in each level at once, and all `NUM_PORTS` receive engines run in parallel. Levels are joined by `es_common_pipe_stage` instances (valid/ready registers with `DP` and `CUT_READY`).
+1. **`es_switch_stage_1_rx`** reserves byte and descriptor capacity at SOF for each ingress. It writes bytes to the ingress FIFO and publishes the parsed descriptor at EOF, or on the first definitive receive error. It drains the rest of an aborted frame and caps the stored length at `MAX_FRAME_LEN`. The MAC discards the whole frame when admission fails.
+2. **`es_switch_stage_2_validate`** evaluates header and length checks in parallel. A rejected frame has zero forward length and retains the exact number of bytes stored.
+3. **`es_switch_stage_3_checksum`** accumulates CRC32 on the RX write tap and compares the captured result with the original FCS. It preserves the ordered reclamation count on failure.
+4. **`es_switch_stage_4_lookup`** looks up and learns only accepted frames. Each ingress drains rejected and filtered frames in FIFO order. Round-robin whole-frame grants reserve all target destinations and their byte credits together. Disjoint copies can run concurrently.
+5. **`es_switch_stage_5_tx`** commits each frame when its EOF enters the egress queue. The transmitter can drain one complete frame while the fabric copies the next.
 
-| Level | Module | Responsibility |
-|---|---|---|
-| S0/S1 | `es_switch_rx_engine` (=`es_switch_rx_ctrl` + `es_switch_rx_parse` + `es_switch_rx_check`) + `es_switch_frame_buf` | one byte per clock, header latch, all eight drop checks (combinational), per-port byte FIFO + descriptor FIFO, legal-frame descriptor |
-| S2 | `es_switch_cam_stage` + `es_switch_cam_table` | `NUM_PORTS` destination lookups and `NUM_PORTS` source learns in the **same clock** |
-| S3 | `es_switch_decide` | broadcast / group / unknown-unicast policy, source-port filter, egress mask |
-| S4 | `es_switch_tx_writer` | one copy engine per source port reading its own frame slot; target write port uses lowest-number-wins arbitration |
-| S5 | `es_switch_tx_engine` | per-port TX FIFO; the MAC adapter then regenerates preamble, pad, FCS and IFG |
+Descriptors remain stable under backpressure. The payload stays in the ingress byte FIFO until its descriptor reaches the copy engine. Copying a frame takes one cycle per byte and atomically reserves space on every selected egress, so a slow destination can delay a broadcast before copying but cannot interrupt its transmission on another port.
 
-Invariants that keep every level lossless and synthesisable:
+## 3. Frame admission and drop rules
 
-* A frame becomes visible downstream **only** after it has arrived in full and passed every check. A bad or over-MTU frame is removed by a **single `undo` pulse** rewinding the byte-FIFO write pointer; it produces no descriptor.
-* **`SLOTS * SLOT_BYTES` must be a power of two.** The rewind is `wr_ptr - undo_cnt` on an `ADDR_W`-wide pointer while `next_slot` skips the unused encodings of a non-power-of-two depth; mixing the two lands on an illegal encoding. The frame buffer checks this at elaboration.
-* Inter-level payloads are **packed** `{}` vectors with `localparam` widths and field-offset functions from `es_switch_pl_defs.sv` — no struct, interface or package. A transfer happens only on a handshake, so backpressure never drops a byte.
-* A frame whose egress mask is zero is **not** dropped at S3: the TX writer still drains its bytes so the next descriptor starts at the right offset.
+`MIN_FRAME_LEN` and `MAX_FRAME_LEN` count bytes from the destination MAC through the last payload or padding byte, excluding FCS. The minimum defaults to 60. The configured maximum is inclusive and is checked at the first excess byte.
 
-## 3. Frame admission and the eight drop rules
-
-`MIN_FRAME_LEN` / `MAX_FRAME_LEN` bound the MAC client byte count (preamble/SFD and FCS excluded). A frame is admitted only when the byte FIFO can hold a whole maximum-length frame and the descriptor FIFO has a slot; once admitted, `b_ready_o` stays high for the entire frame. Eight rejection classes:
-
-| # | Class | Detected at |
-|---|---|---|
-| 1 | bad FCS / RX_ER / truncation (`b_err_i` verdict) | MAC adapter verdict, consumed by RX engine |
-| 2 | runt (below `MIN_FRAME_LEN`) | RX engine |
-| 3 | over MTU (above `MAX_FRAME_LEN`) | RX engine (drains the rest of the wire frame) |
-| 4 | 802.3 length field disagrees with measured client length | RX engine |
-| 5 | VLAN tag truncated before the inner EtherType | RX engine |
-| 6 | group (multicast/broadcast) source address | RX engine |
-| 7 | source address equals this port's own MAC | RX engine |
-| 8 | destination address equals this port's own MAC | RX engine |
-
-FCS is checked **once**, in the MAC adapter; the RX engine only consumes the verdict, so the CRC LFSR is never instantiated twice on the same bytes.
+Validation rejects receive errors, lengths outside the configured range, truncated first VLAN headers, group source addresses, source or destination equal to the ingress port MAC, identical source and destination, all-zero source or destination, and Length/Type values 1501–1535. For untagged 802.3 frames, the received length must equal the larger of 60 and 14 plus the declared length. The FCS check runs before any CAM action.
 
 ## 4. CAM behaviour
 
@@ -69,13 +43,13 @@ FCS is checked **once**, in the MAC adapter; the RX engine only consumes the ver
 
 ## 5. Five top-level modules
 
-The five top names are unchanged. `lint`, `rtl` and `synth` elaborate **all five**, so a wrapper that is never compiled cannot silently rot.
+The three interface tops are named `es_*_top` and live in `rtl/`; the two board tops keep their names. `lint`, `rtl` and `synth` elaborate **all five**, so a wrapper that is never compiled cannot silently rot.
 
 | Top | Interface | Instance | Notes |
 |---|---|---|---|
-| `es_switch_gmii` | GMII, 8-bit pins | ASIC / default | `DESIGN_NAME` for LibreLane |
-| `es_switch_mii` | MII, 4-bit nibbles | DE2-115 shell | rejects a 1000 Mbit/s port at elaboration |
-| `es_switch_rmii` | RMII, 2-bit dibits | — | rejects 1000 Mbit/s; needs a divisible `BYTE_PERIOD` |
+| `es_gmii_top` | GMII, 8-bit pins | ASIC / default | `DESIGN_NAME` for LibreLane |
+| `es_mii_top` | MII, 4-bit nibbles | DE2-115 shell | rejects a 1000 Mbit/s port at elaboration |
+| `es_rmii_top` | RMII, 2-bit dibits | — | rejects 1000 Mbit/s; needs a divisible `BYTE_PERIOD` |
 | `es_switch_de2_115_top` | 2 × MII PHY pins | Quartus II board | 50 MHz, 100 Mbit/s, MDIO PHY management |
 | `es_switch_vivado_top` | 8 × MII template | Vivado board | 50 MHz, 100 Mbit/s, `link_up_i` tied high |
 
@@ -89,25 +63,25 @@ Every wrapper exposes the same configuration surface (board shells fix some of i
 | `CLK_FREQ_HZ` | 125 MHz (GMII) / 50 MHz (MII, RMII) | core clock frequency |
 | `PORT_SPEED` | `2'd2` GMII / `2'd1` MII,RMII | per-port `sw_speed_e`, packed `N*2` bits |
 | `PORT_MAC` | `'0` | per-port MAC, packed `N*48`; zero derives a local address |
-| `MIN_FRAME_LEN` | 64 | minimum accepted client bytes |
+| `MIN_FRAME_LEN` | 60 | minimum accepted client bytes, excluding FCS |
 | `MAX_FRAME_LEN` | 1518 | maximum accepted client bytes |
 | `SLOTS` | 2 | frame slots per ingress buffer |
-| `SLOT_BYTES` | 2048 | bytes per slot; `SLOTS*SLOT_BYTES` must be 2ⁿ |
+| `SLOT_BYTES` | 2048 | bytes per slot; total RX byte capacity is `SLOTS*SLOT_BYTES` |
 | `DESC_DEPTH` | 8 | descriptor FIFO depth |
-| `TX_QUEUE_DEPTH` | 256 | per-port TX FIFO depth |
+| `TX_QUEUE_DEPTH` | 256 | minimum per-port TX FIFO depth |
 | `CAM_SETS` | 128 | CAM sets |
 | `CAM_WAYS` | 4 | CAM ways per set |
 | `LEARNING_EN` | 1 | enable source learning |
 | `FLOOD_MODE` | `2'd1` | flooding policy (below) |
 | `IFG_OCTETS` | 12 | inter-frame gap in octets |
 
-**Simulation vs synthesis defaults.** The table above is the *simulation* default. When `SYNTHESIS` is defined — which both `make synth` and LibreLane do — `es_switch_pl_defs.sv` supplies a reduced geometry (`MAX_FRAME_LEN=256`, `SLOTS=1`, `SLOT_BYTES=512`, `TX_QUEUE_DEPTH=64`, `CAM_SETS=16`, `CAM_WAYS=2`). A full-size buffer is 4×2048×8 ≈ 131 000 flops, which yosys' `synth -flatten` takes tens of minutes to lower; the synthesis gate only has to prove the frontend can read and elaborate the design. Simulations keep the full defaults, so no behavioural check is weakened. LibreLane restates the same reduced values in `SYNTH_PARAMETERS`.
+**Simulation vs synthesis defaults.** The table above is the *simulation* default. When `SYNTHESIS` is defined — which both `make synth` and LibreLane do — `es_switch_pl_defs.sv` supplies a reduced geometry (`MAX_FRAME_LEN=256`, `SLOTS=1`, `SLOT_BYTES=512`, `TX_QUEUE_DEPTH=64`, `CAM_SETS=16`, `CAM_WAYS=2`). The effective TX depth is max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN), giving 512 bytes per port in synthesis and 3036 bytes with full simulation defaults. LibreLane restates the same reduced values in `SYNTH_PARAMETERS`.
 
 `FLOOD_MODE`: **0** = forward broadcast only; **1** = also flood unknown unicast (default); **2** = also flood unknown group/multicast. `LEARNING_EN` and `FLOOD_MODE` are pure elaboration parameters — there is no run-time control path.
 
 ## 7. Ports and the rate model
 
-The handshake is `<src>_o_valid/<src>_o_ready` ↔ `<dst>_i_valid/<dst>_i_ready`; RX carries `sof/eof/err`, TX carries `sof/eof`. GMII top ports: `clk_i`, `rst_ni`, `link_up_i[N]`, `gmii_rx_en_i[N]`, `gmii_rx_data_i[N*8]`, `gmii_tx_en_o[N]`, `gmii_tx_data_o[N*8]`. MII/RMII tops replace the data buses with their nibble/dibit pins and RX_ER signals.
+The handshake is `<src>_o_valid/<src>_o_ready` ↔ `<dst>_i_valid/<dst>_i_ready`; RX carries `sof/eof/err/fcs`, TX carries `sof/eof`. GMII top ports: `clk_i`, `rst_ni`, `link_up_i[N]`, `gmii_rx_en_i[N]`, `gmii_rx_data_i[N*8]`, `gmii_tx_en_o[N]`, `gmii_tx_data_o[N*8]`. MII/RMII tops replace the data buses with their nibble/dibit pins and RX_ER signals.
 
 A port needs one elaboration-time constant, `BYTE_PERIOD = sw_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`: the number of `clk_i` cycles per octet. At 125 MHz that is 1 (1000BASE-T), 10 (100BASE-TX), 100 (10BASE-T); at 50 MHz a 100 Mbit/s port is 4. Line rate is expressed with **clock enables, not extra clock domains** — the whole design is single-clock and free of clock-domain crossings.
 
@@ -118,9 +92,8 @@ rtl/common/     two-stage sampler, CRC-32, DFF/pipe-stage primitives
 rtl/mac/        byte-stream framers, GMII/MII/RMII adapters, serialisers
 rtl/mems/       FWFT FIFO, 1R1W RAM, parallel register banks
 rtl/perips/     MDIO and 88E1111 PHY management
-rtl/switch/     staged fabric: rx_engine (ctrl/parse/check slices),
-                frame_buf, cam_stage/table, decide, tx_writer, tx_engine,
-                fabric, three wrappers
+rtl/*.sv        the three interface tops: es_gmii_top / es_mii_top / es_rmii_top
+rtl/switch/     five pipeline stages, CAM and fabric
 tb/             self-checking regressions (never synthesised, never linted)
 board/          DE2-115 (Quartus II) and Vivado 8-port MII shells, each with a TB
 ci/             toolchain contract (check-toolchain.sh)
@@ -185,7 +158,7 @@ Not style preferences — several exist because the alternative already broke th
 
 ## 12. Migration from the previous architecture
 
-This release is a full datapath rewrite. The former wide-beat, single-frame global-arbiter design and all of its monitoring, status, command and indicator paths have been removed in favour of the byte-stream frame-concurrent pipeline above. Configuration is now purely elaboration-time (`FLOOD_MODE`, `LEARNING_EN`); `link_up_i` is only a data gate. The five top names are unchanged.
+This release is a full datapath rewrite. The former wide-beat, single-frame global-arbiter design and all of its monitoring, status, command and indicator paths have been removed in favour of the byte-stream frame-concurrent pipeline above. Configuration is now purely elaboration-time (`FLOOD_MODE`, `LEARNING_EN`); `link_up_i` is only a data gate. The three interface tops are now named `es_gmii_top` / `es_mii_top` / `es_rmii_top`; the two board tops keep their names.
 
 ## 13. Known limitations
 

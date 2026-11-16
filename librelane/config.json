@@ -1,5 +1,5 @@
 {
-  "DESIGN_NAME": "es_switch_gmii",
+  "DESIGN_NAME": "es_gmii_top",
   "VERILOG_FILES": [
     "rtl/es_defs.sv",
     "rtl/common/es_common_sync_2ff.sv",
@@ -13,20 +13,19 @@
     "rtl/mac/es_mac_rmii_serdes.sv",
     "rtl/mac/es_mac_byte_if.sv",
     "rtl/mac/es_mac_adapters.sv",
-    "rtl/switch/es_switch_frame_buf.sv",
-    "rtl/switch/es_switch_rx_ctrl.sv",
-    "rtl/switch/es_switch_rx_parse.sv",
-    "rtl/switch/es_switch_rx_check.sv",
-    "rtl/switch/es_switch_rx_engine.sv",
-    "rtl/switch/es_switch_tx_engine.sv",
-    "rtl/switch/es_switch_cam_table.sv",
-    "rtl/switch/es_switch_cam_stage.sv",
-    "rtl/switch/es_switch_decide.sv",
-    "rtl/switch/es_switch_tx_writer.sv",
+    "rtl/switch/es_switch_stage_1_rx.sv",
+    "rtl/switch/es_switch_stage_2_validate.sv",
+    "rtl/switch/es_switch_stage_1_rx_parse.sv",
+    "rtl/switch/es_switch_stage_3_checksum.sv",
+    "rtl/switch/es_switch_stage_5_tx.sv",
+    "rtl/switch/es_switch_stage_4_cam_table.sv",
+    "rtl/switch/es_switch_stage_4_cam_stage.sv",
+    "rtl/switch/es_switch_stage_4_decide.sv",
+    "rtl/switch/es_switch_stage_4_lookup.sv",
     "rtl/switch/es_switch_fabric.sv",
-    "rtl/switch/es_switch_gmii.sv",
-    "rtl/switch/es_switch_mii.sv",
-    "rtl/switch/es_switch_rmii.sv"
+    "rtl/es_gmii_top.sv",
+    "rtl/es_mii_top.sv",
+    "rtl/es_rmii_top.sv"
   ],
   "VERILOG_INCLUDE_DIRS": [
     "rtl"
@@ -36,7 +35,7 @@
   ],
   "SYNTH_PARAMETERS": [
     "MAX_FRAME_LEN=256",
-    "MIN_FRAME_LEN=64",
+    "MIN_FRAME_LEN=60",
     "SLOTS=1",
     "SLOT_BYTES=512",
     "DESC_DEPTH=8",

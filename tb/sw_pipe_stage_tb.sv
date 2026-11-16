@@ -29,9 +29,9 @@ module sw_pipe_stage_case #(
   parameter int unsigned NCYC      = 240,
   parameter int unsigned CASE_ID   = 0
 ) (
-  input var logic clk_i,
-  output      logic pass_o,
-  output      logic done_o
+  input  var logic  clk_i,
+  output logic      pass_o,
+  output logic      done_o
 );
 
   logic       rst_n;
@@ -209,14 +209,46 @@ module sw_pipe_stage_tb;
     forever #5 clk = ~clk;
   end
 
-  sw_pipe_stage_case #(.DP(0), .CUT_READY(0), .FLUSH_EN(0), .CASE_ID(0)) u0 (
-    .clk_i(clk), .pass_o(pass[0]), .done_o(done[0]));
-  sw_pipe_stage_case #(.DP(1), .CUT_READY(0), .FLUSH_EN(1), .CASE_ID(1)) u1 (
-    .clk_i(clk), .pass_o(pass[1]), .done_o(done[1]));
-  sw_pipe_stage_case #(.DP(1), .CUT_READY(1), .FLUSH_EN(1), .CASE_ID(2)) u2 (
-    .clk_i(clk), .pass_o(pass[2]), .done_o(done[2]));
-  sw_pipe_stage_case #(.DP(2), .CUT_READY(0), .FLUSH_EN(1), .CASE_ID(3)) u3 (
-    .clk_i(clk), .pass_o(pass[3]), .done_o(done[3]));
+  sw_pipe_stage_case #(
+    .DP        (0),
+    .CUT_READY (0),
+    .FLUSH_EN  (0),
+    .CASE_ID   (0)
+  ) u0 (
+    .clk_i  (clk),
+    .pass_o (pass[0]),
+    .done_o (done[0])
+  );
+  sw_pipe_stage_case #(
+    .DP        (1),
+    .CUT_READY (0),
+    .FLUSH_EN  (1),
+    .CASE_ID   (1)
+  ) u1 (
+    .clk_i  (clk),
+    .pass_o (pass[1]),
+    .done_o (done[1])
+  );
+  sw_pipe_stage_case #(
+    .DP        (1),
+    .CUT_READY (1),
+    .FLUSH_EN  (1),
+    .CASE_ID   (2)
+  ) u2 (
+    .clk_i  (clk),
+    .pass_o (pass[2]),
+    .done_o (done[2])
+  );
+  sw_pipe_stage_case #(
+    .DP        (2),
+    .CUT_READY (0),
+    .FLUSH_EN  (1),
+    .CASE_ID   (3)
+  ) u3 (
+    .clk_i  (clk),
+    .pass_o (pass[3]),
+    .done_o (done[3])
+  );
 
   initial begin : watchdog
     #500000;

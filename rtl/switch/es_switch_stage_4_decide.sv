@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_decide.sv
+//  File        : es_switch_stage_4_decide.sv
 //  Description : S3 - one combinational forwarding decision per CAM lane,
 //                followed by the E203-style valid/ready stage register.
 //
@@ -16,28 +16,28 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_DECIDE_SV
-`define ES_SWITCH_DECIDE_SV
+`ifndef ES_SWITCH_STAGE_4_DECIDE_SV
+`define ES_SWITCH_STAGE_4_DECIDE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_decide #(
-  parameter int unsigned   NUM_PORTS   = 4,
-  parameter logic [1:0]    FLOOD_MODE  = 2'd1
+module es_switch_stage_4_decide #(
+  parameter int unsigned NUM_PORTS = 4,
+  parameter logic [1:0] FLOOD_MODE = 2'd1
 ) (
-  input  var logic                                    clk_i,
-  input  var logic                                    rst_ni,
+  input  var logic                                        clk_i,
+  input  var logic                                        rst_ni,
 
-  input  var logic [NUM_PORTS-1:0]                    i_valid,
-  output      logic [NUM_PORTS-1:0]                   i_ready,
+  input  var logic [NUM_PORTS-1:0]                        i_valid,
+  output logic     [NUM_PORTS-1:0]                        i_ready,
   input  var logic [NUM_PORTS*sw_pl_cam_w(NUM_PORTS)-1:0] i_pkg,
 
-  output      logic [NUM_PORTS-1:0]                   o_valid,
-  input  var logic [NUM_PORTS-1:0]                    o_ready,
-  output      logic [NUM_PORTS*(NUM_PORTS+SW_LEN_W)-1:0] o_pkg
+  output logic     [NUM_PORTS-1:0]                        o_valid,
+  input  var logic [NUM_PORTS-1:0]                        o_ready,
+  output logic     [NUM_PORTS*(NUM_PORTS+SW_LEN_W)-1:0]   o_pkg
 );
 
   localparam int unsigned PW       = sw_port_w(NUM_PORTS);
@@ -45,6 +45,8 @@ module es_switch_decide #(
   localparam int unsigned LW       = NUM_PORTS + SW_LEN_W;
   localparam int unsigned DST_LSB  = sw_pl_desc_dstm_lsb(NUM_PORTS);
   localparam int unsigned LEN_LSB  = sw_pl_desc_len_lsb(NUM_PORTS);
+  localparam int unsigned STORED_LSB = sw_pl_desc_stored_lsb(NUM_PORTS);
+  localparam int unsigned DESC_W = sw_pl_desc_w(NUM_PORTS);
   localparam int unsigned HIT_LSB  = sw_pl_cam_hit_lsb(NUM_PORTS);
   localparam int unsigned PORT_LSB = sw_pl_cam_port_lsb(NUM_PORTS);
 
@@ -81,7 +83,9 @@ module es_switch_decide #(
       logic [NUM_PORTS-1:0] mask;
       logic [LW-1:0]     dat_d;
 
-      assign mask = decide_mask(
+      logic unused_drop;
+      assign unused_drop = i_pkg[gp*CAM_W + DESC_W-1];
+      assign mask = (i_pkg[gp*CAM_W + LEN_LSB +: SW_LEN_W] == '0) ? '0 : decide_mask(
           i_pkg[gp*CAM_W + DST_LSB +: 48],
           i_pkg[gp*CAM_W +: PW],
           i_pkg[gp*CAM_W + HIT_LSB],
@@ -90,7 +94,7 @@ module es_switch_decide #(
       // Only the egress mask and the frame length are needed downstream;
       // carrying the full descriptor would leave its MAC bits unread at the
       // fabric level and -Wall would report UNUSEDSIGNAL.
-      assign dat_d = {mask, i_pkg[gp*CAM_W + LEN_LSB +: SW_LEN_W]};
+      assign dat_d = {mask, i_pkg[gp*CAM_W + STORED_LSB +: SW_LEN_W]};
 
       assign vld_set       = i_valid[gp] && i_ready[gp];
       assign vld_clr       = o_valid[gp] && o_ready[gp];
@@ -130,8 +134,8 @@ module es_switch_decide #(
     end
   endgenerate
 
-endmodule : es_switch_decide
+endmodule : es_switch_stage_4_decide
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_DECIDE_SV
+`endif  // ES_SWITCH_STAGE_4_DECIDE_SV

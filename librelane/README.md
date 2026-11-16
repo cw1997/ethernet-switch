@@ -1,6 +1,6 @@
 # LibreLane build
 
-Physical implementation of `es_switch_gmii` (the GMII top) down to GDSII, with
+Physical implementation of `es_gmii_top` (the GMII top) down to GDSII, with
 LibreLane **3.0.14** and the `sky130A` / `sky130_fd_sc_hd` PDK. CI runs the same
 flow in the `gds` job of `.github/workflows/ci.yml`.
 
@@ -30,8 +30,8 @@ The image is a Nix closure, so **pin the tag**: the RTL is elaborated against it
 
 | Key | Value / purpose |
 |---|---|
-| `DESIGN_NAME` | `es_switch_gmii` — netlist and GDS are named after it |
-| `VERILOG_FILES` | staged RTL in dependency order: `es_defs.sv`, `common/`, `mems/`, `mac/` byte-stream framers + adapters, `switch/` pipeline levels (the receive level is split into `es_switch_rx_ctrl` / `es_switch_rx_parse` / `es_switch_rx_check` slices plus the `es_switch_rx_engine` wrapper), `es_switch_fabric.sv`, three wrappers. Stops at the GMII top; board shells and PHY-management peripherals are outside the ASIC build. |
+| `DESIGN_NAME` | `es_gmii_top` — netlist and GDS are named after it |
+| `VERILOG_FILES` | staged RTL in dependency order: `es_defs.sv`, `common/`, `mems/`, `mac/` byte-stream framers + adapters, `switch/` pipeline levels (RX, validate, checksum, lookup and TX), `es_switch_fabric.sv`, three wrappers in `rtl/` (`es_gmii_top.sv`, `es_mii_top.sv`, `es_rmii_top.sv`). Stops at the GMII top; board shells and PHY-management peripherals are outside the ASIC build. |
 | `VERILOG_INCLUDE_DIRS` | `["rtl"]` |
 | `VERILOG_DEFINES` | `["SYNTHESIS"]` — keeps elaboration-time `$error`/`$warning` checks out of the netlist, since yosys has no implementation for them |
 | `CLOCK_PORT` / `CLOCK_PERIOD` | `clk_i` / `10` (100 MHz). The RTL default is 125 MHz; 10 ns is a defensible target on this PDK. |
@@ -48,16 +48,27 @@ The flow elaborates a **reduced** instance so it completes on this PDK. The full
 | Key | This build | Status in this rewrite |
 |---|---|---|
 | `MAX_FRAME_LEN` | 256 | unchanged |
-| `MIN_FRAME_LEN` | 64 | **new** |
+| `MIN_FRAME_LEN` | 60 | 64 wire bytes including FCS |
 | `SLOTS` | 1 | **new** (replaces the old frame-buffer sizing) |
-| `SLOT_BYTES` | 512 | **new**; `SLOTS*SLOT_BYTES = 512` is a power of two |
+| `SLOT_BYTES` | 512 | 512 ingress bytes per port |
 | `DESC_DEPTH` | 8 | **new** |
-| `TX_QUEUE_DEPTH` | 64 | **new** |
+| `TX_QUEUE_DEPTH` | 64 | effective depth is 512 bytes per port |
 | `CAM_SETS` | 16 | unchanged |
 | `CAM_WAYS` | 2 | unchanged |
 
-The previous physical build sized the datapath with four separate FIFO-depth knobs. All four were removed with the staged-pipeline rewrite and no longer exist as parameters; five keys are new (`MIN_FRAME_LEN`, `SLOTS`, `SLOT_BYTES`, `DESC_DEPTH`, `TX_QUEUE_DEPTH`), while `MAX_FRAME_LEN`, `CAM_SETS` and `CAM_WAYS` keep their old values.
-The instance stays self-consistent: `MAX_FRAME_LEN=256` fits `SLOT_BYTES=512`, and `SLOTS*SLOT_BYTES` is 2⁹, which the frame buffer's elaboration check requires. These reduced figures are not a claim that the full-size configuration was placed and routed.
+Ingress capacity is 512 bytes per port. The egress buffer uses the larger of the configured depth and twice MAX_FRAME_LEN to overlap copy and transmit. These reduced figures are not a claim that the full-size configuration was placed and routed.
+
+### Synthesis comparison for the five-stage pipeline
+
+Yosys 0.52 with the repository's `make synth` settings reported the following generic cell counts, measured against the previous pipeline with the same tool:
+
+- GMII increased from 86,776 to 134,093 cells.
+- MII increased from 87,004 to 134,357 cells.
+- RMII increased from 87,031 to 134,417 cells.
+- The DE2-115 top increased from 242,369 to 265,736 cells.
+- The Vivado top increased from 172,969 to 270,113 cells.
+
+The reduced geometry now reserves 512 TX bytes per egress, compared with 64 previously. These counts measure generic synthesis cells. Physical area and timing require technology mapping and place-and-route results.
 
 ## 3. `constraints/io.sdc`
 
@@ -94,4 +105,4 @@ The 3.0 major release removed or renamed ten variables this configuration used; 
 ## 5. Synthesis portability and the CI `gds` approval gate
 
 The flow reads the design with `read_verilog -defer -noautowire -sv -I<dir>... -D<define>... <file>`, one file at a time, then `chparam -set` for each `SYNTH_PARAMETERS` entry. That is why the RTL obeys the three yosys bans (no `package`/`import`, no `return` in a function, `-sv` mandatory) and why `make synth` is a faithful stand-in for the frontend. `make synth` uses the locally installed yosys, which need not be the version inside the image, so cell/area numbers differ.
-The CI `gds` job is **gated behind a manual approval**: it declares `environment: production`, which must exist in repository settings with "Required reviewers" enabled, or no gate is enforced. It `needs: [lint, test]`, runs on the self-hosted runner, has a 180-minute budget, pins `ghcr.io/librelane/librelane:3.0.14`, and globs for `es_switch_gmii.gds` in `librelane/runs`. A job waiting for approval is not dispatched and blocks nothing; an approved, started job holds the single runner. This document does not claim a GDSII has been produced or taped out on this revision.
+The CI `gds` job is **gated behind a manual approval**: it declares `environment: production`, which must exist in repository settings with "Required reviewers" enabled, or no gate is enforced. It `needs: [lint, test]`, runs on the self-hosted runner, has a 180-minute budget, pins `ghcr.io/librelane/librelane:3.0.14`, and globs for `es_gmii_top.gds` in `librelane/runs`. A job waiting for approval is not dispatched and blocks nothing; an approved, started job holds the single runner. This document does not claim a GDSII has been produced or taped out on this revision.

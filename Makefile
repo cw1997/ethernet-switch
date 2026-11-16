@@ -17,8 +17,8 @@
 #                    a CI gate - see the comment above the target)
 #    make clean      remove build products
 #
-#  `rtl`, `lint` and `synth` each run FIVE top modules - es_switch_gmii (the
-#  default GMII front-end), es_switch_mii, es_switch_rmii, and the two board
+#  `rtl`, `lint` and `synth` each run FIVE top modules - es_gmii_top (the
+#  default GMII front-end), es_mii_top, es_rmii_top, and the two board
 #  tops es_switch_de2_115_top and es_switch_vivado_top - because each has its
 #  own pin list; a top that is never elaborated silently rots.
 #
@@ -59,20 +59,19 @@ RTL_SRCS := \
   $(RTL_DIR)/mac/es_mac_adapters.sv \
   $(RTL_DIR)/perips/es_perips_mdio.sv \
   $(RTL_DIR)/perips/es_perips_phy_88e1111.sv \
-  $(RTL_DIR)/switch/es_switch_frame_buf.sv \
-  $(RTL_DIR)/switch/es_switch_rx_ctrl.sv \
-  $(RTL_DIR)/switch/es_switch_rx_parse.sv \
-  $(RTL_DIR)/switch/es_switch_rx_check.sv \
-  $(RTL_DIR)/switch/es_switch_rx_engine.sv \
-  $(RTL_DIR)/switch/es_switch_tx_engine.sv \
-  $(RTL_DIR)/switch/es_switch_cam_table.sv \
-  $(RTL_DIR)/switch/es_switch_cam_stage.sv \
-  $(RTL_DIR)/switch/es_switch_decide.sv \
-  $(RTL_DIR)/switch/es_switch_tx_writer.sv \
+  $(RTL_DIR)/switch/es_switch_stage_1_rx.sv \
+  $(RTL_DIR)/switch/es_switch_stage_2_validate.sv \
+  $(RTL_DIR)/switch/es_switch_stage_1_rx_parse.sv \
+  $(RTL_DIR)/switch/es_switch_stage_3_checksum.sv \
+  $(RTL_DIR)/switch/es_switch_stage_5_tx.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_cam_table.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_cam_stage.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_decide.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_lookup.sv \
   $(RTL_DIR)/switch/es_switch_fabric.sv \
-  $(RTL_DIR)/switch/es_switch_gmii.sv \
-  $(RTL_DIR)/switch/es_switch_mii.sv \
-  $(RTL_DIR)/switch/es_switch_rmii.sv
+  $(RTL_DIR)/es_gmii_top.sv \
+  $(RTL_DIR)/es_mii_top.sv \
+  $(RTL_DIR)/es_rmii_top.sv
 
 TB_COMMON := \
   $(TB_DIR)/sw_tb_pkg.sv \
@@ -94,12 +93,12 @@ all: lint rtl unit mii rmii vivado board-unit sim param param-scan
 # testbench happens to declare it.  All five tops.
 # ---------------------------------------------------------------------------
 rtl: | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_gmii.vvp -s es_switch_gmii $(RTL_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_mii.vvp -s es_switch_mii $(RTL_SRCS)
-	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_rmii.vvp -s es_switch_rmii $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_gmii_top.vvp -s es_gmii_top $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_mii_top.vvp -s es_mii_top $(RTL_SRCS)
+	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_rmii_top.vvp -s es_rmii_top $(RTL_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_de2_115_top.vvp -s es_switch_de2_115_top $(BOARD_TOP_SRCS)
 	$(IVERILOG) $(IVFLAGS) -o $(BUILD)/es_switch_vivado_top.vvp -s es_switch_vivado_top $(VIVADO_TOP_SRCS)
-	@echo "RTL elaborates cleanly (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
+	@echo "RTL elaborates cleanly (es_gmii_top, es_mii_top, es_rmii_top, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -109,16 +108,16 @@ $(BUILD):
 # ---------------------------------------------------------------------------
 lint: | $(BUILD)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module es_switch_gmii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_gmii_top $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module es_switch_mii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_mii_top $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-	  -I$(RTL_DIR) --top-module es_switch_rmii $(RTL_SRCS)
+	  -I$(RTL_DIR) --top-module es_rmii_top $(RTL_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
 	  -I$(RTL_DIR) --top-module es_switch_de2_115_top $(BOARD_TOP_SRCS)
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
 	  -I$(RTL_DIR) --top-module es_switch_vivado_top $(VIVADO_TOP_SRCS)
-	@echo "RTL lints clean (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
+	@echo "RTL lints clean (es_gmii_top, es_mii_top, es_rmii_top, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 # ---------------------------------------------------------------------------
 # Block-level and staged-fabric unit regressions.
@@ -165,30 +164,14 @@ $(BUILD)/sw_pipe_stage_tb.vvp: $(RTL_HEADERS) \
 
 rx-unit: $(BUILD)/sw_rx_engine_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_rx_engine_tb.vvp: $(RTL_HEADERS) \
-    $(RTL_DIR)/mems/es_mems_ram_1r1w.sv $(RTL_DIR)/mems/es_mems_reg_bank.sv \
-    $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
-    $(RTL_DIR)/switch/es_switch_frame_buf.sv \
-    $(RTL_DIR)/switch/es_switch_rx_ctrl.sv \
-    $(RTL_DIR)/switch/es_switch_rx_parse.sv \
-    $(RTL_DIR)/switch/es_switch_rx_check.sv \
-    $(RTL_DIR)/switch/es_switch_rx_engine.sv \
-    $(TB_DIR)/sw_rx_engine_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_rx_engine_tb -o $@ \
-	  $(RTL_DIR)/mems/es_mems_ram_1r1w.sv $(RTL_DIR)/mems/es_mems_reg_bank.sv \
-	  $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
-	  $(RTL_DIR)/switch/es_switch_frame_buf.sv \
-	  $(RTL_DIR)/switch/es_switch_rx_ctrl.sv \
-	  $(RTL_DIR)/switch/es_switch_rx_parse.sv \
-	  $(RTL_DIR)/switch/es_switch_rx_check.sv \
-	  $(RTL_DIR)/switch/es_switch_rx_engine.sv \
-	  $(TB_DIR)/sw_rx_engine_tb.sv
+$(BUILD)/sw_rx_engine_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_rx_engine_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_rx_engine_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_rx_engine_tb.sv
 
 # End-to-end staged-fabric regression (8-bit byte stream, no PHY pins).
 fabric-unit: $(BUILD)/sw_fabric_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_fabric_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_fabric_tb.sv
+$(BUILD)/sw_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_fabric_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s sw_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_fabric_tb.sv
 
 # ---------------------------------------------------------------------------
 # Front-end regressions: complete wire frames (preamble/SFD/FCS) are driven
@@ -277,12 +260,12 @@ param-scan: | $(BUILD)
 YOSYS_SCRIPT = read_verilog -defer -noautowire -sv -I$(RTL_DIR) -DSYNTHESIS $(2); hierarchy -check -top $(1) -nokeep_prints -nokeep_asserts; synth -top $(1) -flatten; stat
 
 synth:
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_gmii,$(RTL_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_mii,$(RTL_SRCS))'
-	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_rmii,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_gmii_top,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_mii_top,$(RTL_SRCS))'
+	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_rmii_top,$(RTL_SRCS))'
 	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_de2_115_top,$(BOARD_TOP_SRCS))'
 	$(YOSYS) -p '$(call YOSYS_SCRIPT,es_switch_vivado_top,$(VIVADO_TOP_SRCS))'
-	@echo "synthesises cleanly (es_switch_gmii, es_switch_mii, es_switch_rmii, es_switch_de2_115_top and es_switch_vivado_top tops)"
+	@echo "synthesises cleanly (es_gmii_top, es_mii_top, es_rmii_top, es_switch_de2_115_top and es_switch_vivado_top tops)"
 
 clean:
 	rm -rf $(BUILD)

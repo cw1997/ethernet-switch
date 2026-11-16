@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb_sw_pl_rmii.sv
-//  Description : Self-checking four-port regression for the staged `es_switch_rmii`
+//  Description : Self-checking four-port regression for the staged `es_rmii_top`
 //                top.  Four independent `sw_rmii_if` wire models present COMPLETE
 //                wire frames (preamble/SFD + client + FCS) on the packed RMII
 //                dibit pins.  On the transmit side each port has an independent
@@ -189,20 +189,20 @@ module tb_sw_pl_rmii
 
   // ---- DUT ------------------------------------------------------------------
   // Only the ports the rewritten top still has are connected.
-  es_switch_rmii #(
+  es_rmii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_HZ),
     .PORT_SPEED  (SPEEDS),
     .PORT_MAC    ('0),
     .IFG_OCTETS  (12)
   ) u_dut (
-    .clk_i          (clk),
-    .rst_ni         (rst_n),
-    .link_up_i      (link_up),
-    .rmii_crs_dv_i  (rmii_crs_dv),
-    .rmii_rxd_i     (rmii_rxd),
-    .rmii_tx_en_o   (rmii_tx_en),
-    .rmii_txd_o     (rmii_txd)
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .link_up_i     (link_up),
+    .rmii_crs_dv_i (rmii_crs_dv),
+    .rmii_rxd_i    (rmii_rxd),
+    .rmii_tx_en_o  (rmii_tx_en),
+    .rmii_txd_o    (rmii_txd)
   );
 
   // ---- per-port RMII drivers (BFM `send`) and independent wire monitors -----
@@ -214,18 +214,20 @@ module tb_sw_pl_rmii
         .BYTE_PERIOD (BP),
         .IFG_OCTETS  (12)
       ) u_if (
-        .clk_i        (clk),
-        .rst_ni       (rst_n),
-        .enable_i     (1'b1),
-        .rmii_crs_dv  (rmii_crs_dv[g]),
-        .rmii_rxd     (rmii_rxd[g*2 +: 2]),
+        .clk_i       (clk),
+        .rst_ni      (rst_n),
+        .enable_i    (1'b1),
+        .rmii_crs_dv (rmii_crs_dv[g]),
+        .rmii_rxd    (rmii_rxd[g*2 +: 2]),
         // The BFM's built-in monitor cannot decode the new adapter's chunk
         // phase; tie it idle and use the independent monitor below instead.
-        .rmii_tx_en   (1'b0),
-        .rmii_txd     (2'b00)
+        .rmii_tx_en  (1'b0),
+        .rmii_txd    (2'b00)
       );
 
-      rmii_wire_mon #(.PORT_ID(g)) u_mon (
+      rmii_wire_mon #(
+        .PORT_ID (g)
+      ) u_mon (
         .clk_i   (clk),
         .rst_ni  (rst_n),
         .clear_i (clear),

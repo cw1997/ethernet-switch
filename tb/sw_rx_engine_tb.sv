@@ -1,269 +1,167 @@
 // ============================================================================
 //  File        : sw_rx_engine_tb.sv
-//  Description : Self-checking regression for the S0/S1 receive level.
-//
-//                Drives the byte-stream contract exactly as a MAC adapter
-//                would (client data only, sof on the first octet, eof on the
-//                last, err with the eof) and checks two things independently:
-//                the descriptor published for a legal frame, and the bytes
-//                that can subsequently be read out of the frame buffer.  A
-//                rejected frame must produce neither.
+//  Description : Stage 1 queue and descriptor regression. Byte values encode
+//                their offsets so dropped prefixes and queue wrap are visible.
+//                No MAC or downstream validation is required by this model.
 // ============================================================================
 `timescale 1ns/1ps
-
 `include "es_defs.sv"
 
 module sw_rx_engine_tb;
+  localparam int unsigned N = 3, MAX_LEN = 64;
+  localparam int unsigned DW = sw_pl_rx_desc_w(N), BASE = sw_pl_desc_w(N);
+  logic clk = 0, rst_n = 0;
+  always #5 clk = !clk;
+  logic link_up = 1, valid = 0, ready, sof = 0, eof = 0, err = 0;
+  logic [7:0] data = 0, rd_data;
+  logic desc_valid, desc_ready = 0, rd = 0, empty, crc_write;
+  logic [DW-1:0] desc;
+  int checks = 0, errors = 0;
 
-  localparam int unsigned NUM_PORTS = 4;
-  localparam int unsigned PORT_ID   = 2;
-  localparam int unsigned MAXB      = 2048;
-  localparam int unsigned DESC_W    = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned PW        = sw_port_w(NUM_PORTS);
-  localparam int unsigned DST_LSB   = sw_pl_desc_dstm_lsb(NUM_PORTS);
-  localparam int unsigned SRC_LSB   = sw_pl_desc_srcm_lsb(NUM_PORTS);
-  localparam int unsigned LEN_LSB   = sw_pl_desc_len_lsb(NUM_PORTS);
+  es_switch_stage_1_rx #(
+    .NUM_PORTS     (N),
+    .MAX_FRAME_LEN (MAX_LEN),
+    .SLOTS         (1),
+    .SLOT_BYTES    (128),
+    .DESC_DEPTH    (2)
+  ) dut (
+        .clk_i       (clk),
+        .rst_ni      (rst_n),
+        .link_up_i   (link_up),
+        .b_valid_i   (valid),
+        .b_ready_o   (ready),
+        .b_sof_i     (sof),
+        .b_eof_i     (eof),
+        .b_err_i     (err),
+        .b_data_i    (data),
+        .b_fcs_i     (32'h87654321),
+        .crc_write_o (crc_write),
+        .crc_i       (32'h0),
+        .d_valid_o   (desc_valid),
+        .d_ready_i   (desc_ready),
+        .desc_o      (desc),
+        .rd_i        (rd),
+        .data_o      (rd_data),
+        .empty_o     (empty)
+      );
 
-  logic clk;
-  logic rst_n;
-
-  logic       b_valid;
-  logic       b_ready;
-  logic [7:0] b_data;
-  logic       b_sof;
-  logic       b_eof;
-  logic       b_err;
-
-  logic                dvalid;
-  logic                drd;
-  logic [DESC_W-1:0]   dout;
-
-  logic                brd;
-  logic [7:0]          bout;
-  logic                bempty;
-
-  initial begin : clk_gen
-    clk = 1'b0;
-    forever #5 clk = ~clk;
-  end
-
-  es_switch_rx_engine #(
-    .NUM_PORTS     (NUM_PORTS),
-    .PORT_ID       (PORT_ID),
-    .PORT_MAC      (48'h02_00_00_00_00_02),
-    .MIN_FRAME_LEN (64),
-    .MAX_FRAME_LEN (1518),
-    .SLOTS         (2),
-    .SLOT_BYTES    (2048),
-    .DESC_DEPTH    (8)
-  ) u_dut (
-    .clk_i    (clk),
-    .rst_ni   (rst_n),
-    .b_valid_i(b_valid), .b_ready_o(b_ready), .b_data_i(b_data),
-    .b_sof_i  (b_sof),   .b_eof_i  (b_eof),   .b_err_i  (b_err),
-    .dvalid_o (dvalid),  .drd_i    (drd),     .dout_o   (dout),
-    .brd_i    (brd),     .bout_o   (bout),    .bempty_o (bempty)
+  // Lower the configured minimum only here to isolate truncated VLAN
+  // from the runt rule. Stall the result to check ready/valid retention.
+  logic validate_valid = 0, validate_ready, checked_valid, checked_ready = 0;
+  logic [DW-1:0] candidate_desc, checked_desc;
+  es_switch_stage_2_validate #(
+    .NUM_PORTS     (N),
+    .MIN_FRAME_LEN (14),
+    .MAX_FRAME_LEN (MAX_LEN)
+  ) u_validate (
+    .clk_i   (clk),
+    .rst_ni  (rst_n),
+    .i_valid (validate_valid),
+    .i_ready (validate_ready),
+    .i_desc  (candidate_desc),
+    .o_valid (checked_valid),
+    .o_ready (checked_ready),
+    .o_desc  (checked_desc)
   );
 
-  int unsigned checks;
-  int unsigned errors;
-
-  task automatic check(input bit ok, input string label);
-    checks = checks + 1;
-    if (!ok) begin
-      errors = errors + 1;
-      $display("[%0t] FAIL %s", $time, label);
-    end
+  task automatic check(input bit ok, input string label_text);
+    checks++;
+    $display("%s %s", ok ? "PASS" : "FAIL", label_text);
+    if (!ok) errors++;
   endtask
 
-  // Build a MAC client frame: dst(6) src(6) l2type(2) optional tag(4) payload.
-  function automatic logic [MAXB*8-1:0] mk_frame(
-      input logic [47:0] dst, input logic [47:0] src,
-      input logic [15:0] l2type, input int unsigned len, input bit vlan);
-    logic [MAXB*8-1:0] img;
-    int unsigned i;
-    int unsigned n;
-    img = '0;
-    for (i = 0; i < 6; i++) img[i*8 +: 8] = dst[47-8*i -: 8];
-    for (i = 0; i < 6; i++) img[(6+i)*8 +: 8] = src[47-8*i -: 8];
-    img[12*8 +: 8] = l2type[15:8];
-    img[13*8 +: 8] = l2type[7:0];
-    n = 14;
-    if (vlan) begin
-      img[14*8 +: 8] = 8'h00;
-      img[15*8 +: 8] = 8'h01;
-      img[16*8 +: 8] = 8'h08;
-      img[17*8 +: 8] = 8'h00;
-      n = 18;
-    end
-    for (i = n; i < len; i++) img[i*8 +: 8] = 8'(i);
-    mk_frame = img;
-  endfunction
-
-  task automatic idle(input int unsigned n);
-    int unsigned i;
-    b_valid = 1'b0;
-    b_sof   = 1'b0;
-    b_eof   = 1'b0;
-    b_err   = 1'b0;
-    drd     = 1'b0;
-    brd     = 1'b0;
-    for (i = 0; i < n; i++) @(posedge clk);
-    #1;
-  endtask
-
-  // Send n client octets.  `err_last` marks the whole frame bad via b_err_i.
-  task automatic send(input logic [MAXB*8-1:0] img, input int unsigned n,
-                      input bit err_last);
-    int unsigned i;
-    for (i = 0; i < n; i++) begin
-      @(negedge clk);
-      b_valid = 1'b1;
-      b_data  = img[i*8 +: 8];
-      b_sof   = (i == 0);
-      b_eof   = (i == n-1);
-      b_err   = err_last && (i == n-1);
-    end
+  task automatic beat(input int index, input bit last, input bit bad);
+    @(negedge clk);
+    valid = 1; sof = (index == 0); eof = last; err = bad; data = 8'(index);
     @(posedge clk);
     #1;
+    valid = 0; sof = 0; eof = 0; err = 0;
   endtask
 
-  // Consume one descriptor and its frame, or verify that nothing was queued.
-  task automatic expect_frame(input logic [MAXB*8-1:0] img, input int unsigned n,
-                              input logic [47:0] dst, input logic [47:0] src,
-                              input string label);
-    int unsigned i;
-    logic [DESC_W-1:0] desc;
-    idle(3);
-    check(dvalid === 1'b1, {label, ": descriptor missing"});
-    if (dvalid) begin
-      desc = dout;
-      check(desc[DST_LSB +: 48] === dst, {label, ": dst MAC"});
-      check(desc[SRC_LSB +: 48] === src, {label, ": src MAC"});
-      check(desc[LEN_LSB +: SW_LEN_W] === SW_LEN_W'(n), {label, ": length"});
-      check(desc[0 +: PW] === PW'(PORT_ID), {label, ": src port"});
-      drd = 1'b1;
-      @(posedge clk);
-      #1;
-      drd = 1'b0;
-      for (i = 0; i < n; i++) begin
-        check(bempty === 1'b0, {label, ": byte FIFO empty early"});
-        check(bout === img[i*8 +: 8], {label, ": byte content"});
-        brd = 1'b1;
-        @(posedge clk);
-        #1;
-      end
-      brd = 1'b0;
-      check(bempty === 1'b1, {label, ": byte FIFO not empty after frame"});
+  task automatic descriptor(input int stored, input int measured, input bit bad);
+    check(desc_valid &&
+          desc[sw_pl_desc_stored_lsb(N) +: SW_LEN_W] == SW_LEN_W'(stored) &&
+          desc[BASE +: SW_LEN_W+1] == (SW_LEN_W+1)'(measured) &&
+          desc[BASE+SW_PL_RX_ERR_LSB] == bad, "descriptor counts and verdict");
+    @(negedge clk); desc_ready = 1;
+    @(posedge clk); #1; desc_ready = 0;
+  endtask
+
+  task automatic consume(input int stored);
+    bit ordered;
+    ordered = 1;
+    for (int i = 0; i < stored; i++) begin
+      @(negedge clk);
+      ordered &= !empty && rd_data == 8'(i);
+      rd = 1;
+      @(posedge clk); #1; rd = 0;
     end
+    check(ordered, "buffered prefix remains byte-exact");
   endtask
 
-  task automatic expect_drop(input string label);
-    idle(4);
-    check(dvalid === 1'b0, {label, ": bad frame produced a descriptor"});
-    check(bempty === 1'b1, {label, ": bad frame bytes were not rewound"});
-  endtask
-
-  logic [MAXB*8-1:0] img;
-  logic [47:0] host_a;
-  logic [47:0] host_b;
-
-  initial begin : main_proc
-    checks = 0;
-    errors = 0;
-    host_a = 48'h02_11_11_11_11_11;
-    host_b = 48'h02_22_22_22_22_22;
-    rst_n  = 1'b0;
-    b_valid = 1'b0; b_data = 8'd0; b_sof = 1'b0; b_eof = 1'b0; b_err = 1'b0;
-    drd = 1'b0; brd = 1'b0;
-    repeat (4) @(posedge clk);
-    #1;
-    rst_n = 1'b1;
-    idle(3);
-
-    // ---- legal minimum frame ---------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 64, 0);
-    send(img, 64, 0);
-    expect_frame(img, 64, host_b, host_a, "legal 64");
-    idle(3);
-
-    // ---- legal 802.1Q frame ----------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h8100, 128, 1);
-    send(img, 128, 0);
-    expect_frame(img, 128, host_b, host_a, "vlan 128");
-    idle(3);
-
-    // ---- back-to-back frames ----------------------------------------------
-    img = mk_frame(host_a, host_b, 16'h0800, 100, 0);
-    send(img, 100, 0);
-    idle(1);
-    expect_frame(img, 100, host_a, host_b, "back-to-back");
-    idle(3);
-
-    // ---- runt --------------------------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 40, 0);
-    send(img, 40, 0);
-    expect_drop("runt");
-
-    // ---- bad FCS / RX_ER verdict -------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 100, 0);
-    send(img, 100, 1);
-    expect_drop("bad FCS");
-
-    // ---- over MTU ----------------------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 1519, 0);
-    send(img, 1519, 0);
-    expect_drop("over MTU");
-    idle(6);   // let the drain reach eof
-
-    // ---- exactly MTU is legal ----------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 1518, 0);
-    send(img, 1518, 0);
-    expect_frame(img, 1518, host_b, host_a, "exactly MTU");
-    idle(4);
-
-    // ---- group source address ----------------------------------------------
-    img = mk_frame(host_b, 48'h01_00_00_00_00_01, 16'h0800, 100, 0);
-    send(img, 100, 0);
-    expect_drop("group source");
-
-    // ---- this port's own address as source ---------------------------------
-    img = mk_frame(host_b, 48'h02_00_00_00_00_02, 16'h0800, 100, 0);
-    send(img, 100, 0);
-    expect_drop("own source");
-
-    // ---- 802.3 length field mismatch ---------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0032, 100, 0);
-    send(img, 100, 0);
-    expect_drop("802.3 length mismatch");
-
-    // ---- VLAN tag truncated ------------------------------------------------
-    img = mk_frame(host_b, host_a, 16'h8100, 16, 0);
-    send(img, 16, 0);
-    expect_drop("truncated VLAN tag");
-
-    // ---- reset in the middle of a frame ------------------------------------
-    img = mk_frame(host_b, host_a, 16'h0800, 100, 0);
+  task automatic vlan_case(input int unsigned len, input bit reject);
+    logic [DW-1:0] held;
     @(negedge clk);
-    b_valid = 1'b1; b_data = img[0*8 +: 8]; b_sof = 1'b1; b_eof = 1'b0; b_err = 1'b0;
-    @(posedge clk); #1;
-    rst_n = 1'b0;
-    repeat (2) @(posedge clk); #1;
-    rst_n = 1'b1;
-    b_valid = 1'b0; b_sof = 1'b0;
-    idle(4);
-    check(dvalid === 1'b0, "reset mid-frame produced a descriptor");
-    check(bempty === 1'b1, "reset mid-frame left bytes buffered");
+    candidate_desc = {64'b0, 1'b0, 1'b1, 16'h8100, (SW_LEN_W+1)'(len),
+                      1'b0, SW_LEN_W'(len), 48'hffff_ffff_ffff,
+                      48'h0201_0203_0405, SW_LEN_W'(len), sw_port_w(N)'(0)};
+    validate_valid = 1;
+    check(validate_ready, "validate accepts descriptor");
+    @(negedge clk); validate_valid = 0;
+    check(checked_valid && checked_desc[BASE+SW_PL_RX_ERR_LSB] == reject &&
+          checked_desc[sw_pl_desc_len_lsb(N) +: SW_LEN_W] == (reject ? '0 : SW_LEN_W'(len)) &&
+          checked_desc[sw_pl_desc_stored_lsb(N) +: SW_LEN_W] == SW_LEN_W'(len),
+          reject ? "reject truncated VLAN with intact accounting" : "accept complete VLAN header");
+    held = checked_desc;
+    repeat (3) @(negedge clk);
+    check(checked_valid && !validate_ready && checked_desc === held, "validation result holds under backpressure");
+    checked_ready = 1;
+    @(negedge clk); checked_ready = 0;
+  endtask
 
-    if (errors == 0) $display("sw_rx_engine_tb: PASSED (%0d checks)", checks);
-    else             $display("sw_rx_engine_tb: FAILED (%0d of %0d checks)", errors, checks);
-    if (errors != 0) $fatal(1, "sw_rx_engine_tb: FAILED");
+  initial begin
+    repeat (3) @(negedge clk);
+    rst_n = 1;
+
+    for (int i = 0; i < MAX_LEN; i++) beat(i, 0, 0);
+    check(!desc_valid && ready, "exact maximum waits for EOF or excess byte");
+    beat(MAX_LEN, 0, 0);
+    descriptor(MAX_LEN, MAX_LEN+1, 1);
+    consume(MAX_LEN);
+    check(empty && ready, "oversize prefix reclaimed before EOF");
+    for (int i = MAX_LEN+1; i < MAX_LEN+8; i++) beat(i, i == MAX_LEN+7, 0);
+    check(!desc_valid && empty, "remainder never publishes a second descriptor");
+
+    beat(0, 0, 0); beat(1, 0, 1);
+    descriptor(1, 2, 1); consume(1);
+    beat(2, 1, 0);
+    check(!desc_valid && empty, "receive error publishes once, then drains");
+
+    beat(0, 0, 0);
+    @(negedge clk); link_up = 0;
+    @(posedge clk); #1;
+    descriptor(1, 1, 1); consume(1);
+    beat(1, 1, 0);
+    check(!desc_valid && empty && !ready, "link-down drain closes without reopening admission");
+    link_up = 1;
+
+    for (int frame = 0; frame < 2; frame++)
+      for (int i = 0; i < MAX_LEN; i++) beat(i, i == MAX_LEN-1, 0);
+    check(!ready, "full descriptor and byte queues block admission");
+    check(desc[BASE+SW_PL_RX_ERR_LSB+1 +: 32] == 32'h87654321, "EOF delivers raw FCS");
+    for (int frame = 0; frame < 2; frame++) begin
+      descriptor(MAX_LEN, MAX_LEN, 0); consume(MAX_LEN);
+    end
+    check(empty && !desc_valid && ready, "queues wrap and recover after congestion");
+    vlan_case(17, 1);
+    vlan_case(18, 0);
+    $display("sw_rx_engine_tb: %0d checks, %0d errors", checks, errors);
+    if (errors != 0) $fatal(1, "stage 1 regression failed");
     $finish;
   end
 
   initial begin : watchdog
-    #2000000;
-    $fatal(1, "sw_rx_engine_tb: timeout");
+    #20000;
+    $fatal(1, "stage 1 watchdog: no progress");
   end
-
-endmodule : sw_rx_engine_tb
+endmodule

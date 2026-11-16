@@ -280,7 +280,7 @@
 # set_property IOSTANDARD <STANDARD> [get_ports {mii_tx_er_o[7]}]
 
 # ---- transmit data, four pins per port --------------------------------------
-# Bus packing is the same as RX; nibble serialization is performed in es_switch_mii.
+# Bus packing is the same as RX; nibble serialization is performed in es_mii_top.
 # set_property PACKAGE_PIN <PIN> [get_ports {mii_txd_o[0]}]
 # set_property IOSTANDARD <STANDARD> [get_ports {mii_txd_o[0]}]
 

@@ -41,11 +41,11 @@
 module es_common_dfflr #(
   parameter int unsigned WIDTH = 1
 ) (
-  input var logic             clk_i,
-  input var logic             rst_ni,
-  input var logic             lden_i,
-  input var logic [WIDTH-1:0] dnxt_i,
-  output    logic [WIDTH-1:0] qout_o
+  input  var logic             clk_i,
+  input  var logic             rst_ni,
+  input  var logic             lden_i,
+  input  var logic [WIDTH-1:0] dnxt_i,
+  output logic     [WIDTH-1:0] qout_o
 );
 
   logic [WIDTH-1:0] q;
@@ -67,10 +67,10 @@ endmodule : es_common_dfflr
 module es_common_dffl #(
   parameter int unsigned WIDTH = 1
 ) (
-  input var logic             clk_i,
-  input var logic             lden_i,
-  input var logic [WIDTH-1:0] dnxt_i,
-  output    logic [WIDTH-1:0] qout_o
+  input  var logic             clk_i,
+  input  var logic             lden_i,
+  input  var logic [WIDTH-1:0] dnxt_i,
+  output logic     [WIDTH-1:0] qout_o
 );
 
   logic [WIDTH-1:0] q;
@@ -90,11 +90,11 @@ endmodule : es_common_dffl
 module es_common_dfflrs #(
   parameter int unsigned WIDTH = 1
 ) (
-  input var logic             clk_i,
-  input var logic             rst_ni,
-  input var logic             lden_i,
-  input var logic [WIDTH-1:0] dnxt_i,
-  output    logic [WIDTH-1:0] qout_o
+  input  var logic             clk_i,
+  input  var logic             rst_ni,
+  input  var logic             lden_i,
+  input  var logic [WIDTH-1:0] dnxt_i,
+  output logic     [WIDTH-1:0] qout_o
 );
 
   logic [WIDTH-1:0] q;

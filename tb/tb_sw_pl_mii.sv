@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb_sw_pl_mii.sv
-//  Description : Self-checking four-port regression for the staged `es_switch_mii`
+//  Description : Self-checking four-port regression for the staged `es_mii_top`
 //                top.  Four independent `sw_mii_if` wire models present COMPLETE
 //                wire frames (preamble/SFD + client + FCS) on the packed MII
 //                nibble pins and reassemble every transmitted frame at the wire
@@ -71,22 +71,22 @@ module tb_sw_pl_mii
   // ---- DUT ------------------------------------------------------------------
   // Only the ports the rewritten top still has are connected: the legacy
   // dip/stat/cam-readback/LED/cfg ports no longer exist.
-  es_switch_mii #(
+  es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_HZ),
     .PORT_SPEED  (SPEEDS),
     .PORT_MAC    ('0),
     .IFG_OCTETS  (12)
   ) u_dut (
-    .clk_i         (clk),
-    .rst_ni        (rst_n),
-    .link_up_i     (link_up),
-    .mii_rx_dv_i   (mii_rx_dv),
-    .mii_rx_er_i   (mii_rx_er),
-    .mii_rxd_i     (mii_rxd),
-    .mii_tx_en_o   (mii_tx_en),
-    .mii_tx_er_o   (mii_tx_er),
-    .mii_txd_o     (mii_txd)
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .link_up_i   (link_up),
+    .mii_rx_dv_i (mii_rx_dv),
+    .mii_rx_er_i (mii_rx_er),
+    .mii_rxd_i   (mii_rxd),
+    .mii_tx_en_o (mii_tx_en),
+    .mii_tx_er_o (mii_tx_er),
+    .mii_txd_o   (mii_txd)
   );
 
   // ---- per-port MII wire models --------------------------------------------
@@ -280,6 +280,13 @@ module tb_sw_pl_mii
     idle(SETTLE_CLKS);
     for (p = 0; p < NUM_PORTS; p++)
       expect_on(p, 0, bcast, host_c, CLIENT_LEN, "bad FCS");
+
+    // The valid wire prefix must still be rejected if PHY RX_ER
+    // terminates the receive stream immediately after its FCS.
+    g_phy[0].u_if.send(bcast, host_c, TB_ET_IPV4, CLIENT_LEN, 0, 0, 0, 1);
+    idle(SETTLE_CLKS);
+    for (p = 0; p < NUM_PORTS; p++)
+      expect_on(p, 0, bcast, host_c, CLIENT_LEN, "RX_ER after valid prefix");
 
     check_queues();
 

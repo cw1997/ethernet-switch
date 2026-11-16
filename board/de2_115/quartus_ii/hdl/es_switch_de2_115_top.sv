@@ -5,7 +5,7 @@
 //                This is a pin map only.  The console, front panel, status
 //                lamps, DIP configuration and statistics read-back ports have
 //                been removed: FLOOD_MODE / LEARNING_EN are elaboration
-//                parameters of es_switch_mii and no run-time monitoring path
+//                parameters of es_mii_top and no run-time monitoring path
 //                exists.  What remains is the PHY management needed to bring
 //                the two 88E1111 PHYs up, the 25 MHz TX clock dividers, the
 //                synchronised KEY0 reset and the switch itself.
@@ -23,18 +23,26 @@ module es_switch_de2_115_top (
   input  var logic [3:0]  KEY,
 
   input  var logic [3:0]  ENET0_RX_DATA,
-  input  var logic        ENET0_RX_DV, ENET0_RX_ER,
+  input  var logic        ENET0_RX_DV,
+  ENET0_RX_ER,
   output      logic [3:0] ENET0_TX_DATA,
-  output      logic       ENET0_TX_EN, ENET0_TX_ER, ENET0_TX_CLK,
-  output      logic       ENET0_RESET_N, ENET0_MDC,
+  output      logic       ENET0_TX_EN,
+  ENET0_TX_ER,
+  ENET0_TX_CLK,
+  output      logic       ENET0_RESET_N,
+  ENET0_MDC,
   inout   tri logic       ENET0_MDIO,
   input  var logic        ENET0_INT_N,
 
   input  var logic [3:0]  ENET1_RX_DATA,
-  input  var logic        ENET1_RX_DV, ENET1_RX_ER,
+  input  var logic        ENET1_RX_DV,
+  ENET1_RX_ER,
   output      logic [3:0] ENET1_TX_DATA,
-  output      logic       ENET1_TX_EN, ENET1_TX_ER, ENET1_TX_CLK,
-  output      logic       ENET1_RESET_N, ENET1_MDC,
+  output      logic       ENET1_TX_EN,
+  ENET1_TX_ER,
+  ENET1_TX_CLK,
+  output      logic       ENET1_RESET_N,
+  ENET1_MDC,
   inout   tri logic       ENET1_MDIO,
   input  var logic        ENET1_INT_N
 );
@@ -88,7 +96,9 @@ module es_switch_de2_115_top (
 
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
-      es_perips_phy_88e1111 #(.CLK_FREQ_HZ(CLK_FREQ_HZ)) u_phy (
+      es_perips_phy_88e1111 #(
+        .CLK_FREQ_HZ (CLK_FREQ_HZ)
+      ) u_phy (
         .clk_i     (CLOCK_50),
         .rst_ni    (rst_ni),
         .mdio_i    (phy_mdio_i[g]),
@@ -102,22 +112,22 @@ module es_switch_de2_115_top (
   endgenerate
 
   // ---- staged switch -------------------------------------------------------
-  es_switch_mii #(
+  es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
     .PORT_SPEED  ({NUM_PORTS{2'(SW_SPEED_100M)}}),
     .CAM_SETS    (128),
     .CAM_WAYS    (4)
   ) u_switch (
-    .clk_i        (CLOCK_50),
-    .rst_ni       (rst_ni),
-    .link_up_i    (phy_enabled),
-    .mii_rx_dv_i  ({ENET1_RX_DV, ENET0_RX_DV}),
-    .mii_rx_er_i  ({ENET1_RX_ER, ENET0_RX_ER}),
-    .mii_rxd_i    ({ENET1_RX_DATA, ENET0_RX_DATA}),
-    .mii_tx_en_o  ({ENET1_TX_EN, ENET0_TX_EN}),
-    .mii_tx_er_o  ({ENET1_TX_ER, ENET0_TX_ER}),
-    .mii_txd_o    ({ENET1_TX_DATA, ENET0_TX_DATA})
+    .clk_i       (CLOCK_50),
+    .rst_ni      (rst_ni),
+    .link_up_i   (phy_enabled),
+    .mii_rx_dv_i ({ENET1_RX_DV, ENET0_RX_DV}),
+    .mii_rx_er_i ({ENET1_RX_ER, ENET0_RX_ER}),
+    .mii_rxd_i   ({ENET1_RX_DATA, ENET0_RX_DATA}),
+    .mii_tx_en_o ({ENET1_TX_EN, ENET0_TX_EN}),
+    .mii_tx_er_o ({ENET1_TX_ER, ENET0_TX_ER}),
+    .mii_txd_o   ({ENET1_TX_DATA, ENET0_TX_DATA})
   );
 
   // Deliberate dummy consumer for status / interrupt pins that no longer have

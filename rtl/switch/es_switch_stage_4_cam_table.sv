@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_cam_table.sv
+//  File        : es_switch_stage_4_cam_table.sv
 //  Description : Forwarding table for the staged switch: NUM_PORTS parallel
 //                lookups AND NUM_PORTS parallel learns in the SAME clock.
 //
@@ -37,33 +37,33 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_CAM_TABLE_SV
-`define ES_SWITCH_CAM_TABLE_SV
+`ifndef ES_SWITCH_STAGE_4_CAM_TABLE_SV
+`define ES_SWITCH_STAGE_4_CAM_TABLE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_cam_table #(
+module es_switch_stage_4_cam_table #(
   parameter int unsigned NUM_PORTS = 4,
   parameter int unsigned NUM_SETS  = 128,
   parameter int unsigned NUM_WAYS  = 4
 ) (
-  input  var logic                                  clk_i,
-  input  var logic                                  rst_ni,
+  input  var logic                                      clk_i,
+  input  var logic                                      rst_ni,
 
   // ---- NUM_PORTS parallel lookups (combinational, read-first) -----------
-  input  var logic [NUM_PORTS-1:0]                  req_i,
-  input  var logic [NUM_PORTS*48-1:0]               mac_i,
-  output      logic [NUM_PORTS-1:0]                 hit_o,
-  output      logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] port_o,
+  input  var logic [NUM_PORTS-1:0]                      req_i,
+  input  var logic [NUM_PORTS*48-1:0]                   mac_i,
+  output logic     [NUM_PORTS-1:0]                      hit_o,
+  output logic     [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] port_o,
 
   // ---- NUM_PORTS parallel learns (written on the same clock) ------------
-  input  var logic [NUM_PORTS-1:0]                  learn_i,
-  input  var logic [NUM_PORTS*48-1:0]               learn_mac_i,
+  input  var logic [NUM_PORTS-1:0]                      learn_i,
+  input  var logic [NUM_PORTS*48-1:0]                   learn_mac_i,
   input  var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
-  output      logic [NUM_PORTS-1:0]                 learn_ready_o
+  output logic     [NUM_PORTS-1:0]                      learn_ready_o
 );
 
   localparam int unsigned PW     = sw_port_w(NUM_PORTS);
@@ -323,7 +323,7 @@ module es_switch_cam_table #(
   es_mems_reg_bank #(
     .WIDTH       (ENT_W),
     .DEPTH       (NENT),
-    .RESET_VALUE ('0)   // an empty entry is all zeros: valid bit low
+    .RESET_VALUE ('0)  // an empty entry is all zeros: valid bit low
   ) u_entry_q (
     .clk_i     (clk_i),
     .rst_ni    (rst_ni),
@@ -349,14 +349,14 @@ module es_switch_cam_table #(
 `ifndef SYNTHESIS
   initial begin
     if (NUM_SETS < 1 || NUM_WAYS < 1 || NUM_PORTS < 1)
-      $error("es_switch_cam_table: set/way/port counts out of range");
+      $error("es_switch_stage_4_cam_table: set/way/port counts out of range");
     if (NUM_PORTS > (1 << PW))
-      $error("es_switch_cam_table: NUM_PORTS does not fit the port index");
+      $error("es_switch_stage_4_cam_table: NUM_PORTS does not fit the port index");
   end
 `endif
 
-endmodule : es_switch_cam_table
+endmodule : es_switch_stage_4_cam_table
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_CAM_TABLE_SV
+`endif  // ES_SWITCH_STAGE_4_CAM_TABLE_SV

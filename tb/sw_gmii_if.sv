@@ -194,7 +194,7 @@ module sw_gmii_if
   // testbench uses one: Icarus Verilog cannot put a typedef'd struct into a
   // queue, and the record layout has to be shared with the scoreboard.
   sw_rec_q #(
-    .DEPTH(MON_DEPTH)
+    .DEPTH (MON_DEPTH)
   ) u_mon (
     .clk_i       (clk_i),
     .rst_ni      (rst_ni),
@@ -256,7 +256,7 @@ module sw_gmii_if
         end
         // A legal Ethernet frame is never shorter than a preamble plus a minimum
         // frame, so this is counted separately as a protocol violation.
-        if (mon_n > 0 && mon_n < 8 + 64 + 4) mon_short <= mon_short + 1;
+        if (mon_n > 0 && mon_n < 8 + 60 + 4) mon_short <= mon_short + 1;
         mon_buf    = '0;
         mon_n      = 0;
         mon_active = 1'b0;

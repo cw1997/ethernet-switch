@@ -1,6 +1,6 @@
 // ============================================================================
 //  File        : tb/sw_rmii_tb.sv
-//  Description : Unit testbench of the RMII symbol adapter (`es_switch_rmii`).
+//  Description : Unit testbench of the RMII symbol adapter (`es_rmii_top`).
 //
 //                Verified here, against the contract stated in the module
 //                header:
@@ -74,7 +74,7 @@ module sw_rmii_tb;
   logic [7:0] oct_d_i;    ///< canonical transmit octet
 
   es_mac_rmii_serdes #(
-    .BYTE_PERIOD(BP)
+    .BYTE_PERIOD (BP)
   ) u_rmii (
     .clk_i         (clk),
     .rst_ni        (rst_n),
@@ -108,7 +108,7 @@ module sw_rmii_tb;
   logic [7:0] f_oct_d_i;
 
   es_mac_rmii_serdes #(
-    .BYTE_PERIOD(BP2)
+    .BYTE_PERIOD (BP2)
   ) u_fast (
     .clk_i         (clk),
     .rst_ni        (rst_n),

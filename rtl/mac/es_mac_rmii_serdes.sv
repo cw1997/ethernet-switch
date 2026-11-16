@@ -110,27 +110,22 @@ module es_mac_rmii_serdes #(
   /// multiple of 4: every octet time carries exactly four 2-bit chunk windows.
   parameter int unsigned BYTE_PERIOD = 4
 ) (
-  /// Clock/reset; this model has no separate REF_CLK input.
-  input var logic clk_i,
-  input var logic rst_ni,
+  input  var logic       clk_i,
+  input  var logic       rst_ni,  /// Carrier/data-valid and low-chunk-first receive symbols.
 
   // ---- RMII receive pins (synchronous to clk_i) ----------------------------
-  /// Carrier/data-valid and low-chunk-first receive symbols.
-  input var logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
-  input var logic [1:0] rmii_rxd_i,
+  input  var logic       rmii_crs_dv_i,  ///< carrier sense / data valid (see header)
+  input  var logic [1:0] rmii_rxd_i,  /// Transmit enable and low-chunk-first symbols.
 
   // ---- RMII transmit pins --------------------------------------------------
-  /// Transmit enable and low-chunk-first symbols.
-  output    logic       rmii_tx_en_o,
-  output    logic [1:0] rmii_txd_o,
+  output logic           rmii_tx_en_o,
+  output logic     [1:0] rmii_txd_o,  /// Receive octets are presented for one complete BYTE_PERIOD window.
 
   // ---- canonical octet stream (see the module header) ----------------------
-  /// Receive octets are presented for one complete BYTE_PERIOD window.
-  output    logic       oct_en_o,
-  output    logic [7:0] oct_d_o,
-  /// Transmit octets are consumed on the canonical octet grid.
-  input var logic       oct_en_i,
-  input var logic [7:0] oct_d_i
+  output logic           oct_en_o,
+  output logic     [7:0] oct_d_o,  /// Transmit octets are consumed on the canonical octet grid.
+  input  var logic       oct_en_i,
+  input  var logic [7:0] oct_d_i
 );
 
   // --------------------------------------------------------------------------
