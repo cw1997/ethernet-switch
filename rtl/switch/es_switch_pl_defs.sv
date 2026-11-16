@@ -8,8 +8,7 @@
 //                yosys rejects package items in port ranges and has no
 //                implementation for `import` (AGENTS.md 2.1).  Field offsets
 //                are therefore functions over `NUM_PORTS`, evaluated into a
-//                `localparam` at each module, exactly as the legacy
-//                `sw_tag_*_lsb()` helpers did.  A caller writes
+//                `localparam` at each module.  A caller writes
 //
 //                    localparam int unsigned DESC_DST =
 //                        sw_pl_desc_dstm_lsb(NUM_PORTS);
@@ -36,37 +35,14 @@
 // ============================================================================
 // 1.  Byte-stream contract between a MAC adapter and the switch core
 // ============================================================================
-// One octet per handshake.  Sideband travels in the same packed word so a
-// pipe_stage can carry the whole boundary with one instance.  The switch core
-// sees MAC client data only: no preamble or SFD. RX FCS travels separately with EOF.
-localparam int unsigned SW_PL_BYTE_W = 8;
-localparam int unsigned SW_PL_BS_W   = SW_PL_BYTE_W + 3;  // {err, eof, sof, data}
-
-localparam int unsigned SW_PL_BS_DATA_LSB = 0;
-localparam int unsigned SW_PL_BS_SOF_LSB  = SW_PL_BYTE_W;
-localparam int unsigned SW_PL_BS_EOF_LSB  = SW_PL_BYTE_W + 1;
-localparam int unsigned SW_PL_BS_ERR_LSB  = SW_PL_BYTE_W + 2;
-
-/// Preamble octet and start-of-frame delimiter.  The MAC adapter hunts for
-/// seven of the former followed by the latter; a broken run produces no bytes
-/// at all rather than a partial frame (see es_mac_frame_rx.sv).
+// The switch core sees MAC client data only: no preamble or SFD.  The MAC
+// adapter hunts for seven preamble octets followed by the SFD; a broken run
+// produces no bytes at all rather than a partial frame (es_mac_frame_rx).
 localparam logic [7:0] SW_PL_PREAMBLE_OCTET = 8'h55;
 localparam logic [7:0] SW_PL_SFD_OCTET      = 8'hD5;
 
 // ============================================================================
-// 2.  Pipeline level identifiers (documentation and test labels)
-// ============================================================================
-localparam int unsigned SW_PL_STAGE_RX       = 1;
-localparam int unsigned SW_PL_STAGE_VALIDATE = 2;
-localparam int unsigned SW_PL_STAGE_CHECKSUM = 3;
-localparam int unsigned SW_PL_STAGE_LOOKUP   = 4;
-localparam int unsigned SW_PL_STAGE_TX       = 5;
-
-/// Default inter-stage register depth, overridable per level.
-localparam int unsigned SW_PL_DEFAULT_DP = 1;
-
-// ============================================================================
-// 3.  Frame descriptor layout
+// 2.  Frame descriptor layout
 // ============================================================================
 // Width of the occupancy/free counter of an es_mems_sync_fifo with the given
 // DEPTH.  It has to be callable directly in a port range, exactly like
@@ -115,7 +91,7 @@ function automatic int unsigned sw_pl_tx_depth(input int unsigned depth,
 endfunction
 
 // ============================================================================
-// 4.  CAM-level and decide-level packages
+// 3.  CAM-level descriptor accessors
 // ============================================================================
 /// CAM level appends {hit, port_onehot} to the descriptor.
 function automatic int unsigned sw_pl_cam_w(input int unsigned nports);
@@ -130,17 +106,8 @@ function automatic int unsigned sw_pl_cam_port_lsb(input int unsigned nports);
   sw_pl_cam_port_lsb = sw_pl_desc_w(nports) + 1;
 endfunction
 
-/// Decide level appends the egress mask to the descriptor.
-function automatic int unsigned sw_pl_dec_w(input int unsigned nports);
-  sw_pl_dec_w = sw_pl_desc_w(nports) + nports;
-endfunction
-
-function automatic int unsigned sw_pl_dec_mask_lsb(input int unsigned nports);
-  sw_pl_dec_mask_lsb = sw_pl_desc_w(nports);
-endfunction
-
 // ============================================================================
-// 5.  Default geometry for the synthesis front end
+// 4.  Default geometry for the synthesis front end
 // ============================================================================
 // `make synth` and LibreLane both define SYNTHESIS.  A full-size frame buffer
 // (4 ports x 2048 bytes x 8 = 131072 flops) makes yosys' `synth -flatten`

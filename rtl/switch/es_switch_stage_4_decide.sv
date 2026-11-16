@@ -26,7 +26,7 @@
 
 module es_switch_stage_4_decide #(
   parameter int unsigned NUM_PORTS = 4,
-  parameter logic [1:0] FLOOD_MODE = 2'd1
+  parameter logic [1:0] FLOOD_MODE = SW_FLOOD_BCAST_UKN
 ) (
   input  var logic                                        clk_i,
   input  var logic                                        rst_ni,

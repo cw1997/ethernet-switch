@@ -88,7 +88,7 @@ A port needs one elaboration-time constant, `BYTE_PERIOD = sw_byte_period(CLK_FR
 ## 8. Repository map
 
 ```
-rtl/common/     two-stage sampler, CRC-32, DFF/pipe-stage primitives
+rtl/common/     CRC-32, DFF/pipe-stage primitives
 rtl/mac/        byte-stream framers, GMII/MII/RMII adapters, serialisers
 rtl/mems/       FWFT FIFO, 1R1W RAM, parallel register banks
 rtl/perips/     MDIO and 88E1111 PHY management

@@ -96,7 +96,6 @@ module sw_rmii_tb;
   // separately.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP2  = 4;
-  localparam int unsigned CPK2 = BP2 / 4;
 
   logic       f_rx_dv;
   logic [1:0] f_rxd;

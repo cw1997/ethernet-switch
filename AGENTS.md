@@ -30,16 +30,16 @@ Makefile       every gate; the target list is documented in its own header
 ```
 
 `rtl/es_defs.sv` holds common interface declarations and includes the guarded
-`common/es_common_defs.sv`, `mac/es_mac_defs.sv`, `perips/es_perips_defs.sv`,
-`switch/es_switch_pl_defs.sv` and `switch/es_switch_defs.sv` libraries in
-dependency order. Put new constants in the owning library, keeping
-cross-domain widths common; pipeline stage identifiers and descriptor field
+`common/es_common_defs.sv`, `switch/es_switch_pl_defs.sv` and
+`switch/es_switch_defs.sv` libraries in dependency order. Put new constants in
+the owning library, keeping cross-domain widths common; descriptor field
 offsets belong in `es_switch_pl_defs.sv`. All libraries remain at
 compilation-unit scope; the umbrella include preserves standalone-module
 compilation and the existing declaration-only lint policy. The pipeline
 library is included *before* `es_switch_defs.sv`, because that file closes the
 two declaration-only waivers at its end. There is no statistics register map,
-no console library and no panel library.
+no console library, no panel library, no MAC-identity library and no UART
+library.
 
 **The datapath has one boundary that matters, and it is an 8-bit byte stream
 with valid/ready.** `rtl/mac/` owns everything the line interface implies -
@@ -558,18 +558,18 @@ the only domain that knows a clock enable or a symbol order exists.
 look up and copy, then transmit.
 `rtl/perips/` owns MDIO and 88E1111 PHY management.
 `rtl/mems/` owns FWFT FIFO, asynchronous-read/synchronous-write RAM and
-parallel register banks. `rtl/common/` owns the two-stage sampler, CRC-32 and
-the pipeline register primitives (`es_common_dffs`, `es_common_pipe_stage`).
+parallel register banks. `rtl/common/` owns CRC-32 and the pipeline register
+primitives (`es_common_dffs`, `es_common_pipe_stage`).
 Source lists use these paths; no ROM initialization is introduced -
 elaboration-time tables remain functions. There is no panel, console,
 statistics or monitoring domain.
 
-**Two synthesis hazards that only appear here.** Casting a *variable* to an enum
-type - `sw_console_cmd_e'(some_var)` - is rejected by yosys with "Static cast
-with non constant expression"; compare the plain encoding against the enum's
-constants instead. And an enum-typed function argument has the same problem, so
-the console's table functions take `logic [3:0]` and compare against the
-`sw_console_*_e` members.
+**A synthesis hazard to avoid here.** Casting a *variable* to an enum type is
+rejected by yosys with "Static cast with non constant expression"; compare the
+plain encoding against named constants of the same width instead. An
+enum-typed function argument has the same problem, which is why the shared
+helpers take plain `logic` vectors. The two-bit switch policy is therefore a
+set of `SW_FLOOD_*` localparams rather than an enum typedef.
 
 ## Pipeline architecture
 

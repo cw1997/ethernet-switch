@@ -9,9 +9,6 @@
 //                  * `tb_crc32` - bit-serial CRC-32 reference.  The RTL uses a
 //                    byte-wide lookup table, so the two only agree if both are
 //                    correct.
-//                  * `tb_crc32_selftest` - known-answer test for the reference
-//                    itself, so a failure of the reference is never mistaken
-//                    for a failure of the design.
 //                  * `tb_build_frame` - assembles a complete, wire-legal
 //                    Ethernet frame into a flat octet vector.
 //                  * `tb_rec_t` - the record the scoreboard compares, again a
@@ -95,23 +92,10 @@ package sw_tb_pkg;
     return c ^ 32'hFFFF_FFFF;
   endfunction
 
-  /// Known-answer test for the reference above: the CRC-32 of the ASCII string
-  /// "123456789" is 0xCBF43926.  The testbench calls this before anything else
-  /// so that a broken reference is reported as such.
-  function automatic logic tb_crc32_selftest();
-    tb_frame_buf_t b;
-    int            i;
-    b = '0;
-    for (i = 0; i < 9; i++) b = tb_put_octet(b, i, 8'h30 + 8'(i + 1));
-    return (tb_crc32(b, 9) == 32'hCBF4_3926);
-  endfunction
-
   // ==========================================================================
   // Protocol constants used by the tests
   // ==========================================================================
   localparam logic [15:0] TB_ET_IPV4 = 16'h0800;
-  localparam logic [15:0] TB_ET_ARP  = 16'h0806;
-  localparam logic [15:0] TB_ET_IPV6 = 16'h86DD;
 
   // ==========================================================================
   // Frame construction
@@ -222,15 +206,6 @@ package sw_tb_pkg;
     n++;
 
     return frame;
-  endfunction
-
-  // ==========================================================================
-  // Formatting
-  // ==========================================================================
-  /// Printable "xx:xx:xx:xx:xx:xx" form of a MAC address, for test log lines.
-  function automatic string tb_mac_str(input sw_mac_t m);
-    return $sformatf("%02x:%02x:%02x:%02x:%02x:%02x", m[47:40], m[39:32], m[31:24], m[23:16],
-                     m[15:8], m[7:0]);
   endfunction
 
   // ==========================================================================

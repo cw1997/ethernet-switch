@@ -97,7 +97,6 @@ module sw_mii_tb;
   // separately.
   // ---------------------------------------------------------------------------
   localparam int unsigned BP2  = 2;
-  localparam int unsigned NPK2 = BP2 / 2;
 
   logic       f_rx_dv;
   logic       f_rx_er;

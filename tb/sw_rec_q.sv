@@ -36,7 +36,7 @@ module sw_rec_q
 
   // ---- push ----------------------------------------------------------------
   // The port-side strobes exist for the case where the queue is driven by
-  // ordinary RTL, e.g. the transmit monitor of sw_gmii_if.  Leave them open
+  // ordinary RTL, e.g. a transmit monitor.  Leave them open
   // (`Z`) when unused: a hard `1'b0` would be a *drive* of the port, so the
   // task-driven strobes below could not contribute, and the queue would appear
   // permanently idle.  A `Z` port reads as high impedance and is resolved out of

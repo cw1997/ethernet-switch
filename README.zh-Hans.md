@@ -88,7 +88,7 @@
 ## 8. 仓库结构
 
 ```
-rtl/common/     两级采样器、CRC-32、DFF / pipe-stage 原语
+rtl/common/     CRC-32、DFF / pipe-stage 原语
 rtl/mac/        字节流成帧器、GMII/MII/RMII 适配器、串行器
 rtl/mems/       FWFT FIFO、1R1W RAM、并行寄存器堆
 rtl/perips/     MDIO 与 88E1111 PHY 管理

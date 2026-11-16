@@ -46,7 +46,6 @@ BUILD    := build
 RTL_HEADERS := $(wildcard $(RTL_DIR)/*defs.sv $(RTL_DIR)/*/*defs.sv)
 
 RTL_SRCS := \
-  $(RTL_DIR)/common/es_common_sync_2ff.sv \
   $(RTL_DIR)/common/es_common_crc32.sv \
   $(RTL_DIR)/common/es_common_dffs.sv \
   $(RTL_DIR)/common/es_common_pipe_stage.sv \

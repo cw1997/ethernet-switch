@@ -114,11 +114,8 @@ set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_
 # resolves `include through SEARCH_PATH, so this order is for the reader.
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/mac/es_mac_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/perips/es_perips_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_pl_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_defs.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_sync_2ff.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_crc32.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_dffs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/common/es_common_pipe_stage.sv

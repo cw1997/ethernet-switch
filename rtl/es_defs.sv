@@ -38,8 +38,8 @@
 localparam int unsigned SW_DEFAULT_NUM_PORTS = 4;
 
 /// Frame length in octets, excluding the FCS, shared by the forwarding
-/// datapath and by the MAC beat stream.  Eleven bits cover 2047 octets, i.e. any frame
-/// up to `SW_MAX_FRAME_LEN` with headroom.
+/// datapath and by the MAC byte stream.  Eleven bits cover 2047 octets, i.e. any
+/// legal Ethernet frame with headroom.
 localparam int unsigned SW_LEN_W = 11;
 
 // ============================================================================
@@ -65,8 +65,9 @@ typedef enum logic [1:0] {
   SW_SPEED_NONE  = 2'd3   ///< port administratively down
 } sw_speed_e;
 
-/// Nominal line rate in bit/s for a link speed.  Used by the byte-period
-/// helper below; a down port reports 1 so that the division never degenerates.
+/// Nominal line rate in bit/s for a link speed.  A down port reports 1 so that
+/// the byte-period division never degenerates; `default` covers the remaining
+/// encodings of the two-bit field, which the speed model treats the same way.
 function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
   int unsigned baud;
   baud = 1;
@@ -74,6 +75,7 @@ function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
     SW_SPEED_10M:   baud = 10000000;
     SW_SPEED_100M:  baud = 100000000;
     SW_SPEED_1000M: baud = 1000000000;
+    SW_SPEED_NONE:  baud = 1;
     default:        baud = 1;
   endcase
   sw_speed_baud = baud;
@@ -103,18 +105,16 @@ endfunction
 // ============================================================================
 // Included, not compiled separately: each file is guarded, and pulling them in
 // here is what lets a module be compiled on its own.  Dependency order is
-// common -> mac -> perips -> pl -> switch.  The pipeline library (pl) is
-// deliberately BEFORE switch/es_switch_defs.sv: that file closes the two
-// declaration-only lint waivers at its end, so a `sw_pl_*` helper that a
-// particular top does not read yet would otherwise fail `make lint` as
-// UNUSEDPARAM.  pl needs only `SW_LEN_W` above and `sw_port_w()` from common.
+// common -> pl -> switch.  The pipeline library (pl) is deliberately BEFORE
+// switch/es_switch_defs.sv: that file closes the two declaration-only lint
+// waivers at its end, so a `sw_pl_*` helper that a particular top does not read
+// yet would otherwise fail `make lint` as UNUSEDPARAM.  pl needs only `SW_LEN_W`
+// above and `sw_port_w()` from common.
 //
-// The statistics register map and the panel/console libraries are gone: the
-// staged switch is pure switching logic and exports no status, counters,
+// The MAC-identity, UART, statistics, panel and console libraries are gone:
+// the staged switch is pure switching logic and exports no status, counters,
 // commands or lamp outputs.
 `include "common/es_common_defs.sv"
-`include "mac/es_mac_defs.sv"
-`include "perips/es_perips_defs.sv"
 `include "switch/es_switch_pl_defs.sv"
 `include "switch/es_switch_defs.sv"
 

@@ -8,8 +8,8 @@
 //                absent.
 //
 //                Section numbers are local to this file; the umbrella header
-//                rtl/es_defs.sv carries the shared widths and the statistics
-//                map that the sections below refer to.
+//                rtl/es_defs.sv carries the shared widths that the sections
+//                below refer to.
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -45,27 +45,18 @@
 localparam int unsigned SW_HDR_LEN       = 14;    ///< dst MAC + src MAC + EtherType
 localparam int unsigned SW_HDR_LEN_VLAN  = 18;    ///< 802.1Q tagged header
 localparam int unsigned SW_FCS_LEN       = 4;     ///< Ethernet FCS (CRC-32)
-localparam int unsigned SW_MIN_FRAME_LEN = 64;    ///< 802.3 minimum frame size
-localparam int unsigned SW_MAX_FRAME_LEN = 1518;  ///< 802.3 maximum frame size
-localparam int unsigned SW_MIN_PAYLOAD   = 46;    ///< minimum MAC client data
 localparam int unsigned SW_MAX_ETHERTYPE = 1500;  ///< largest legal 802.3 length
 localparam int unsigned SW_PREAMBLE_LEN  = 8;     ///< 7 x 0x55 + 1 x 0xD5
 localparam int unsigned SW_IFG_OCTETS    = 12;    ///< minimum inter-frame gap
 
-/// Number of octets carried by one 64-bit beat of the switching datapath.
-localparam int unsigned SW_BEAT_BYTES = 8;
-
 // `SW_LEN_W`, the width of a frame length field, is declared in es_defs.sv
-// because the MAC beat stream shares it with the forwarding datapath.
+// because the MAC byte stream shares it with the forwarding datapath.
 
 // ============================================================================
 // 3.  EtherType values recognised by the receive parser
 // ============================================================================
-localparam logic [15:0] SW_ETHERTYPE_IPV4 = 16'h0800;
-localparam logic [15:0] SW_ETHERTYPE_ARP  = 16'h0806;
 localparam logic [15:0] SW_ETHERTYPE_VLAN = 16'h8100;  ///< 802.1Q customer tag
 localparam logic [15:0] SW_ETHERTYPE_QINQ = 16'h88A8;  ///< 802.1ad service tag
-localparam logic [15:0] SW_ETHERTYPE_IPV6 = 16'h86DD;
 
 /// True when the length/EtherType field carries an 802.1Q / 802.1ad tag, which
 /// pushes the real EtherType four octets further into the header.
@@ -124,11 +115,6 @@ localparam int unsigned SW_MAC_IG_BIT = 40;
 localparam sw_mac_t SW_MAC_BROADCAST = 48'hFF_FF_FF_FF_FF_FF;
 localparam sw_mac_t SW_MAC_NULL      = 48'h00_00_00_00_00_00;
 
-/// True for the reserved all-ones broadcast address.
-function automatic logic sw_is_broadcast(input sw_mac_t mac);
-  sw_is_broadcast = (mac == SW_MAC_BROADCAST);
-endfunction
-
 /// True for a group (multicast) address.  The all-zero address is excluded
 /// because it is neither a valid source nor a valid destination.
 function automatic logic sw_is_group(input sw_mac_t mac);
@@ -149,69 +135,11 @@ endfunction
 // ============================================================================
 // 6.  Unknown-unicast / group-address flooding policy
 // ============================================================================
-typedef enum logic [1:0] {
-  SW_FLOOD_BCAST_ONLY = 2'd0,  ///< forward only dst == ff:ff:ff:ff:ff:ff
-  SW_FLOOD_BCAST_UKN  = 2'd1,  ///< also flood unicast addresses that miss
-  SW_FLOOD_ALL        = 2'd2   ///< also flood unknown group addresses
-} sw_flood_mode_e;
-
-// ============================================================================
-// 7.  Frame-descriptor ("tag") field layout
-// ============================================================================
-// Every buffered frame is described by one tag word that travels alongside the
-// payload in a per-port descriptor FIFO.  The field offsets below keep the
-// producer (es_switch_rx_port) and the consumer (es_switch_arbiter) in lock-step.
-//
-//   +--------------------------------------------+  bit TAGW-1
-//   |  dst_mask   NUM_PORTS bits                 |
-//   +-----------+--------------------------------+
-//   |  len       SW_LEN_W bits                   |
-//   +-----------+--------------------------------+
-//   |  src       PW bits                         |
-//   +-----------+--------------------------------+
-//   |  flood     1 bit                           |
-//   +-----------+--------------------------------+
-//   |  drop      1 bit                           |  bit 0
-//   +--------------------------------------------+
-//
-// `dst_mask` is the ingress filter's forwarding decision, already frozen when
-// the frame was buffered.  It is one-hot for a unicast hit and all-ones
-// (minus the ingress port) for a flooded frame.  The offsets are functions
-// rather than constants because they depend on the elaborated port count.
-function automatic int unsigned sw_tag_dstm_lsb(input int unsigned n);
-  sw_tag_dstm_lsb = 0;
-endfunction
-
-function automatic int unsigned sw_tag_src_lsb(input int unsigned n);
-  sw_tag_src_lsb = n;
-endfunction
-
-function automatic int unsigned sw_tag_len_lsb(input int unsigned n);
-  sw_tag_len_lsb = n + sw_port_w(n);
-endfunction
-
-function automatic int unsigned sw_tag_flood_lsb(input int unsigned n);
-  sw_tag_flood_lsb = sw_tag_len_lsb(n) + SW_LEN_W;
-endfunction
-
-function automatic int unsigned sw_tag_drop_lsb(input int unsigned n);
-  sw_tag_drop_lsb = sw_tag_flood_lsb(n) + 1;
-endfunction
-
-/// Total width of a frame descriptor in bits.
-function automatic int unsigned sw_tag_width(input int unsigned n);
-  sw_tag_width = sw_tag_drop_lsb(n) + 1;
-endfunction
-
-/// Width of the egress-FIFO free-space counter exposed to the fabric.
-function automatic int unsigned sw_tx_free_width(input int unsigned depth);
-  sw_tx_free_width = (depth <= 2) ? 1 : $clog2(depth);
-endfunction
-
-/// Number of 64-bit beats needed to hold a frame of `len` octets.
-function automatic int unsigned sw_beats_of(input int unsigned len);
-  sw_beats_of = (len + (SW_BEAT_BYTES - 1)) / SW_BEAT_BYTES;
-endfunction
+// Encodings of the two-bit FLOOD_MODE parameter, not a typedef: casting a
+// variable to an enum is rejected by yosys (AGENTS.md, "Shared RTL domains").
+localparam logic [1:0] SW_FLOOD_BCAST_ONLY = 2'd0;  ///< only ff:ff:ff:ff:ff:ff
+localparam logic [1:0] SW_FLOOD_BCAST_UKN  = 2'd1;  ///< also flood unicast misses
+localparam logic [1:0] SW_FLOOD_ALL        = 2'd2;  ///< also flood group misses
 
 `ifdef VERILATOR
 /* verilator lint_on UNUSEDSIGNAL */

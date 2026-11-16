@@ -83,31 +83,6 @@ module es_common_dffl #(
 
 endmodule : es_common_dffl
 
-// ----------------------------------------------------------------------------
-// Load-enable register, synchronous active-low reset to all ones.  Used when
-// a stage needs a "not yet initialised" sentinel rather than zero.
-// ----------------------------------------------------------------------------
-module es_common_dfflrs #(
-  parameter int unsigned WIDTH = 1
-) (
-  input  var logic             clk_i,
-  input  var logic             rst_ni,
-  input  var logic             lden_i,
-  input  var logic [WIDTH-1:0] dnxt_i,
-  output logic     [WIDTH-1:0] qout_o
-);
-
-  logic [WIDTH-1:0] q;
-
-  always_ff @(posedge clk_i) begin
-    if (!rst_ni)   q <= '1;
-    else if (lden_i) q <= dnxt_i;
-  end
-
-  assign qout_o = q;
-
-endmodule : es_common_dfflrs
-
 // Hand the nettype default back.
 `default_nettype wire
 

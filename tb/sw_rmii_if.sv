@@ -81,7 +81,7 @@ module sw_rmii_if
   // order, exactly the contract stated in es_rmii_top (the adapter samples at the
   // end of each window and counts every frame's windows from the CRS_DV rise).
   //
-  // The cadence idiom is the one sw_mii_if and sw_gmii_if use, and getting it
+  // The cadence idiom is the one sw_mii_if uses, and getting it
   // wrong by one clock per window is exactly what tb_sw_switch_rmii catches:
   // each chunk is launched with a non-blocking assignment at the posedge that
   // OPENS its window, so it is on the pins for exactly CPK sampling points.
@@ -195,7 +195,7 @@ module sw_rmii_if
   tb_rec_t             mon_push_rec;
 
   // Shadow copy of the most recently reassembled frame, kept after the working
-  // buffer has been cleared (see sw_gmii_if for the rationale).
+  // buffer has been cleared so the scoreboard can still inspect the last frame.
   tb_frame_buf_t       mon_last;
   int unsigned         mon_last_n;
 
@@ -213,7 +213,7 @@ module sw_rmii_if
 
   // The reassembly, in a single process.  One process owns every signal it
   // writes; splitting the queue strobe into a second process would make the
-  // assignment a race (see sw_gmii_if).
+  // assignment a race.
   always @(posedge clk_i) begin
     bit         en;
     logic [1:0] d;
@@ -263,8 +263,7 @@ module sw_rmii_if
   end
 
   /// Check the preamble and the FCS of a received frame and build its record
-  /// (identical to the sw_gmii_if check: the FCS covers the MAC client data
-  /// only, starting after the eight preamble octets).
+  /// (the FCS covers the MAC client data only, from the octet after the SFD).
   function automatic tb_rec_t mon_check(input tb_frame_buf_t b, input int unsigned n);
     int unsigned        i;
     logic        [31:0] fcs_calc;
@@ -319,7 +318,7 @@ module sw_rmii_if
   endfunction
 
   // Initial state for the signals that the clocked processes do not reset
-  // themselves (see sw_gmii_if for why this matters).
+  // themselves; a clocked process must not leave them undriven at time zero.
   initial begin
     rx_dv_r      = 1'b0;
     rx_d_r       = 2'h0;

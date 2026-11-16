@@ -2,7 +2,6 @@
   "DESIGN_NAME": "es_gmii_top",
   "VERILOG_FILES": [
     "rtl/es_defs.sv",
-    "rtl/common/es_common_sync_2ff.sv",
     "rtl/common/es_common_crc32.sv",
     "rtl/common/es_common_dffs.sv",
     "rtl/common/es_common_pipe_stage.sv",

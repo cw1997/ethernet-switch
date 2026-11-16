@@ -4,8 +4,7 @@
 //
 //                Everything here is a compilation-unit item that more than one
 //                domain needs: the CRC-32 formulation used by both the receive
-//                and the transmit path, the hexadecimal formatter shared by the
-//                console, and the port-index width every packed
+//                and the transmit path, and the port-index width every packed
 //                port-mask relies on.
 // ============================================================================
 `timescale 1ns/1ps
@@ -44,31 +43,9 @@ function automatic logic [31:0] sw_crc32_absorb_octet(input var logic [31:0] c,
   sw_crc32_absorb_octet = x;
 endfunction
 
-/// Compute the residue of a valid frame from the polynomial: seed with all
-/// ones, absorb a message, append its complemented value as the FCS, and
-/// report what is left.  Provided so that `SW_CRC32_RESIDUE` can be
-/// re-derived and checked rather than taken on trust.
-function automatic logic [31:0] sw_crc32_residue();
-  logic [31:0] c;
-  logic [31:0] fcs;
-  logic [31:0] x;
-  c = sw_crc32_absorb_octet(SW_CRC32_INIT, 8'h00);
-  fcs = c ^ SW_CRC32_XOROUT;
-  x = sw_crc32_absorb_octet(c, fcs[7:0]);
-  x = sw_crc32_absorb_octet(x, fcs[15:8]);
-  x = sw_crc32_absorb_octet(x, fcs[23:16]);
-  x = sw_crc32_absorb_octet(x, fcs[31:24]);
-  sw_crc32_residue = x;
-endfunction
-
 // ============================================================================
-// 3.  Formatting and width helpers
+// 3.  Width helpers
 // ============================================================================
-/// Uppercase hexadecimal ASCII digit, used by the console formatter.
-function automatic logic [7:0] sw_hexchar(input var logic [3:0] d);
-  sw_hexchar = (d < 4'd10) ? 8'd48 + {4'd0, d} : 8'd55 + {4'd0, d};
-endfunction
-
 /// Bits needed to encode a port index in [0, NUM_PORTS).
 ///
 /// A one-port fabric still needs one bit: a zero-width vector is not a legal
