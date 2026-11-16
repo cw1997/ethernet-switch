@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb/sw_sync_fifo_tb.sv
+//  File        : tb/es_sync_fifo_tb.sv
 //  Description : Unit testbench of the parameterised fall-through FIFO
 //                (`es_mems_sync_fifo`).
 //
@@ -18,7 +18,7 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-module sw_sync_fifo_tb;
+module es_sync_fifo_tb;
 
   // --------------------------------------------------------------------------
   // Configuration under test
@@ -68,7 +68,7 @@ module sw_sync_fifo_tb;
   // --------------------------------------------------------------------------
   // Frozen pre-extraction cycle reference
   //
-  // `sw_sync_fifo_reference` is an independent re-implementation of the same
+  // `es_sync_fifo_reference` is an independent re-implementation of the same
   // observable contract, checked on every clock the design is out of reset:
   // any deviation in the status flags, the free counter, the head data or the
   // empty flag aborts the run immediately, so a regression cannot drift from
@@ -78,7 +78,7 @@ module sw_sync_fifo_tb;
   logic [$bits(free_cnt)-1:0] ref_free_cnt;
   logic [$bits(rd_data)-1:0] ref_rd_data;
   logic [$bits(empty)-1:0] ref_empty;
-  sw_sync_fifo_reference #(
+  es_sync_fifo_reference #(
     .WIDTH (WIDTH),
     .DEPTH (DEPTH)
   ) u_reference (
@@ -180,7 +180,7 @@ module sw_sync_fifo_tb;
     @(posedge clk);
 
     $display("=====================================================================");
-    $display(" sw_sync_fifo_tb: %0d x %0d bit fall-through FIFO", DEPTH, WIDTH);
+    $display(" es_sync_fifo_tb: %0d x %0d bit fall-through FIFO", DEPTH, WIDTH);
     $display("=====================================================================");
 
     // ---- empty state -----------------------------------------------------
@@ -284,16 +284,16 @@ module sw_sync_fifo_tb;
 
     $display("-----------------------------------------------------------------------");
     if (errors == 0) begin
-      $display(" sw_sync_fifo_tb: PASSED (%0d checks)", checks);
+      $display(" es_sync_fifo_tb: PASSED (%0d checks)", checks);
       $finish;
     end else begin
-      $fatal(1, " sw_sync_fifo_tb: FAILED (%0d of %0d checks failed)", errors, checks);
+      $fatal(1, " es_sync_fifo_tb: FAILED (%0d of %0d checks failed)", errors, checks);
     end
   end
 
   initial begin
     #1_000_000;
-    $fatal(1, "sw_sync_fifo_tb: timeout");
+    $fatal(1, "es_sync_fifo_tb: timeout");
   end
 
-endmodule : sw_sync_fifo_tb
+endmodule : es_sync_fifo_tb

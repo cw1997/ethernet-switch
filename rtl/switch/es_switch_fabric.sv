@@ -17,7 +17,7 @@
 module es_switch_fabric #(
   parameter int unsigned NUM_PORTS            = 4,
   parameter logic [NUM_PORTS*48-1:0] PORT_MAC = '0,
-  parameter int unsigned MIN_FRAME_LEN        = SW_PL_MIN_WIRE_CLIENT,
+  parameter int unsigned MIN_FRAME_LEN        = ES_PL_MIN_WIRE_CLIENT,
   parameter int unsigned MAX_FRAME_LEN        = 1518,
   parameter int unsigned SLOTS                = 2,
   parameter int unsigned SLOT_BYTES           = 2048,
@@ -49,9 +49,9 @@ module es_switch_fabric #(
   output logic     [NUM_PORTS-1:0]    tx_eof_o
 );
 
-  localparam int unsigned RAW_W = sw_pl_rx_desc_w(NUM_PORTS);
-  localparam int unsigned DESC_W = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned CW = sw_pl_fifo_cnt_w(sw_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));
+  localparam int unsigned RAW_W = es_pl_rx_desc_w(NUM_PORTS);
+  localparam int unsigned DESC_W = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned CW = es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));
 
   logic [NUM_PORTS-1:0] rx_valid, rx_ready, val_valid, val_ready;
   logic [NUM_PORTS-1:0] crc_valid, crc_ready;

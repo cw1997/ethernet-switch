@@ -12,7 +12,8 @@
 //                This is the umbrella header every RTL file includes.  The
 //                domain libraries it pulls in are listed at the bottom, in
 //                dependency order; the switch-domain declarations that used to
-//                share this file's numbering now live in switch/es_switch_defs.sv.
+//                share this file's numbering now live in switch/es_switch_defs.sv,
+//                which also carries the pipeline descriptor field offsets.
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -35,12 +36,12 @@
 /// Default port count.  Board shells override the parameter to match their
 /// physical PHY count; every width below is derived from the instance's
 /// parameter, not from this default.
-localparam int unsigned SW_DEFAULT_NUM_PORTS = 4;
+localparam int unsigned ES_DEFAULT_NUM_PORTS = 4;
 
 /// Frame length in octets, excluding the FCS, shared by the forwarding
 /// datapath and by the MAC byte stream.  Eleven bits cover 2047 octets, i.e. any
 /// legal Ethernet frame with headroom.
-localparam int unsigned SW_LEN_W = 11;
+localparam int unsigned ES_LEN_W = 11;
 
 // ============================================================================
 // 2.  Link speed model
@@ -59,26 +60,26 @@ localparam int unsigned SW_LEN_W = 11;
 //   1000 Mbit/s    125   MHz            1
 // ----------------------------------------------------------------------------
 typedef enum logic [1:0] {
-  SW_SPEED_10M   = 2'd0,  ///< 10 Mbit/s    (10BASE-T)
-  SW_SPEED_100M  = 2'd1,  ///< 100 Mbit/s   (100BASE-TX)
-  SW_SPEED_1000M = 2'd2,  ///< 1000 Mbit/s  (1000BASE-T / GMII)
-  SW_SPEED_NONE  = 2'd3   ///< port administratively down
-} sw_speed_e;
+  ES_SPEED_10M   = 2'd0,  ///< 10 Mbit/s    (10BASE-T)
+  ES_SPEED_100M  = 2'd1,  ///< 100 Mbit/s   (100BASE-TX)
+  ES_SPEED_1000M = 2'd2,  ///< 1000 Mbit/s  (1000BASE-T / GMII)
+  ES_SPEED_NONE  = 2'd3   ///< port administratively down
+} es_speed_e;
 
 /// Nominal line rate in bit/s for a link speed.  A down port reports 1 so that
 /// the byte-period division never degenerates; `default` covers the remaining
 /// encodings of the two-bit field, which the speed model treats the same way.
-function automatic int unsigned sw_speed_baud(input sw_speed_e speed);
+function automatic int unsigned es_speed_baud(input es_speed_e speed);
   int unsigned baud;
   baud = 1;
   case (speed)
-    SW_SPEED_10M:   baud = 10000000;
-    SW_SPEED_100M:  baud = 100000000;
-    SW_SPEED_1000M: baud = 1000000000;
-    SW_SPEED_NONE:  baud = 1;
+    ES_SPEED_10M:   baud = 10000000;
+    ES_SPEED_100M:  baud = 100000000;
+    ES_SPEED_1000M: baud = 1000000000;
+    ES_SPEED_NONE:  baud = 1;
     default:        baud = 1;
   endcase
-  sw_speed_baud = baud;
+  es_speed_baud = baud;
 endfunction
 
 /// Number of `clk_i` cycles that make up one octet time of the canonical stream.
@@ -89,15 +90,15 @@ endfunction
 /// rate), 10 (100BASE-TX) and 100 (10BASE-T).  A slower core clock simply
 /// stretches the period - the datapath itself never changes, because it is
 /// driven exclusively by the resulting clock enable.
-function automatic int unsigned sw_byte_period(input int unsigned clk_freq_hz,
-                                              input sw_speed_e speed);
+function automatic int unsigned es_byte_period(input int unsigned clk_freq_hz,
+                                              input es_speed_e speed);
   int unsigned baud;
   int unsigned period;
-  baud   = sw_speed_baud(speed);
+  baud   = es_speed_baud(speed);
   period = (clk_freq_hz * 8 + (baud / 2)) / baud;
   // A down port (baud == 1) and a very slow clock both have to yield a usable,
   // non-zero period; the octet enable is then simply very slow.
-  sw_byte_period = (period == 0) ? 1 : period;
+  es_byte_period = (period == 0) ? 1 : period;
 endfunction
 
 // ============================================================================
@@ -105,17 +106,16 @@ endfunction
 // ============================================================================
 // Included, not compiled separately: each file is guarded, and pulling them in
 // here is what lets a module be compiled on its own.  Dependency order is
-// common -> pl -> switch.  The pipeline library (pl) is deliberately BEFORE
-// switch/es_switch_defs.sv: that file closes the two declaration-only lint
-// waivers at its end, so a `sw_pl_*` helper that a particular top does not read
-// yet would otherwise fail `make lint` as UNUSEDPARAM.  pl needs only `SW_LEN_W`
-// above and `sw_port_w()` from common.
+// common -> switch.  switch/es_switch_defs.sv holds both the switch constants
+// and the pipeline (pl) descriptor helpers, and closes the two declaration-only
+// lint waivers at its end.  A declaration that a given top does not read yet is
+// normal for a shared library and must not fail `make lint` as UNUSEDPARAM.
+// The switch library needs only `ES_LEN_W` above and `es_port_w()` from common.
 //
 // The MAC-identity, UART, statistics, panel and console libraries are gone:
 // the staged switch is pure switching logic and exports no status, counters,
 // commands or lamp outputs.
 `include "common/es_common_defs.sv"
-`include "switch/es_switch_pl_defs.sv"
 `include "switch/es_switch_defs.sv"
 
 // Every included library hands the nettype default back before returning, so

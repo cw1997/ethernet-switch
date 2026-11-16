@@ -1,11 +1,11 @@
 // ============================================================================
 //  File        : tb_es_switch_vivado_top.sv
 //  Description : Self-checking eight-port regression for the Vivado board shell
-//                `es_switch_vivado_top`.  Eight independent `sw_mii_if` wire
+//                `es_switch_vivado_top`.  Eight independent `es_mii_if` wire
 //                models present COMPLETE wire frames (preamble/SFD + client +
 //                FCS) on the packed MII nibble pins and reassemble every
 //                transmitted frame at the wire boundary, checking preamble and
-//                FCS against the independent `sw_tb_pkg` reference.
+//                FCS against the independent `es_tb_pkg` reference.
 //
 //                Scenarios: reset/idle, a broadcast from the highest port that
 //                must flood across the 7 -> 0 ring boundary (and never back to
@@ -16,17 +16,17 @@
 //                Clock/ports: one clock domain; the absolute simulation clock
 //                period is arbitrary because the adapters and wire models count
 //                BYTE_PERIOD clocks per octet.  The board shell fixes 50 MHz /
-//                100 Mbit/s, giving BYTE_PERIOD = sw_byte_period(50 MHz, 100M)
+//                100 Mbit/s, giving BYTE_PERIOD = es_byte_period(50 MHz, 100M)
 //                = 4.  `link_up_i` is administratively tied high inside the
 //                shell, so the wire models use enable_i = 1'b1.  The reserved
 //                PHY RX/TX clocks are tied low: they are unused by design and
 //                no data is sampled from them; this is not a CDC or physical
 //                MII timing test.
 //
-//                Alignment: as in tb_sw_pl_mii, es_mac_mii_serdes drives TXD
+//                Alignment: as in tb_es_pl_mii, es_mac_mii_serdes drives TXD
 //                from a free-running reset-grid nibble counter, so the stable
 //                nibble is on the FIRST clock of each two-clock window while
-//                sw_mii_if samples the second.  A single registration of TXD
+//                es_mii_if samples the second.  A single registration of TXD
 //                (monitor input only) re-aligns the independent wire model;
 //                verified phase-independent across twelve inter-frame gaps.
 //
@@ -39,14 +39,14 @@
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
 module tb_es_switch_vivado_top
-  import sw_tb_pkg::*;
+  import es_tb_pkg::*;
 ();
 
   localparam int unsigned NUM_PORTS = 8;
-  localparam int unsigned BP = sw_byte_period(50_000_000, SW_SPEED_100M);
+  localparam int unsigned BP = es_byte_period(50_000_000, ES_SPEED_100M);
   localparam int unsigned CLIENT_LEN = 64;
   /// 1500 clocks covers the egress serialisation of a 76-wire-octet frame,
   /// pipeline latency and IFG before any frame-count verdict is taken.
@@ -86,7 +86,7 @@ module tb_es_switch_vivado_top
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
-      sw_mii_if #(
+      es_mii_if #(
         .PORT_ID     (g),
         .BYTE_PERIOD (BP),
         .IFG_OCTETS  (12)
@@ -119,8 +119,8 @@ module tb_es_switch_vivado_top
 
   // Constant hierarchical dispatch: Icarus cannot select an elaborated
   // instance with a run-time g_phy[p].u_if reference.
-  task automatic send_frame(input int unsigned p, input sw_mac_t dst,
-                            input sw_mac_t src, input int unsigned len);
+  task automatic send_frame(input int unsigned p, input es_mac_t dst,
+                            input es_mac_t src, input int unsigned len);
     case (p)
       0: g_phy[0].u_if.send(dst, src, TB_ET_IPV4, len);
       1: g_phy[1].u_if.send(dst, src, TB_ET_IPV4, len);
@@ -190,8 +190,8 @@ module tb_es_switch_vivado_top
     endcase
   endfunction
 
-  task automatic check_frame(input tb_rec_t r, input sw_mac_t dst,
-                             input sw_mac_t src, input int unsigned len,
+  task automatic check_frame(input tb_rec_t r, input es_mac_t dst,
+                             input es_mac_t src, input int unsigned len,
                              input string tag);
     check(tb_rec_len(r) == len,       {tag, ": client length"});
     check(tb_rec_dst(r) == dst,       {tag, ": destination MAC"});
@@ -204,7 +204,7 @@ module tb_es_switch_vivado_top
   // Expected frame count for a port; a non-zero count also drains and verifies
   // one frame, leaving every monitor queue empty for the next phase.
   task automatic expect_on(input int unsigned p, input int unsigned cnt,
-                           input sw_mac_t dst, input sw_mac_t src,
+                           input es_mac_t dst, input es_mac_t src,
                            input int unsigned len, input string tag);
     tb_rec_t r;
     check(pending(p) == cnt, {tag, ": frame count"});
@@ -233,13 +233,13 @@ module tb_es_switch_vivado_top
   endtask
 
   // ---- stimulus -------------------------------------------------------------
-  sw_mac_t host_a, host_b, bcast;
+  es_mac_t host_a, host_b, bcast;
   int unsigned p;
 
   initial begin : main_proc
     host_a = 48'h02_AA_00_00_00_01;
     host_b = 48'h02_BB_00_00_00_02;
-    bcast  = SW_MAC_BROADCAST;
+    bcast  = ES_MAC_BROADCAST;
 
     rst_button_n = 1'b0;
     repeat (4) @(posedge clk);

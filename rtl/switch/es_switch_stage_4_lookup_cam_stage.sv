@@ -45,19 +45,19 @@ module es_switch_stage_4_lookup_cam_stage #(
   // ---- descriptors from the N receive engines ---------------------------
   input  var logic [NUM_PORTS-1:0]                         d_i_valid,
   output logic     [NUM_PORTS-1:0]                         d_i_ready,
-  input  var logic [NUM_PORTS*sw_pl_desc_w(NUM_PORTS)-1:0] d_i_desc,
+  input  var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0] d_i_desc,
 
   // ---- packages toward the decide level ---------------------------------
   output logic     [NUM_PORTS-1:0]                         o_valid,
   input  var logic [NUM_PORTS-1:0]                         o_ready,
-  output logic     [NUM_PORTS*sw_pl_cam_w(NUM_PORTS)-1:0]  o_pkg
+  output logic     [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0]  o_pkg
 );
 
-  localparam int unsigned PW        = sw_port_w(NUM_PORTS);
-  localparam int unsigned DESC_W    = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned CAM_W     = sw_pl_cam_w(NUM_PORTS);
-  localparam int unsigned DST_LSB   = sw_pl_desc_dstm_lsb(NUM_PORTS);
-  localparam int unsigned SRC_LSB   = sw_pl_desc_srcm_lsb(NUM_PORTS);
+  localparam int unsigned PW        = es_port_w(NUM_PORTS);
+  localparam int unsigned DESC_W    = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned CAM_W     = es_pl_cam_w(NUM_PORTS);
+  localparam int unsigned DST_LSB   = es_pl_desc_dstm_lsb(NUM_PORTS);
+  localparam int unsigned SRC_LSB   = es_pl_desc_srcm_lsb(NUM_PORTS);
 
   logic [NUM_PORTS-1:0]                 req;
   logic [NUM_PORTS*48-1:0]              lookup_mac;

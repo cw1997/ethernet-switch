@@ -1,49 +1,57 @@
 // ============================================================================
-//  File        : tb/sw_mii_if.sv
-//  Description : Bus functional model of an MII PHY, instantiated once per
-//                switch port by the `es_mii_top` top wrapper.
+//  File        : tb/es_rmii_if.sv
+//  Description : Bus functional model of an RMII PHY, instantiated once per
+//                switch port by the `es_rmii_top` top wrapper.
 //
-//                The model drives the switch's MII receive pins and monitors
-//                its MII transmit pins, exactly as a real PHY would:
+//                The model drives the switch's RMII receive pins and monitors
+//                its RMII transmit pins, exactly as a real PHY would:
 //
 //                  * `send` presents a complete Ethernet frame - preamble, SFD,
-//                    MAC client data, FCS - on the receive pins as nibble
-//                    windows counted from the DV rise (two nibbles per octet,
-//                    low nibble first), followed by a legal inter-frame gap.
-//                    As a real MII MAC expects, the switch receives the frame
-//                    *without* the preamble, so the model presents the frame
-//                    body from the first destination MAC octet onwards.
+//                    MAC client data, FCS - on the receive pins as 2-bit chunk
+//                    windows counted from the CRS_DV rise (four chunks per
+//                    octet, in ascending bit order), followed by a legal
+//                    inter-frame gap.  As a real MAC expects, the switch
+//                    receives the frame *without* the preamble, so the model
+//                    presents the frame body from the first destination MAC
+//                    octet onwards.
 //                  * The monitor reassembles every frame the switch transmits
-//                    from the nibble stream, checks the preamble and the FCS
+//                    from the chunk stream, checks the preamble and the FCS
 //                    against the independent reference CRC, and appends the
 //                    result to a queue that the scoreboard drains.
 //
-//                The nibble cadence comes from BYTE_PERIOD (which must be
-//                even), so one model covers every legal 10/100 Mbit/s port.
+//                The chunk cadence comes from BYTE_PERIOD (which must be a
+//                multiple of 4), so one model covers every legal 10/100 Mbit/s
+//                port.  Like the RTL adapter, the model does not reproduce the
+//                symbol repetition a real RMII PHY applies at 10 Mbit/s; the
+//                chunk windows are stretched instead.
+//
+//                RMII has no RX_ER pin, so the model has nothing to drive for
+//                receive errors; corrupt octets are rejected by the fabric's
+//                FCS check.
 //
 //                Portability: the received frame image and the record queue
 //                hold flat packed vectors rather than unpacked arrays or
 //                structs, because Icarus Verilog cannot pass those through
 //                task arguments or inside a queue.
 // ============================================================================
-`ifndef SW_MII_IF_SV
-`define SW_MII_IF_SV
+`ifndef ES_RMII_IF_SV
+`define ES_RMII_IF_SV
 
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
 // The testbench package is named in the module header import clause.  That is
 // required here rather than cosmetic: the frame and record types used in the
-// task and function argument lists come from `sw_tb_pkg`, and a transitive
+// task and function argument lists come from `es_tb_pkg`, and a transitive
 // import is not visible to a subroutine argument type in Icarus Verilog.
-module sw_mii_if
-  import sw_tb_pkg::*;
+module es_rmii_if
+  import es_tb_pkg::*;
 #(
   /// Port index, used only in diagnostic messages.
   parameter int unsigned PORT_ID     = 0,
-  /// `clk_i` cycles per octet time; must be even (two nibble windows).
-  parameter int unsigned BYTE_PERIOD = 10,
+  /// `clk_i` cycles per octet time; must be a multiple of 4.
+  parameter int unsigned BYTE_PERIOD = 4,
   /// Inter-frame gap in octet times inserted after every frame presented.
-  parameter int unsigned IFG_OCTETS  = SW_IFG_OCTETS,
+  parameter int unsigned IFG_OCTETS  = ES_IFG_OCTETS,
   /// Number of monitored frames kept before the oldest is discarded.
   parameter int unsigned MON_DEPTH   = 512
 ) (
@@ -53,118 +61,127 @@ module sw_mii_if
   input logic enable_i, ///< 0 = link down: the pins stay idle
 
   // ---- switch receive pins (driven by the model) --------------------------
-  /// MII receive nibble stream and per-frame receive error pin.
-  output logic       mii_rx_dv,
-  output logic       mii_rx_er,
-  output logic [3:0] mii_rxd,
+  /// RMII receive chunk stream; CRS_DV also represents carrier sense.
+  output logic       rmii_crs_dv,
+  output logic [1:0] rmii_rxd,
 
   // ---- switch transmit pins (monitored by the model) ----------------------
-  /// Transmit nibble stream observed at the wire boundary.
-  input logic       mii_tx_en,
-  input logic [3:0] mii_txd
+  /// Transmit chunks observed and checked at the wire boundary.
+  input logic       rmii_tx_en,
+  input logic [1:0] rmii_txd
 );
 
-  localparam int unsigned NPK = BYTE_PERIOD / 2;
+  localparam int unsigned CPK = BYTE_PERIOD / 4;
 
   // ==========================================================================
   // Receive driver
   // ==========================================================================
-  // One nibble is launched on the first clock of a nibble window and held for
-  // NPK clocks; each octet is a low-nibble window followed by a high-nibble
-  // window, exactly the contract stated in es_mii_top (the adapter samples at the
-  // end of each window and counts every frame's windows from the DV rise).
+  // One chunk is launched on the first clock of a chunk window and held for
+  // CPK clocks; an octet is four consecutive chunk windows in ascending bit
+  // order, exactly the contract stated in es_rmii_top (the adapter samples at the
+  // end of each window and counts every frame's windows from the CRS_DV rise).
+  //
+  // The cadence idiom is the one es_mii_if uses, and getting it
+  // wrong by one clock per window is exactly what tb_es_switch_rmii catches:
+  // each chunk is launched with a non-blocking assignment at the posedge that
+  // OPENS its window, so it is on the pins for exactly CPK sampling points.
+  // Waiting a full extra posedge inside the loop (a "@(posedge) then assign"
+  // per chunk) holds every chunk for CPK+1 clocks, the adapter then samples
+  // window k while the pins still carry chunk k-1, and every octet of the
+  // frame arrives bit-rotated.
   logic       rx_dv_r;
-  logic       rx_er_r;
-  logic [3:0] rx_d_r;
-  assign mii_rx_dv = enable_i && rx_dv_r;
-  assign mii_rx_er = enable_i && rx_dv_r && rx_er_r;
-  assign mii_rxd   = rx_d_r;
+  logic [1:0] rx_d_r;
+  assign rmii_crs_dv = enable_i && rx_dv_r;
+  assign rmii_rxd    = rx_d_r;
 
   /// Present one frame on the receive pins.
   ///
   /// The task blocks for the whole frame plus its inter-frame gap, so a test
   /// calls it and carries on.  Concurrent traffic from several ports is
   /// obtained by forking the task.
-  task automatic send(input sw_mac_t dst, input sw_mac_t src, input logic [15:0] l2type,
+  task automatic send(input es_mac_t dst, input es_mac_t src, input logic [15:0] l2type,
                       input int unsigned total_len, input bit vlan_en = 1'b0,
-                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0,
-                      input bit error_tail = 1'b0);
+                      input bit corrupt_fcs = 1'b0, input bit drop_fcs = 1'b0);
     tb_frame_buf_t frame;
     int unsigned   n;
     int unsigned   i;
+    int unsigned   c;
     logic [7:0]    o;
 
     frame = tb_build_frame(dst, src, l2type, total_len, vlan_en, corrupt_fcs);
     n     = tb_frame_octets(total_len, vlan_en);
     if (drop_fcs) n = n - 4;
 
-    rx_er_r = 1'b0;
-
     // Present the COMPLETE wire frame (preamble/SFD included): the MAC adapter
     // hunts for the preamble itself (D5) rather than relying on the PHY.
     for (i = 0; i < n; i++) begin
       o = tb_get_octet(frame, i);
-      @(posedge clk_i);  // the low-nibble window opens here
+      @(posedge clk_i);  // chunk 0 window opens here
       rx_dv_r <= 1'b1;
-      rx_d_r  <= o[3:0];
-      repeat (NPK) @(posedge clk_i);  // the high-nibble window opens here
-      rx_d_r <= o[7:4];
-      repeat (NPK - 1) @(posedge clk_i);
-    end
-    // Present an errored extra octet after a valid prefix and FCS. A
-    // receiver that merely truncates the stream would accept that prefix.
-    if (error_tail) begin
-      @(posedge clk_i);
-      rx_er_r <= 1'b1;
-      rx_d_r <= '0;
-      repeat (BYTE_PERIOD - 1) @(posedge clk_i);
+      rx_d_r  <= o[1:0];
+      repeat (CPK) @(posedge clk_i);  // chunk 1 window opens here
+      rx_d_r <= o[3:2];
+      repeat (CPK) @(posedge clk_i);  // chunk 2 window opens here
+      rx_d_r <= o[5:4];
+      repeat (CPK) @(posedge clk_i);  // chunk 3 window opens here
+      rx_d_r <= o[7:6];
+      repeat (CPK - 1) @(posedge clk_i);
     end
     @(posedge clk_i);  // the enable drops for the gap
-    rx_er_r <= 1'b0;
     rx_dv_r <= 1'b0;
-    rx_d_r  <= 4'h0;
+    rx_d_r  <= 2'h0;
     repeat (IFG_OCTETS * BYTE_PERIOD) @(posedge clk_i);
   endtask
 
   // ==========================================================================
   // Transmit monitor
   // ==========================================================================
-  // The monitor has to sample the transmit pins exactly once per nibble.  An
+  // The monitor has to sample the transmit pins exactly once per chunk.  An
   // octet counter reproduces the cadence, started by the *enable itself*
   // rather than by a free-running phase - the transmit windows of es_mac_tx_frame
   // are on the reset grid and its enable rises on one of their boundaries, so
-  // counting from the enable puts the samples in the middle of each nibble
+  // counting from the enable puts the samples in the middle of each chunk
   // window at any line rate.  The pins are read in the *active* region of the
   // clock edge, before the non-blocking updates take effect, which is the
-  // only point at which the nibble that was stable across the preceding
-  // window can be read.
+  // only point at which the chunk that was stable across the preceding window
+  // can be read.
   localparam int unsigned MPW = (BYTE_PERIOD <= 2) ? 1 : $clog2(BYTE_PERIOD);
-  /// Offsets of the two mid-window sample points inside an octet window.
+  /// Offsets of the four mid-window sample points inside an octet window.
   /// Icarus cannot take a part-select of an expression, so the values are
   /// staged through plain integer localparams first.
-  localparam int unsigned MS_LO_I = NPK / 2;
-  localparam int unsigned MS_HI_I = NPK + NPK / 2;
-  localparam logic [MPW-1:0] MS_LO = MS_LO_I[MPW-1:0];
-  localparam logic [MPW-1:0] MS_HI = MS_HI_I[MPW-1:0];
+  localparam int unsigned MS_C0_I = CPK / 2;
+  localparam int unsigned MS_C1_I = CPK + CPK / 2;
+  localparam int unsigned MS_C2_I = 2 * CPK + CPK / 2;
+  localparam int unsigned MS_C3_I = 3 * CPK + CPK / 2;
+  localparam logic [MPW-1:0] MS_C0 = MS_C0_I[MPW-1:0];
+  localparam logic [MPW-1:0] MS_C1 = MS_C1_I[MPW-1:0];
+  localparam logic [MPW-1:0] MS_C2 = MS_C2_I[MPW-1:0];
+  localparam logic [MPW-1:0] MS_C3 = MS_C3_I[MPW-1:0];
   localparam logic [MPW-1:0] MPHASE_LAST = BYTE_PERIOD[MPW-1:0] - MPW'(1);
 
   logic [MPW-1:0] mon_cnt;
-  logic           mon_s_lo;
-  logic           mon_s_hi;
+  logic           mon_s_0;
+  logic           mon_s_1;
+  logic           mon_s_2;
+  logic           mon_s_3;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni || !mii_tx_en) mon_cnt <= '0;
+    if (!rst_ni || !rmii_tx_en) mon_cnt <= '0;
     else if (mon_cnt == MPHASE_LAST) mon_cnt <= '0;
     else mon_cnt <= mon_cnt + MPW'(1);
   end
 
-  assign mon_s_lo = mii_tx_en && (mon_cnt == MS_LO);
-  assign mon_s_hi = mii_tx_en && (mon_cnt == MS_HI);
+  assign mon_s_0 = rmii_tx_en && (mon_cnt == MS_C0);
+  assign mon_s_1 = rmii_tx_en && (mon_cnt == MS_C1);
+  assign mon_s_2 = rmii_tx_en && (mon_cnt == MS_C2);
+  assign mon_s_3 = rmii_tx_en && (mon_cnt == MS_C3);
 
   // Assembly state of the frame currently on the wire.
   tb_frame_buf_t       mon_buf;
   int unsigned         mon_n;
-  logic          [3:0] mon_lo_q;
+  logic          [1:0] mon_c0_q;
+  logic          [1:0] mon_c1_q;
+  logic          [1:0] mon_c2_q;
   bit                  mon_active;
 
   int unsigned         mon_dropped;
@@ -185,7 +202,7 @@ module sw_mii_if
   // ==========================================================================
   // Received-frame queue
   // ==========================================================================
-  sw_rec_q #(
+  es_rec_q #(
     .DEPTH (MON_DEPTH)
   ) u_mon (
     .clk_i       (clk_i),
@@ -199,9 +216,9 @@ module sw_mii_if
   // assignment a race.
   always @(posedge clk_i) begin
     bit         en;
-    logic [3:0] d;
-    en = mii_tx_en;
-    d  = mii_txd;
+    logic [1:0] d;
+    en = rmii_tx_en;
+    d  = rmii_txd;
 
     if (!rst_ni) begin
       mon_push_q  <= 1'b0;
@@ -217,10 +234,14 @@ module sw_mii_if
         mon_n      = 0;
         mon_active = 1'b0;
         mon_last_n = 0;
-      end else if (en && mon_s_lo) begin
-        mon_lo_q = d;
-      end else if (en && mon_s_hi) begin
-        mon_buf    = tb_put_octet(mon_buf, mon_n, {d, mon_lo_q});
+      end else if (en && mon_s_0) begin
+        mon_c0_q = d;
+      end else if (en && mon_s_1) begin
+        mon_c1_q = d;
+      end else if (en && mon_s_2) begin
+        mon_c2_q = d;
+      end else if (en && mon_s_3) begin
+        mon_buf    = tb_put_octet(mon_buf, mon_n, {d, mon_c2_q, mon_c1_q, mon_c0_q});
         mon_n      = mon_n + 1;
         mon_active = 1'b1;
       end else if (!en && mon_active) begin
@@ -255,7 +276,7 @@ module sw_mii_if
     end
     if (tb_get_octet(b, 7) != 8'hD5) preamble_ok = 1'b0;
 
-    fcs_calc = tb_crc32(b, n - 4 - SW_PREAMBLE_LEN, SW_PREAMBLE_LEN);
+    fcs_calc = tb_crc32(b, n - 4 - ES_PREAMBLE_LEN, ES_PREAMBLE_LEN);
     fcs_rx = {
       tb_get_octet(b, n - 1), tb_get_octet(b, n - 2), tb_get_octet(b, n - 3), tb_get_octet(b, n - 4)
     };
@@ -300,10 +321,12 @@ module sw_mii_if
   // themselves; a clocked process must not leave them undriven at time zero.
   initial begin
     rx_dv_r      = 1'b0;
-    rx_d_r       = 4'h0;
+    rx_d_r       = 2'h0;
     mon_buf      = '0;
     mon_n        = 0;
-    mon_lo_q     = 4'h0;
+    mon_c0_q     = 2'h0;
+    mon_c1_q     = 2'h0;
+    mon_c2_q     = 2'h0;
     mon_active   = 1'b0;
     mon_push_q   = 1'b0;
     mon_push_rec = '0;
@@ -314,6 +337,6 @@ module sw_mii_if
     mon_last_n   = 0;
   end
 
-endmodule : sw_mii_if
+endmodule : es_rmii_if
 
-`endif  // SW_MII_IF_SV
+`endif  // ES_RMII_IF_SV

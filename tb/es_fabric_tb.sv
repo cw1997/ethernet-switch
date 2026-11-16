@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_fabric_tb.sv
+//  File        : es_fabric_tb.sv
 //  Description : End-to-end regression for the staged switch fabric (S1 through S5).
 //
 //                Drives the 8-bit byte-stream contract directly, without the
@@ -14,7 +14,7 @@
 
 `include "es_defs.sv"
 
-module sw_fabric_mon (
+module es_fabric_mon (
   input  var logic        clk_i,
   input  var logic        rst_ni,
   input  var logic        valid_i,
@@ -67,9 +67,9 @@ module sw_fabric_mon (
   assign dst_o = dst_r;
   assign src_o = src_r;
   assign cnt_o = cnt_r;
-endmodule : sw_fabric_mon
+endmodule : es_fabric_mon
 
-module sw_fabric_tb;
+module es_fabric_tb;
 
   localparam int unsigned NUM_PORTS = 4;
   localparam int unsigned MAXF      = 1518;
@@ -138,7 +138,7 @@ module sw_fabric_tb;
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_mon
-      sw_fabric_mon u_mon (
+      es_fabric_mon u_mon (
         .clk_i   (clk),
         .rst_ni  (rst_n),
         .valid_i (tx_valid[g]),
@@ -194,7 +194,7 @@ module sw_fabric_tb;
     logic [31:0] crc;
     crc = '1;
     for (int unsigned i = 0; i < len; i++)
-      crc = sw_tb_pkg::tb_crc32_octet(crc, img[i*8 +: 8]);
+      crc = es_tb_pkg::tb_crc32_octet(crc, img[i*8 +: 8]);
     return ~crc;
   endfunction
 
@@ -291,7 +291,7 @@ module sw_fabric_tb;
     host_a = 48'h02_aa_00_00_00_01;
     host_b = 48'h02_bb_00_00_00_02;
     host_c = 48'h02_cc_00_00_00_03;
-    bcast  = SW_MAC_BROADCAST;
+    bcast  = ES_MAC_BROADCAST;
 
     rst_n    = 1'b0;
     clear    = 1'b0;
@@ -516,15 +516,15 @@ module sw_fabric_tb;
       idle(2*MAXF);
     end
 
-    if (errors == 0) $display("sw_fabric_tb: PASSED (%0d checks)", checks);
-    else             $display("sw_fabric_tb: FAILED (%0d of %0d checks)", errors, checks);
-    if (errors != 0) $fatal(1, "sw_fabric_tb: FAILED");
+    if (errors == 0) $display("es_fabric_tb: PASSED (%0d checks)", checks);
+    else             $display("es_fabric_tb: FAILED (%0d of %0d checks)", errors, checks);
+    if (errors != 0) $fatal(1, "es_fabric_tb: FAILED");
     $finish;
   end
 
   initial begin : watchdog
     #2000000;
-    $fatal(1, "sw_fabric_tb: timeout");
+    $fatal(1, "es_fabric_tb: timeout");
   end
 
-endmodule : sw_fabric_tb
+endmodule : es_fabric_tb

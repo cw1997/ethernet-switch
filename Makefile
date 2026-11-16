@@ -73,8 +73,8 @@ RTL_SRCS := \
   $(RTL_DIR)/es_rmii_top.sv
 
 TB_COMMON := \
-  $(TB_DIR)/sw_tb_pkg.sv \
-  $(TB_DIR)/sw_rec_q.sv
+  $(TB_DIR)/es_tb_pkg.sv \
+  $(TB_DIR)/es_rec_q.sv
 
 BOARD_DIR      := board/de2_115/quartus_ii/hdl
 BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/es_switch_de2_115_top.sv
@@ -121,111 +121,111 @@ lint: | $(BUILD)
 # ---------------------------------------------------------------------------
 # Block-level and staged-fabric unit regressions.
 # ---------------------------------------------------------------------------
-UNIT_TBS := sw_crc32_tb sw_sync_fifo_tb sw_mii_tb sw_rmii_tb sw_phy_88e1111_tb \
-            sw_pipe_stage_tb sw_rx_engine_tb sw_fabric_tb
+UNIT_TBS := es_crc32_tb es_sync_fifo_tb es_mii_tb es_rmii_tb es_phy_88e1111_tb \
+            es_pipe_stage_tb es_rx_engine_tb es_fabric_tb
 
 unit: $(addprefix $(BUILD)/,$(addsuffix .vvp,$(UNIT_TBS)))
 	@set -e; for bench in $(UNIT_TBS); do \
 	  echo "--- $$bench ---"; $(VVP) $(BUILD)/$$bench.vvp; done
 
-$(BUILD)/sw_crc32_tb.vvp: $(RTL_HEADERS) | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_crc32_tb \
+$(BUILD)/es_crc32_tb.vvp: $(RTL_HEADERS) | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s es_crc32_tb \
 	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/common/es_common_crc32.sv \
-	  $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_crc32_tb.sv
+	  $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_crc32_tb.sv
 
-$(BUILD)/sw_sync_fifo_tb.vvp: $(RTL_HEADERS) | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_sync_fifo_tb \
+$(BUILD)/es_sync_fifo_tb.vvp: $(RTL_HEADERS) | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s es_sync_fifo_tb \
 	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mems/es_mems_ram_1r1w.sv $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
-	  $(TB_DIR)/sw_sync_fifo_reference.sv $(TB_DIR)/sw_sync_fifo_tb.sv
+	  $(TB_DIR)/es_sync_fifo_reference.sv $(TB_DIR)/es_sync_fifo_tb.sv
 
-$(BUILD)/sw_mii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_mii_tb \
+$(BUILD)/es_mii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s es_mii_tb \
 	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mac/es_mac_mii_serdes.sv \
-	  $(TB_DIR)/sw_mii_tb.sv
+	  $(TB_DIR)/es_mii_tb.sv
 
-$(BUILD)/sw_rmii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s sw_rmii_tb \
+$(BUILD)/es_rmii_tb.vvp: $(RTL_HEADERS) | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s es_rmii_tb \
 	  $(RTL_DIR)/es_defs.sv $(RTL_DIR)/mac/es_mac_rmii_serdes.sv \
-	  $(TB_DIR)/sw_rmii_tb.sv
+	  $(TB_DIR)/es_rmii_tb.sv
 
-$(BUILD)/sw_phy_88e1111_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_phy_88e1111_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_phy_88e1111_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_phy_88e1111_tb.sv
+$(BUILD)/es_phy_88e1111_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_phy_88e1111_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s es_phy_88e1111_tb -o $@ $(RTL_SRCS) $(TB_DIR)/es_phy_88e1111_tb.sv
 
 # Staged-pipeline primitives: each is compiled with only the files it needs.
-pipe-unit: $(BUILD)/sw_pipe_stage_tb.vvp
+pipe-unit: $(BUILD)/es_pipe_stage_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_pipe_stage_tb.vvp: $(RTL_HEADERS) \
+$(BUILD)/es_pipe_stage_tb.vvp: $(RTL_HEADERS) \
     $(RTL_DIR)/common/es_common_dffs.sv $(RTL_DIR)/common/es_common_pipe_stage.sv \
-    $(TB_DIR)/sw_pipe_stage_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_pipe_stage_tb -o $@ \
+    $(TB_DIR)/es_pipe_stage_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s es_pipe_stage_tb -o $@ \
 	  $(RTL_DIR)/common/es_common_dffs.sv $(RTL_DIR)/common/es_common_pipe_stage.sv \
-	  $(TB_DIR)/sw_pipe_stage_tb.sv
+	  $(TB_DIR)/es_pipe_stage_tb.sv
 
-rx-unit: $(BUILD)/sw_rx_engine_tb.vvp
+rx-unit: $(BUILD)/es_rx_engine_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_rx_engine_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_rx_engine_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_rx_engine_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_rx_engine_tb.sv
+$(BUILD)/es_rx_engine_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_rx_engine_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s es_rx_engine_tb -o $@ $(RTL_SRCS) $(TB_DIR)/es_rx_engine_tb.sv
 
 # End-to-end staged-fabric regression (8-bit byte stream, no PHY pins).
-fabric-unit: $(BUILD)/sw_fabric_tb.vvp
+fabric-unit: $(BUILD)/es_fabric_tb.vvp
 	$(VVP) $<
-$(BUILD)/sw_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_fabric_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s sw_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/sw_fabric_tb.sv
+$(BUILD)/es_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s es_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_tb.sv
 
 # ---------------------------------------------------------------------------
 # Front-end regressions: complete wire frames (preamble/SFD/FCS) are driven
 # through the matching PHY bus functional model.  These prove the MAC adapters
 # and the board shells, not just the fabric.
 # ---------------------------------------------------------------------------
-mii: $(BUILD)/tb_sw_pl_mii.vvp
+mii: $(BUILD)/tb_es_pl_mii.vvp
 	$(VVP) $<
-$(BUILD)/tb_sw_pl_mii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
-    $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_pl_mii.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_pl_mii $(RTL_SRCS) $(TB_COMMON) \
-	  $(TB_DIR)/sw_mii_if.sv $(TB_DIR)/tb_sw_pl_mii.sv
+$(BUILD)/tb_es_pl_mii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
+    $(TB_DIR)/es_mii_if.sv $(TB_DIR)/tb_es_pl_mii.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_mii $(RTL_SRCS) $(TB_COMMON) \
+	  $(TB_DIR)/es_mii_if.sv $(TB_DIR)/tb_es_pl_mii.sv
 
-rmii: $(BUILD)/tb_sw_pl_rmii.vvp
+rmii: $(BUILD)/tb_es_pl_rmii.vvp
 	$(VVP) $<
-$(BUILD)/tb_sw_pl_rmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
-    $(TB_DIR)/sw_rmii_if.sv $(TB_DIR)/tb_sw_pl_rmii.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_pl_rmii $(RTL_SRCS) $(TB_COMMON) \
-	  $(TB_DIR)/sw_rmii_if.sv $(TB_DIR)/tb_sw_pl_rmii.sv
+$(BUILD)/tb_es_pl_rmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
+    $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/tb_es_pl_rmii.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_rmii $(RTL_SRCS) $(TB_COMMON) \
+	  $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/tb_es_pl_rmii.sv
 
 vivado: $(BUILD)/tb_es_switch_vivado_top.vvp
 	$(VVP) $<
 $(BUILD)/tb_es_switch_vivado_top.vvp: $(RTL_HEADERS) $(VIVADO_TOP_SRCS) $(TB_COMMON) \
-    $(TB_DIR)/sw_mii_if.sv board/vivado/hdl/tb_es_switch_vivado_top.sv | $(BUILD)
+    $(TB_DIR)/es_mii_if.sv board/vivado/hdl/tb_es_switch_vivado_top.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_switch_vivado_top $(VIVADO_TOP_SRCS) \
-	  $(TB_COMMON) $(TB_DIR)/sw_mii_if.sv board/vivado/hdl/tb_es_switch_vivado_top.sv
+	  $(TB_COMMON) $(TB_DIR)/es_mii_if.sv board/vivado/hdl/tb_es_switch_vivado_top.sv
 
 board-unit: $(BUILD)/tb_es_switch_de2_115_top.vvp
 	$(VVP) $<
 $(BUILD)/tb_es_switch_de2_115_top.vvp: $(RTL_HEADERS) $(BOARD_TOP_SRCS) $(TB_COMMON) \
-    $(TB_DIR)/sw_mii_if.sv $(BOARD_DIR)/tb_es_switch_de2_115_top.sv | $(BUILD)
+    $(TB_DIR)/es_mii_if.sv $(BOARD_DIR)/tb_es_switch_de2_115_top.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_switch_de2_115_top $(BOARD_TOP_SRCS) \
-	  $(TB_COMMON) $(TB_DIR)/sw_mii_if.sv $(BOARD_DIR)/tb_es_switch_de2_115_top.sv
+	  $(TB_COMMON) $(TB_DIR)/es_mii_if.sv $(BOARD_DIR)/tb_es_switch_de2_115_top.sv
 
 # ---------------------------------------------------------------------------
 # Main GMII system regression.  NUM_PORTS / CAM_SETS / CAM_WAYS are parameters
 # of the testbench, so `param` and `param-scan` reuse the same source.
 # ---------------------------------------------------------------------------
-sim: $(BUILD)/tb_sw_pl_gmii.vvp
-	$(VVP) $(BUILD)/tb_sw_pl_gmii.vvp
+sim: $(BUILD)/tb_es_pl_gmii.vvp
+	$(VVP) $(BUILD)/tb_es_pl_gmii.vvp
 
-$(BUILD)/tb_sw_pl_gmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
-                            $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/tb_sw_pl_gmii.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_pl_gmii $(RTL_SRCS) \
-	  $(TB_DIR)/tb_sw_pl_gmii.sv
+$(BUILD)/tb_es_pl_gmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
+                            $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_gmii $(RTL_SRCS) \
+	  $(TB_DIR)/tb_es_pl_gmii.sv
 
-param: $(BUILD)/tb_sw_pl_param.vvp
-	$(VVP) $(BUILD)/tb_sw_pl_param.vvp
+param: $(BUILD)/tb_es_pl_param.vvp
+	$(VVP) $(BUILD)/tb_es_pl_param.vvp
 
-$(BUILD)/tb_sw_pl_param.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
-                             $(TB_DIR)/sw_tb_pkg.sv $(TB_DIR)/tb_sw_pl_gmii.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_sw_pl_gmii \
-	  -P tb_sw_pl_gmii.NUM_PORTS=3 -P tb_sw_pl_gmii.CAM_SETS=96 \
-	  -P tb_sw_pl_gmii.CAM_WAYS=3 \
-	  $(RTL_SRCS) $(TB_DIR)/tb_sw_pl_gmii.sv
+$(BUILD)/tb_es_pl_param.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
+                             $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_gmii \
+	  -P tb_es_pl_gmii.NUM_PORTS=3 -P tb_es_pl_gmii.CAM_SETS=96 \
+	  -P tb_es_pl_gmii.CAM_WAYS=3 \
+	  $(RTL_SRCS) $(TB_DIR)/tb_es_pl_gmii.sv
 
 # Layered port-count / CAM-geometry scan (4/8/16/32/48 ports).  A full
 # cross-product at 48 ports would exceed the CI time budget, so the large
@@ -235,10 +235,10 @@ param-scan: | $(BUILD)
 	for cfg in "4 16 2" "4 96 3" "4 64 1" "8 32 4" "16 128 4" "32 64 2" "48 48 5"; do \
 	  set -- $$cfg; \
 	  echo "=== NUM_PORTS=$$1 CAM_SETS=$$2 CAM_WAYS=$$3 ==="; \
-	  $(IVERILOG) $(IVFLAGS) -o $(BUILD)/pl_scan.vvp -s tb_sw_pl_gmii \
-	    -P tb_sw_pl_gmii.NUM_PORTS=$$1 -P tb_sw_pl_gmii.CAM_SETS=$$2 \
-	    -P tb_sw_pl_gmii.CAM_WAYS=$$3 \
-	    $(RTL_SRCS) $(TB_DIR)/tb_sw_pl_gmii.sv; \
+	  $(IVERILOG) $(IVFLAGS) -o $(BUILD)/pl_scan.vvp -s tb_es_pl_gmii \
+	    -P tb_es_pl_gmii.NUM_PORTS=$$1 -P tb_es_pl_gmii.CAM_SETS=$$2 \
+	    -P tb_es_pl_gmii.CAM_WAYS=$$3 \
+	    $(RTL_SRCS) $(TB_DIR)/tb_es_pl_gmii.sv; \
 	  $(VVP) $(BUILD)/pl_scan.vvp; \
 	done
 

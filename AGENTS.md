@@ -30,14 +30,13 @@ Makefile       every gate; the target list is documented in its own header
 ```
 
 `rtl/es_defs.sv` holds common interface declarations and includes the guarded
-`common/es_common_defs.sv`, `switch/es_switch_pl_defs.sv` and
-`switch/es_switch_defs.sv` libraries in dependency order. Put new constants in
-the owning library, keeping cross-domain widths common; descriptor field
-offsets belong in `es_switch_pl_defs.sv`. All libraries remain at
-compilation-unit scope; the umbrella include preserves standalone-module
-compilation and the existing declaration-only lint policy. The pipeline
-library is included *before* `es_switch_defs.sv`, because that file closes the
-two declaration-only waivers at its end. There is no statistics register map,
+`common/es_common_defs.sv` and `switch/es_switch_defs.sv` libraries in
+dependency order. Put new constants in the owning library, keeping cross-domain
+widths common; descriptor field offsets belong in `es_switch_defs.sv`. All
+libraries remain at compilation-unit scope; the umbrella include preserves
+standalone-module compilation and the existing declaration-only lint policy.
+The switch library closes the two declaration-only waivers at its end, so
+every declaration it carries is covered. There is no statistics register map,
 no console library, no panel library, no MAC-identity library and no UART
 library.
 
@@ -213,7 +212,7 @@ to Verilator, Icarus or yosys:
 - `localparam` (not `parameter`) for anything derived inside a module. Module
   parameters are the module's configuration surface and must stay a short,
   documented list.
-- Shared constants are `SW_`-prefixed and live in the owning `es_*_defs.sv`
+- Shared constants are `ES_`-prefixed and live in the owning `es_*_defs.sv`
   library (cross-domain interfaces in `es_defs.sv`); module-local
   derived widths are UPPER_SNAKE (`TAGW`, `PW`, `BPW`, `FF_W`, `TAG_SRC`);
   per-port or per-instance quantities are lower case (`rx_stat`, `tx_free`).
@@ -354,7 +353,7 @@ Two narrow, documented exceptions exist:
 | `<name>_q` | registered value | `state_q`, `cnt_q` |
 | `<name>_d`, `<name>_n` | combinational *next value* | `oct_cnt_n`, `dst_n` |
 | `S_XXX` | FSM state: `typedef enum logic [n:0]` outside the switch domain; binary `localparam logic [W-1:0]` inside `rtl/switch/` (§3.3.1) | `S_HUNT`, `S_IDLE` |
-| `es_<domain>_*` / `sw_*` | design module / shared declaration | `es_mems_sync_fifo`, `sw_is_unicast` |
+| `es_<domain>_*` / `es_*` | design module / shared declaration | `es_mems_sync_fifo`, `es_is_unicast` |
 | `unused_*` | a deliberate dummy consumer for a signal nothing reads | `unused_board`, `unused_phy` |
 
 A `case` on an `enum` always carries a `default`, even when every encoding of
@@ -442,7 +441,7 @@ Apply these layout rules to every hand-maintained `*.sv` file under `rtl/`,
 ## 4. Testbench rules (`tb/`)
 
 The testbenches are **not** synthesised, so §2.1 and §3.4 do not apply to them:
-`return` in a function is fine, `sw_tb_pkg` is a real package and is imported
+`return` in a function is fine, `es_tb_pkg` is a real package and is imported
 normally, and `$display`, delays and reference models are expected.
 
 They are still held to:
@@ -452,7 +451,7 @@ They are still held to:
   diagnosable from the log alone, which is why CI uploads the logs even when the
   job fails.
 - Model the wire, not the RTL. A testbench that shares an assumption with the
-  design cannot fail; `tb/tb_sw_pl_gmii.sv` re-assembles complete wire frames
+  design cannot fail; `tb/tb_es_pl_gmii.sv` re-assembles complete wire frames
   and checks the preamble and FCS independently for exactly that reason. The
   MII/RMII and board TBs use their own independent wire models too.
 - Cover the awkward configurations, not just the happy path: a port count that
@@ -546,7 +545,7 @@ this is the short list.
 | Counter left to wrap by overflow | only correct when the count is 2**n | §3.2 |
 | `32 * 32` for two counts | a real multiplier array in the netlist | §3.2 |
 | Comment that contradicts the code | worse than no comment — see `tx_octets_inc` | §3.6 |
-| Assuming a non-2**n octet period works | 1000BASE-T on a 50 MHz core runs at 400 Mbit/s | `sw_byte_period` |
+| Assuming a non-2**n octet period works | 1000BASE-T on a 50 MHz core runs at 400 Mbit/s | `es_byte_period` |
 
 
 ## Shared RTL domains
@@ -569,7 +568,7 @@ rejected by yosys with "Static cast with non constant expression"; compare the
 plain encoding against named constants of the same width instead. An
 enum-typed function argument has the same problem, which is why the shared
 helpers take plain `logic` vectors. The two-bit switch policy is therefore a
-set of `SW_FLOOD_*` localparams rather than an enum typedef.
+set of `ES_FLOOD_*` localparams rather than an enum typedef.
 
 ## Pipeline architecture
 
@@ -584,7 +583,7 @@ Rules that keep this buildable by all four tools:
 
 - Descriptor interfaces transfer only on valid/ready and must remain stable
   while stalled. Layouts are packed vectors with widths and offsets in
-  `es_switch_pl_defs.sv`. State in the switch domain uses
+  `es_switch_defs.sv`. State in the switch domain uses
   `es_mems_reg_bank` as in section 3.3.1.
 - Ingress admission reserves enough bytes for a maximum frame and one
   descriptor. Report an admitted frame once, on EOF or at a definitive error.
@@ -609,7 +608,7 @@ Rules that keep this buildable by all four tools:
   wide variable part-select), and the hash is a pure XOR fold with no
   multiplier, divider or wide adder - both are there to keep `synth -flatten`
   tractable.
-- **Simulation vs synthesis geometry.** `es_switch_pl_defs.sv` supplies two
+- **Simulation vs synthesis geometry.** `es_switch_defs.sv` supplies two
   sets of parameter defaults. With `SYNTHESIS` defined (`make synth` and
   LibreLane) the frame buffer is `SLOTS=1 / SLOT_BYTES=512`, the CAM is 16x2
   and `MAX_FRAME_LEN=256`; without it (all simulations) it is `2 / 2048`,

@@ -68,7 +68,7 @@ module es_perips_mdio #(
   // --------------------------------------------------------------------------
   generate
     if ((HALF < 2) || (MDC_FREQ_HZ > 2_500_000)) begin : g_invalid
-      SW_MDIO_INVALID_CLOCK invalid_parameters ();
+      ES_MDIO_INVALID_CLOCK invalid_parameters ();
     end
   endgenerate
 

@@ -21,20 +21,20 @@ module es_switch_stage_3_checksum #(
   output logic [31:0] crc_o,
   input var logic i_valid,
   output logic i_ready,
-  input var logic [sw_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
+  input var logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
   output logic o_valid,
   input var logic o_ready,
-  output logic [sw_pl_desc_w(NUM_PORTS)-1:0] o_desc
+  output logic [es_pl_desc_w(NUM_PORTS)-1:0] o_desc
 );
-  localparam int unsigned DW = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned PW = sw_port_w(NUM_PORTS);
-  localparam int unsigned ERR = DW + SW_PL_RX_ERR_LSB;
+  localparam int unsigned DW = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned PW = es_port_w(NUM_PORTS);
+  localparam int unsigned ERR = DW + ES_PL_RX_ERR_LSB;
   logic [31:0] crc_q, crc_next;
   logic accept, valid_d, reject;
   logic [DW-1:0] verdict;
   // crc_o includes the current beat so a same-cycle EOF sees the final CRC.
-  assign crc_next = sw_crc32_absorb_octet(crc_sof_i ? SW_CRC32_INIT : crc_q, crc_data_i);
-  assign crc_o = (crc_write_i ? crc_next : crc_q) ^ SW_CRC32_XOROUT;
+  assign crc_next = es_crc32_absorb_octet(crc_sof_i ? ES_CRC32_INIT : crc_q, crc_data_i);
+  assign crc_o = (crc_write_i ? crc_next : crc_q) ^ ES_CRC32_XOROUT;
   // SOF selects the CRC seed, so the accumulator needs no reset value.
   es_mems_reg_bank #(
     .WIDTH (32),
@@ -54,8 +54,8 @@ module es_switch_stage_3_checksum #(
   assign unused_validation_metadata = i_desc[DW +: ERR-DW];
   assign reject = i_desc[ERR] || i_desc[DW-1] ||
       (i_desc[ERR+1 +: 32] != i_desc[ERR+33 +: 32]);
-  assign verdict = {reject, i_desc[DW-2:PW+SW_LEN_W],
-                   reject ? SW_LEN_W'(0) : i_desc[PW +: SW_LEN_W], i_desc[PW-1:0]};
+  assign verdict = {reject, i_desc[DW-2:PW+ES_LEN_W],
+                   reject ? ES_LEN_W'(0) : i_desc[PW +: ES_LEN_W], i_desc[PW-1:0]};
   assign i_ready = !o_valid || o_ready;
   assign accept = i_valid && i_ready;
   assign valid_d = accept || (o_valid && !o_ready);

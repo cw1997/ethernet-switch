@@ -23,20 +23,20 @@ module es_switch_stage_4_lookup #(
   rst_ni,
   input var logic [NUM_PORTS-1:0] i_valid,
   output logic [NUM_PORTS-1:0] i_ready,
-  input var logic [NUM_PORTS*sw_pl_desc_w(NUM_PORTS)-1:0] i_desc,
+  input var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0] i_desc,
   input var logic [NUM_PORTS*8-1:0] buf_data_i,
   input var logic [NUM_PORTS-1:0] buf_empty_i,
   output logic [NUM_PORTS-1:0] buf_read_o,
-  input var logic [NUM_PORTS*sw_pl_fifo_cnt_w(sw_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] tx_free_i,
+  input var logic [NUM_PORTS*es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] tx_free_i,
   output logic [NUM_PORTS-1:0] tx_write_o,
   tx_sof_o,
   tx_eof_o,
   output logic [NUM_PORTS*8-1:0] tx_data_o
 );
-  localparam int unsigned PW = sw_port_w(NUM_PORTS);
-  localparam int unsigned CW = sw_pl_fifo_cnt_w(sw_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));
-  localparam int unsigned LW = NUM_PORTS + SW_LEN_W;
-  localparam int unsigned CAM_W = sw_pl_cam_w(NUM_PORTS);
+  localparam int unsigned PW = es_port_w(NUM_PORTS);
+  localparam int unsigned CW = es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));
+  localparam int unsigned LW = NUM_PORTS + ES_LEN_W;
+  localparam int unsigned CAM_W = es_pl_cam_w(NUM_PORTS);
 
   logic [NUM_PORTS-1:0] cam_valid, cam_ready, dec_valid, dec_ready;
   logic [NUM_PORTS*CAM_W-1:0] cam_desc;
@@ -126,7 +126,7 @@ module es_switch_stage_4_lookup #(
   generate
     for (p = 0; p < NUM_PORTS; p++) begin : g_src
       logic [NUM_PORTS-1:0] mask, mask_q, credit_ok;
-      logic [SW_LEN_W-1:0] len, remaining_q;
+      logic [ES_LEN_W-1:0] len, remaining_q;
       logic take, busy;
 
       assign {mask, len} = dec_desc[p*LW +: LW];
@@ -139,22 +139,22 @@ module es_switch_stage_4_lookup #(
       assign take = dec_valid[p] && dec_ready[p];
 
       for (q = 0; q < NUM_PORTS; q++) begin : g_credit
-        localparam int unsigned CMP_W = (CW > SW_LEN_W) ? CW : SW_LEN_W;
+        localparam int unsigned CMP_W = (CW > ES_LEN_W) ? CW : ES_LEN_W;
         assign credit_ok[q] = !mask[q] ||
             (CMP_W'(tx_free_i[q*CW +: CW]) >= CMP_W'(len));
       end
 
       assign buf_read_o[p] = busy && !buf_empty_i[p];
-      assign last_byte[p] = (remaining_q == SW_LEN_W'(1));
+      assign last_byte[p] = (remaining_q == ES_LEN_W'(1));
       es_mems_reg_bank #(
-        .WIDTH (SW_LEN_W),
+        .WIDTH (ES_LEN_W),
         .DEPTH (1)
       ) u_remaining_q (
         .clk_i     (clk_i),
         .rst_ni    (rst_ni),
         .clear_i   (1'b0),
         .wr_en_i   (take || buf_read_o[p]),
-        .wr_data_i (take ? len : remaining_q - SW_LEN_W'(1)),
+        .wr_data_i (take ? len : remaining_q - ES_LEN_W'(1)),
         .data_o    (remaining_q)
       );
       // Only a nonzero remaining count exposes this unreset ownership mask.

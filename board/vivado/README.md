@@ -81,7 +81,7 @@ Vivado 在 `default_nettype none` 下要求显式声明输入端口种类，因�
 ## 5. 八端口 MII 自检 TB
 
 `hdl/tb_es_switch_vivado_top.sv` 由 `make vivado` 运行，不需要安装 Vivado。
-八个独立的 `sw_mii_if` 线模型驱动完整线上帧，并在出线侧按 `sw_tb_pkg`
+八个独立的 `es_mii_if` 线模型驱动完整线上帧，并在出线侧按 `es_tb_pkg`
 独立重组、校验前导与 FCS；`BYTE_PERIOD = 4`（50 MHz / 100 Mbit/s），
 `link_up_i` 固定拉高，预留的 PHY 时钟接低。
 

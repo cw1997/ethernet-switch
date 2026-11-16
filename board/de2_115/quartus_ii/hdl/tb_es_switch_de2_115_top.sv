@@ -1,11 +1,11 @@
 // ============================================================================
 //  File        : tb_es_switch_de2_115_top.sv
 //  Description : Board-level smoke regression for the DE2-115 dual-port MII
-//                shell `es_switch_de2_115_top`.  Two independent `sw_mii_if`
+//                shell `es_switch_de2_115_top`.  Two independent `es_mii_if`
 //                wire models present COMPLETE wire frames (preamble/SFD +
 //                client + FCS) on the packed MII nibble pins and reassemble
 //                every transmitted frame at the wire boundary, checking
-//                preamble and FCS against the independent `sw_tb_pkg` reference.
+//                preamble and FCS against the independent `es_tb_pkg` reference.
 //
 //                Scope and honest limits
 //                ----------------------
@@ -35,13 +35,13 @@
 //
 //                Clock/ports: one clock domain at 50 MHz; the shell fixes
 //                100 Mbit/s ports, giving BYTE_PERIOD =
-//                sw_byte_period(50 MHz, 100M) = 4.  KEY[0] is an active-low
+//                es_byte_period(50 MHz, 100M) = 4.  KEY[0] is an active-low
 //                reset sampled through the shell's two-stage synchroniser.
 //                MDIO pads get weak pull-ups (as a real board does) so the
 //                manager reads a clean high instead of Z and parks cleanly
 //                rather than propagating X into `phy_status`.
 //
-//                Alignment: as in tb_sw_pl_mii, es_mac_mii_serdes drives TXD
+//                Alignment: as in tb_es_pl_mii, es_mac_mii_serdes drives TXD
 //                from a free-running reset-grid nibble counter; a single
 //                registration of TXD (monitor input only) re-aligns the
 //                independent wire model with the stable nibble.
@@ -55,13 +55,13 @@
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
 module tb_es_switch_de2_115_top
-  import sw_tb_pkg::*;
+  import es_tb_pkg::*;
 ();
 
-  localparam int unsigned BP = sw_byte_period(50_000_000, SW_SPEED_100M);
+  localparam int unsigned BP = es_byte_period(50_000_000, ES_SPEED_100M);
   localparam int unsigned CLIENT_LEN = 64;
   localparam int unsigned SETTLE_CLKS = 1500;
   localparam int unsigned POP_TIMEOUT = 20000;
@@ -128,7 +128,7 @@ module tb_es_switch_de2_115_top
   );
 
   // ---- two independent MII wire models -------------------------------------
-  sw_mii_if #(
+  es_mii_if #(
     .PORT_ID     (0),
     .BYTE_PERIOD (BP),
     .IFG_OCTETS  (12)
@@ -143,7 +143,7 @@ module tb_es_switch_de2_115_top
     .mii_txd   (enet0_txd_d)
   );
 
-  sw_mii_if #(
+  es_mii_if #(
     .PORT_ID     (1),
     .BYTE_PERIOD (BP),
     .IFG_OCTETS  (12)
@@ -172,8 +172,8 @@ module tb_es_switch_de2_115_top
     end
   endtask
 
-  task automatic check_frame(input tb_rec_t r, input sw_mac_t dst,
-                             input sw_mac_t src, input int unsigned len,
+  task automatic check_frame(input tb_rec_t r, input es_mac_t dst,
+                             input es_mac_t src, input int unsigned len,
                              input string tag);
     check(tb_rec_len(r) == len,       {tag, ": client length"});
     check(tb_rec_dst(r) == dst,       {tag, ": destination MAC"});
@@ -190,12 +190,12 @@ module tb_es_switch_de2_115_top
   endtask
 
   // ---- stimulus -------------------------------------------------------------
-  sw_mac_t host_a, bcast;
+  es_mac_t host_a, bcast;
   tb_rec_t rec;
 
   initial begin : main_proc
     host_a = 48'h02_AA_00_00_00_01;
-    bcast  = SW_MAC_BROADCAST;
+    bcast  = ES_MAC_BROADCAST;
 
     KEY            = 4'h0;   // KEY[0] low: reset asserted
     ENET0_INT_N    = 1'b1;   // interrupts inactive

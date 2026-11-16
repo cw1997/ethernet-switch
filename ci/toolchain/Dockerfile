@@ -13,7 +13,7 @@
 #                `[self-hosted, linux, x64]` labels) and re-build it only on a
 #                toolchain contract change:
 #
-#                    docker build -t sw-toolchain:26.04 ci/toolchain/
+#                    docker build -t es-toolchain:26.04 ci/toolchain/
 #
 #                The jobs reference the image by that tag.  A container job
 #                cannot be told "use a local image, do not pull", so the tag

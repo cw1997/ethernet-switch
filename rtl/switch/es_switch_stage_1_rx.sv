@@ -36,21 +36,21 @@ module es_switch_stage_1_rx #(
   input var logic [31:0] crc_i,
   output logic d_valid_o,
   input var logic d_ready_i,
-  output logic [sw_pl_rx_desc_w(NUM_PORTS)-1:0] desc_o,
+  output logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] desc_o,
   input var logic rd_i,
   output logic [7:0] data_o,
   output logic empty_o
 );
-  localparam int unsigned PW = sw_port_w(NUM_PORTS);
+  localparam int unsigned PW = es_port_w(NUM_PORTS);
   localparam int unsigned BYTE_DEPTH = SLOTS * SLOT_BYTES;
-  localparam int unsigned BCW = sw_pl_fifo_cnt_w(BYTE_DEPTH);
-  localparam int unsigned DCW = sw_pl_fifo_cnt_w(DESC_DEPTH);
-  localparam int unsigned DW = sw_pl_rx_desc_w(NUM_PORTS);
+  localparam int unsigned BCW = es_pl_fifo_cnt_w(BYTE_DEPTH);
+  localparam int unsigned DCW = es_pl_fifo_cnt_w(DESC_DEPTH);
+  localparam int unsigned DW = es_pl_rx_desc_w(NUM_PORTS);
   localparam logic [1:0] S_IDLE = 2'd0, S_FRAME = 2'd1, S_DRAIN = 2'd2;
 
   logic [1:0] state_q, state_d;
-  logic [SW_LEN_W-1:0] count_q, count_next, stored_len;
-  logic [SW_LEN_W:0] measured_len;
+  logic [ES_LEN_W-1:0] count_q, count_next, stored_len;
+  logic [ES_LEN_W:0] measured_len;
   logic [DCW-1:0] desc_free;
   logic [BCW-1:0] byte_free;
   logic desc_full, desc_empty, byte_full;
@@ -67,15 +67,15 @@ module es_switch_stage_1_rx #(
   assign active = (state_q == S_FRAME) || start;
   assign fire = active && b_valid_i;
   assign abort_frame = active && (!link_up_i ||
-      (fire && (b_err_i || (count_q == SW_LEN_W'(MAX_FRAME_LEN)))));
+      (fire && (b_err_i || (count_q == ES_LEN_W'(MAX_FRAME_LEN)))));
   assign publish = abort_frame || (fire && b_eof_i);
   assign write_byte = fire && !abort_frame;
   assign crc_write_o = write_byte;
-  assign count_next = count_q + SW_LEN_W'(1);
+  assign count_next = count_q + ES_LEN_W'(1);
   assign stored_len = write_byte ? count_next : count_q;
   // On early abort this is the number observed through the failing beat.
   // Only stored_len participates in queue reclamation.
-  assign measured_len = {1'b0, count_q} + (SW_LEN_W+1)'(fire);
+  assign measured_len = {1'b0, count_q} + (ES_LEN_W+1)'(fire);
   assign descriptor = {crc_i, (fire && b_eof_i) ? b_fcs_i : 32'b0,
                        abort_frame, vlan, length_type, measured_len,
                        abort_frame, stored_len, dst, src, stored_len, PW'(PORT_ID)};
@@ -96,7 +96,7 @@ module es_switch_stage_1_rx #(
     .data_o    (state_q)
   );
   es_mems_reg_bank #(
-    .WIDTH (SW_LEN_W),
+    .WIDTH (ES_LEN_W),
     .DEPTH (1)
   ) u_count_q (
     .clk_i     (clk_i),

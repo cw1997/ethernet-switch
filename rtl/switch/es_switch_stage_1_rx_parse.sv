@@ -20,7 +20,7 @@ module es_switch_stage_1_rx_parse (
 
   // ---- per-byte work strobes from Stage 1 ----------------------
   input  var logic              byte_fire_i,  ///< a byte is consumed this clock
-  input  var logic [SW_LEN_W:0] oct_cnt_i,  ///< octets buffered so far (held count)
+  input  var logic [ES_LEN_W:0] oct_cnt_i,  ///< octets buffered so far (held count)
   input  var logic [7:0]        b_data_i,
   input  var logic              clear_i,  ///< descriptor publication clears header state
 
@@ -33,7 +33,7 @@ module es_switch_stage_1_rx_parse (
   // --------------------------------------------------------------------------
   // Configuration
   // --------------------------------------------------------------------------
-  localparam int unsigned OCTW = SW_LEN_W + 1;
+  localparam int unsigned OCTW = ES_LEN_W + 1;
 
   // --------------------------------------------------------------------------
   // State and combinational next values
@@ -70,7 +70,7 @@ module es_switch_stage_1_rx_parse (
   // The VLAN flag is derived from the completed EtherType on the octet that
   // completes it.
   assign vlan_d = (byte_fire_i && (oct_cnt_i == OCTW'(13)))
-                      ? sw_is_vlan_type(l2type_d) : vlan_q;
+                      ? es_is_vlan_type(l2type_d) : vlan_q;
 
   assign dst_d_o    = dst_d;
   assign src_d_o    = src_d;

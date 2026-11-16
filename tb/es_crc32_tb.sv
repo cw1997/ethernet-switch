@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb/sw_crc32_tb.sv
+//  File        : tb/es_crc32_tb.sv
 //  Description : Unit testbench of the Ethernet CRC-32 engine (`es_common_crc32`).
 //
 //                The block is verified in both of its roles:
@@ -13,17 +13,17 @@
 //                    is low.
 //
 //                The reference values come from the independent bit-serial model
-//                in `sw_tb_pkg`; the "123456789" check value is the textbook
+//                in `es_tb_pkg`; the "123456789" check value is the textbook
 //                CRC-32/ISO-HDLC result, which pins polynomial, seed, reflection
 //                and final complement in one shot.
 // ============================================================================
 `timescale 1ns/1ps
 
-module sw_crc32_tb;
+module es_crc32_tb;
 
-  // The verification helpers live in sw_tb_pkg.  The RTL declarations are at
+  // The verification helpers live in es_tb_pkg.  The RTL declarations are at
   // compilation-unit scope (`rtl/es_defs.sv`) and so need no import.
-  import sw_tb_pkg::*;
+  import es_tb_pkg::*;
 
   logic               clk = 1'b0;
   logic               rst_n = 1'b0;
@@ -50,7 +50,7 @@ module sw_crc32_tb;
 
   // --------------------------------------------------------------------------
   // Message buffers, standard testbench width so that the helpers in
-  // `sw_tb_pkg` can be used unchanged.  Octet 0 is the first one on the wire.
+  // `es_tb_pkg` can be used unchanged.  Octet 0 is the first one on the wire.
   // --------------------------------------------------------------------------
   tb_frame_buf_t        msg9;  // "123456789"
   tb_frame_buf_t        msg64;  // 64 octet counting pattern
@@ -61,7 +61,7 @@ module sw_crc32_tb;
   // Local helpers
   //
   // These build the two buffers the test needs.  They are defined here rather
-  // than in `sw_tb_pkg` because they are specific to this block: the package
+  // than in `es_tb_pkg` because they are specific to this block: the package
   // deliberately carries no CRC-append helper, since a frame builder there
   // would be an incomplete duplicate of `tb_build_frame`.
   // --------------------------------------------------------------------------
@@ -194,7 +194,7 @@ module sw_crc32_tb;
     @(posedge clk);
 
     $display("=====================================================================");
-    $display(" sw_crc32_tb: byte-serial Ethernet CRC-32 (IEEE 802.3)");
+    $display(" es_crc32_tb: byte-serial Ethernet CRC-32 (IEEE 802.3)");
     $display("=====================================================================");
 
     // ---- transmitter known answer ----------------------------------------
@@ -256,17 +256,17 @@ module sw_crc32_tb;
 
     $display("-----------------------------------------------------------------------");
     if (errors == 0) begin
-      $display(" sw_crc32_tb: PASSED (%0d checks)", checks);
+      $display(" es_crc32_tb: PASSED (%0d checks)", checks);
       $finish;
     end else begin
-      $fatal(1, " sw_crc32_tb: FAILED (%0d of %0d checks failed)", errors, checks);
+      $fatal(1, " es_crc32_tb: FAILED (%0d of %0d checks failed)", errors, checks);
     end
   end
 
   // Watchdog: the testbench must finish in a few microseconds.
   initial begin
     #1_000_000;
-    $fatal(1, "sw_crc32_tb: timeout");
+    $fatal(1, "es_crc32_tb: timeout");
   end
 
-endmodule : sw_crc32_tb
+endmodule : es_crc32_tb

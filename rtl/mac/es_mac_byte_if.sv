@@ -136,9 +136,9 @@ module es_mac_frame_rx #(
             dl_q       <= '0;
           end else if (sample) begin
             in_frame_q <= 1'b1;
-            if (oct_d_i == SW_PL_PREAMBLE_OCTET) begin
+            if (oct_d_i == ES_PL_PREAMBLE_OCTET) begin
               if (pre_cnt != 4'd7) pre_cnt <= pre_cnt + 4'd1;
-            end else if ((oct_d_i == SW_PL_SFD_OCTET) && (pre_cnt == 4'd7)) begin
+            end else if ((oct_d_i == ES_PL_SFD_OCTET) && (pre_cnt == 4'd7)) begin
               state_q <= S_DATA;
               cnt_q   <= '0;
               dl_q    <= '0;
@@ -214,7 +214,7 @@ module es_mac_frame_tx #(
 
   localparam int unsigned BPW    = (BYTE_PERIOD <= 1) ? 1 : $clog2(BYTE_PERIOD);
   localparam logic [BPW-1:0] PHASE_LAST = BYTE_PERIOD[BPW-1:0] - BPW'(1);
-  localparam int unsigned CNT_W  = SW_LEN_W + 1;
+  localparam int unsigned CNT_W  = ES_LEN_W + 1;
 
   typedef enum logic [2:0] {
     T_IDLE,
@@ -247,7 +247,7 @@ module es_mac_frame_tx #(
 
   // Single driver for crc_q: the top-of-block update.  Mixing it into the FSM
   // case would give the register two non-blocking drivers in one process.
-  assign crc_fin  = crc_q ^ SW_CRC32_XOROUT;
+  assign crc_fin  = crc_q ^ ES_CRC32_XOROUT;
   assign crc_din  = (state_q == T_PAD) ? 8'h00 : b_data_i;
   assign crc_en   = tick && (((state_q == T_DATA) && b_valid_i) || (state_q == T_PAD));
   assign crc_clr  = (state_q == T_IDLE);
@@ -270,10 +270,10 @@ module es_mac_frame_tx #(
       client_cnt <= '0;
       ifg_cnt    <= '0;
       oct_d_o    <= '0;
-      crc_q      <= SW_CRC32_INIT;
+      crc_q      <= ES_CRC32_INIT;
     end else begin
-      if (crc_clr)     crc_q <= SW_CRC32_INIT;
-      else if (crc_en) crc_q <= sw_crc32_absorb_octet(crc_q, crc_din);
+      if (crc_clr)     crc_q <= ES_CRC32_INIT;
+      else if (crc_en) crc_q <= es_crc32_absorb_octet(crc_q, crc_din);
 
       if (tick) begin
         case (state_q)
@@ -283,7 +283,7 @@ module es_mac_frame_tx #(
               state_q    <= T_PRE;
               pre_idx    <= 4'd0;
               client_cnt <= '0;
-              oct_d_o    <= SW_PL_PREAMBLE_OCTET;
+              oct_d_o    <= ES_PL_PREAMBLE_OCTET;
             end
           end
 
@@ -294,10 +294,10 @@ module es_mac_frame_tx #(
             // seven more here would put eight preamble octets on the wire and
             // shift every subsequent field by one.
             if (pre_idx == 4'd6) begin
-              oct_d_o <= SW_PL_SFD_OCTET;
+              oct_d_o <= ES_PL_SFD_OCTET;
               state_q <= T_DATA;
             end else begin
-              oct_d_o <= SW_PL_PREAMBLE_OCTET;
+              oct_d_o <= ES_PL_PREAMBLE_OCTET;
               pre_idx <= pre_idx + 4'd1;
             end
           end

@@ -12,8 +12,8 @@
 |---|---|---|---|
 | `NUM_PORTS` | `int unsigned` | 4 | 端口数，所有宽度由此派生 |
 | `CLK_FREQ_HZ` | `int unsigned` | GMII 125_000_000；MII/RMII 50_000_000 | 核心时钟频率 |
-| `PORT_SPEED` | `logic [N*2-1:0]` | GMII `{N{2'd2}}`；MII/RMII `{N{2'd1}}` | 每端口速率枚举 `sw_speed_e`（0=10M、1=100M、2=1000M、3=down） |
-| `PORT_MAC` | `logic [N*48-1:0]` | `'0` | 每端口 MAC；为零时由 `sw_default_mac(PORT_ID)` 派生本地地址 |
+| `PORT_SPEED` | `logic [N*2-1:0]` | GMII `{N{2'd2}}`；MII/RMII `{N{2'd1}}` | 每端口速率枚举 `es_speed_e`（0=10M、1=100M、2=1000M、3=down） |
+| `PORT_MAC` | `logic [N*48-1:0]` | `'0` | 每端口 MAC；为零时由 `es_default_mac(PORT_ID)` 派生本地地址 |
 | `MIN_FRAME_LEN` | `int unsigned` | 64 | 接受的最小 MAC client 字节数 |
 | `MAX_FRAME_LEN` | `int unsigned` | 1518 | 接受的最大 MAC client 字节数 |
 | `SLOTS` | `int unsigned` | 2 | 每入口缓冲的帧槽数 |
@@ -28,7 +28,7 @@
 
 `FLOOD_MODE` 与 `LEARNING_EN` 是纯 elaboration 参数，无运行期配置路径；`link_up_i` 只是数据门控。
 
-上表为**仿真**默认几何。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 的 `VERILOG_DEFINES`），`es_switch_pl_defs.sv` 改提供缩小默认：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`（`MIN_FRAME_LEN=64`、`DESC_DEPTH=8` 不变）。原因是全尺寸 4×2048×8 帧缓冲约合 13 万触发器，yosys `synth -flatten` 展开极慢；仿真不定义该宏，故行为回归始终用全尺寸。LibreLane 的 `SYNTH_PARAMETERS` 与这组值一致。
+上表为**仿真**默认几何。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 的 `VERILOG_DEFINES`），`es_switch_defs.sv` 改提供缩小默认：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`（`MIN_FRAME_LEN=64`、`DESC_DEPTH=8` 不变）。原因是全尺寸 4×2048×8 帧缓冲约合 13 万触发器，yosys `synth -flatten` 展开极慢；仿真不定义该宏，故行为回归始终用全尺寸。LibreLane 的 `SYNTH_PARAMETERS` 与这组值一致。
 
 ## 2. 端口表
 
@@ -61,7 +61,7 @@
 | 项目 | 说明 |
 |---|---|
 | 内部吞吐 | 每端口每时钟 1 字节，`N` 端口并行即 `N` 字节/clk；级间握手无损；约 5 帧可同时在各级驻留 |
-| 线速模型 | `BYTE_PERIOD = sw_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，由时钟使能表达；125 MHz 下 1000BASE-T=1、100BASE-TX=10、10BASE-T=100 周期/八位组 |
+| 线速模型 | `BYTE_PERIOD = es_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，由时钟使能表达；125 MHz 下 1000BASE-T=1、100BASE-TX=10、10BASE-T=100 周期/八位组 |
 | 单端口理论线速 | `8 bit × CLK_FREQ_HZ / BYTE_PERIOD`，如 125 MHz / 1 周期 = 1000 Mbit/s；50 MHz / 4 周期 = 100 Mbit/s |
 | 帧缓冲 / 队列 | 每入口端口 1 个 `SLOTS*SLOT_BYTES` 字节 FIFO + 1 个 `DESC_DEPTH` 描述符 FIFO（坏帧单拍 `undo` 回卷）；每端口 1 个 `TX_QUEUE_DEPTH` 深 FIFO，字为 `{sof, eof, data[7:0]}` |
 | 转发表 | `CAM_SETS × CAM_WAYS` 表项，同拍 `N` 查 + `N` 学；单时钟无 CDC，复位同步低有效 |
@@ -80,7 +80,7 @@
 | 2 | runt：`client_len < MIN_FRAME_LEN` |
 | 3 | 超 MTU：`client_len > MAX_FRAME_LEN`（继续排空线上剩余字节） |
 | 4 | 802.3 length 字段与实测 client 长度不符（`l2type ≤ 1500` 时校验） |
-| 5 | VLAN tag 残缺：标记 VLAN 但长度不足 `SW_HDR_LEN_VLAN`(18) |
+| 5 | VLAN tag 残缺：标记 VLAN 但长度不足 `ES_HDR_LEN_VLAN`(18) |
 | 6 | 源 MAC 为组播/广播地址 |
 | 7 | 源 MAC 等于本端口 MAC |
 | 8 | 目的 MAC 等于本端口 MAC |
@@ -113,7 +113,7 @@
 
 ## 7. 已知限制
 
-* 不提供运行期状态、统计或配置接口；`FLOOD_MODE`/`LEARNING_EN` 只能在 elaboration 时确定。帧缓冲要求 `SLOTS*SLOT_BYTES` 为 2 的幂，且 `MAX_FRAME_LEN` 必须装进 `SW_LEN_W`(11 bit)，否则 elaboration 报错。
+* 不提供运行期状态、统计或配置接口；`FLOOD_MODE`/`LEARNING_EN` 只能在 elaboration 时确定。帧缓冲要求 `SLOTS*SLOT_BYTES` 为 2 的幂，且 `MAX_FRAME_LEN` 必须装进 `ES_LEN_W`(11 bit)，否则 elaboration 报错。
 * CAM 是哈希组相联、无老化与显式删除；表项只被覆盖或复位清空。
 * 板级 PHY 时钟捕获 / CDC / 时序适配未全部完成：Vivado 模板是同步 MII 模型；
   DE2-115 板级 TB 因无外部 MDIO PHY 从机模型而 `force phy_enabled`，**不验证

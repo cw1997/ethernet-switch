@@ -57,16 +57,16 @@ module es_switch_stage_4_lookup_cam_table #(
   input  var logic [NUM_PORTS-1:0]                      req_i,
   input  var logic [NUM_PORTS*48-1:0]                   mac_i,
   output logic     [NUM_PORTS-1:0]                      hit_o,
-  output logic     [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] port_o,
+  output logic     [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] port_o,
 
   // ---- NUM_PORTS parallel learns (written on the same clock) ------------
   input  var logic [NUM_PORTS-1:0]                      learn_i,
   input  var logic [NUM_PORTS*48-1:0]                   learn_mac_i,
-  input  var logic [NUM_PORTS*sw_port_w(NUM_PORTS)-1:0] learn_port_i,
+  input  var logic [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] learn_port_i,
   output logic     [NUM_PORTS-1:0]                      learn_ready_o
 );
 
-  localparam int unsigned PW     = sw_port_w(NUM_PORTS);
+  localparam int unsigned PW     = es_port_w(NUM_PORTS);
   localparam int unsigned SETW   = (NUM_SETS < 2) ? 1 : $clog2(NUM_SETS + 1);
   localparam int unsigned WAYW   = (NUM_WAYS <= 2) ? 1 : $clog2(NUM_WAYS);
   localparam int unsigned ENT_W  = 1 + PW + 48;   // {valid, port, mac}

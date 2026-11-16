@@ -26,29 +26,29 @@
 
 module es_switch_stage_4_lookup_decide #(
   parameter int unsigned NUM_PORTS = 4,
-  parameter logic [1:0] FLOOD_MODE = SW_FLOOD_BCAST_UKN
+  parameter logic [1:0] FLOOD_MODE = ES_FLOOD_BCAST_UKN
 ) (
   input  var logic                                        clk_i,
   input  var logic                                        rst_ni,
 
   input  var logic [NUM_PORTS-1:0]                        i_valid,
   output logic     [NUM_PORTS-1:0]                        i_ready,
-  input  var logic [NUM_PORTS*sw_pl_cam_w(NUM_PORTS)-1:0] i_pkg,
+  input  var logic [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0] i_pkg,
 
   output logic     [NUM_PORTS-1:0]                        o_valid,
   input  var logic [NUM_PORTS-1:0]                        o_ready,
-  output logic     [NUM_PORTS*(NUM_PORTS+SW_LEN_W)-1:0]   o_pkg
+  output logic     [NUM_PORTS*(NUM_PORTS+ES_LEN_W)-1:0]   o_pkg
 );
 
-  localparam int unsigned PW       = sw_port_w(NUM_PORTS);
-  localparam int unsigned CAM_W    = sw_pl_cam_w(NUM_PORTS);
-  localparam int unsigned LW       = NUM_PORTS + SW_LEN_W;
-  localparam int unsigned DST_LSB  = sw_pl_desc_dstm_lsb(NUM_PORTS);
-  localparam int unsigned LEN_LSB  = sw_pl_desc_len_lsb(NUM_PORTS);
-  localparam int unsigned STORED_LSB = sw_pl_desc_stored_lsb(NUM_PORTS);
-  localparam int unsigned DESC_W = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned HIT_LSB  = sw_pl_cam_hit_lsb(NUM_PORTS);
-  localparam int unsigned PORT_LSB = sw_pl_cam_port_lsb(NUM_PORTS);
+  localparam int unsigned PW       = es_port_w(NUM_PORTS);
+  localparam int unsigned CAM_W    = es_pl_cam_w(NUM_PORTS);
+  localparam int unsigned LW       = NUM_PORTS + ES_LEN_W;
+  localparam int unsigned DST_LSB  = es_pl_desc_dstm_lsb(NUM_PORTS);
+  localparam int unsigned LEN_LSB  = es_pl_desc_len_lsb(NUM_PORTS);
+  localparam int unsigned STORED_LSB = es_pl_desc_stored_lsb(NUM_PORTS);
+  localparam int unsigned DESC_W = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned HIT_LSB  = es_pl_cam_hit_lsb(NUM_PORTS);
+  localparam int unsigned PORT_LSB = es_pl_cam_port_lsb(NUM_PORTS);
 
   /// Pure function: the forwarding policy per lane.
   function automatic logic [NUM_PORTS-1:0] decide_mask(
@@ -60,14 +60,14 @@ module es_switch_stage_4_lookup_decide #(
     logic [NUM_PORTS-1:0] m;
     all_but_src = ~(NUM_PORTS'(1) << src_port);
     m = '0;
-    if (dst == SW_MAC_BROADCAST) begin
+    if (dst == ES_MAC_BROADCAST) begin
       m = all_but_src;
-    end else if (sw_is_group(dst)) begin
-      if (FLOOD_MODE == SW_FLOOD_ALL) m = all_but_src;
+    end else if (es_is_group(dst)) begin
+      if (FLOOD_MODE == ES_FLOOD_ALL) m = all_but_src;
     end else if (hit) begin
       m = port_mask & all_but_src;
     end else begin
-      if (FLOOD_MODE != SW_FLOOD_BCAST_ONLY) m = all_but_src;
+      if (FLOOD_MODE != ES_FLOOD_BCAST_ONLY) m = all_but_src;
     end
     decide_mask = m;
   endfunction
@@ -85,7 +85,7 @@ module es_switch_stage_4_lookup_decide #(
 
       logic unused_drop;
       assign unused_drop = i_pkg[gp*CAM_W + DESC_W-1];
-      assign mask = (i_pkg[gp*CAM_W + LEN_LSB +: SW_LEN_W] == '0) ? '0 : decide_mask(
+      assign mask = (i_pkg[gp*CAM_W + LEN_LSB +: ES_LEN_W] == '0) ? '0 : decide_mask(
           i_pkg[gp*CAM_W + DST_LSB +: 48],
           i_pkg[gp*CAM_W +: PW],
           i_pkg[gp*CAM_W + HIT_LSB],
@@ -94,7 +94,7 @@ module es_switch_stage_4_lookup_decide #(
       // Only the egress mask and the frame length are needed downstream;
       // carrying the full descriptor would leave its MAC bits unread at the
       // fabric level and -Wall would report UNUSEDSIGNAL.
-      assign dat_d = {mask, i_pkg[gp*CAM_W + STORED_LSB +: SW_LEN_W]};
+      assign dat_d = {mask, i_pkg[gp*CAM_W + STORED_LSB +: ES_LEN_W]};
 
       assign vld_set       = i_valid[gp] && i_ready[gp];
       assign vld_clr       = o_valid[gp] && o_ready[gp];

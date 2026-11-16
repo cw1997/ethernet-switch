@@ -53,7 +53,7 @@ module es_switch_vivado_top (
   es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
-    .PORT_SPEED  ({NUM_PORTS{2'(SW_SPEED_100M)}})
+    .PORT_SPEED  ({NUM_PORTS{2'(ES_SPEED_100M)}})
   ) u_switch (
     .clk_i       (clk_i),
     .rst_ni      (rst_ni),

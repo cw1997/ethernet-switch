@@ -1,26 +1,29 @@
 // ============================================================================
-//  File        : tb/sw_mii_tb.sv
-//  Description : Unit testbench of the MII symbol adapter (`es_mii_top`).
+//  File        : tb/es_rmii_tb.sv
+//  Description : Unit testbench of the RMII symbol adapter (`es_rmii_top`).
 //
 //                Verified here, against the contract stated in the module
 //                header:
 //
-//                  1. RX assembly - nibble pairs are reassembled low-nibble
-//                     first and presented as one octet per full BYTE_PERIOD
-//                     window, one octet behind the wire,
+//                  1. RX assembly - the four 2-bit chunks of an octet are
+//                     reassembled in ascending bit order and presented as one
+//                     octet per full BYTE_PERIOD window, one octet behind the
+//                     wire,
 //                  2. RX self-synchronisation - a frame that does *not* start
 //                     on any grid boundary is still assembled correctly (the
-//                     adapter counts every frame's windows from its own DV
-//                     rise),
+//                     adapter counts every frame's windows from its own
+//                     CRS_DV rise),
 //                  3. frame end - the enable stays high for exactly one more
 //                     octet time after the last octet and then drops,
-//                  4. RX_ER suppression - an errored octet truncates the frame
-//                     at the adapter, and the sticky flag clears on the idle
-//                     link so the next frame is presented again,
+//                  4. truncation - a CRS_DV that drops mid-octet never yields
+//                     a partial octet: the enable simply stays low,
 //                  5. TX serialisation - the canonical octet stream is split
-//                     into a low and a high nibble per octet time, on the
-//                     reset grid the adapter shares with es_mac_tx_frame,
-//                  6. the BYTE_PERIOD = 2 edge case (one clock per nibble).
+//                     into four 2-bit chunks per octet time, on the reset
+//                     grid the adapter shares with es_mac_tx_frame,
+//                  6. the BYTE_PERIOD = 4 edge case (one clock per chunk).
+//
+//                RMII has no RX_ER, so there is no error-suppression test
+//                here; corrupt octets are rejected by the fabric's FCS check.
 //
 //                Self-checking: every expectation prints PASS/FAIL, the run
 //                ends with an explicit verdict, and a watchdog aborts a hung
@@ -28,17 +31,17 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-module sw_mii_tb;
+module es_rmii_tb;
 
   // ---------------------------------------------------------------------------
-  // Clock and reset.  125 MHz, as in the main regression.  Reset is released on
-  // a negedge so that the first posedge with rst_n high - grid cycle 0 for the
-  // DUTs' free-running transmit counters - is unambiguous.
+  // Clock and reset.  50 MHz - the natural RMII core clock (REF_CLK = clk_i).
+  // Reset is released on a negedge so that the first posedge with rst_n high -
+  // grid cycle 0 for the DUTs' free-running transmit counters - is unambiguous.
   // ---------------------------------------------------------------------------
   logic clk = 1'b0;
   logic rst_n = 1'b0;
 
-  always #4 clk = ~clk;
+  always #10 clk = ~clk;
 
   /// Grid cycle number of the cycle currently in progress (0 = the first cycle
   /// after reset release).  Read only just after a posedge, where it still
@@ -51,83 +54,75 @@ module sw_mii_tb;
   end
 
   // ---------------------------------------------------------------------------
-  // DUT 1: the main instance, BYTE_PERIOD = 10 (nibble window 5 clocks).
+  // DUT 1: the main instance, BYTE_PERIOD = 8 (chunk window 2 clocks).
   //
-  // Pin groups: MII receive nibble stream in, transmit nibble stream out, and
+  // Pin groups: RMII receive chunk stream in, transmit chunk stream out, and
   // the canonical octet interface on both sides - `oct_en_o`/`oct_d_o` is the
   // receive presentation the adapter owes es_mac_rx_frame, `oct_en_i`/`oct_d_i`
   // the transmit request es_mac_tx_frame drives.
   // ---------------------------------------------------------------------------
-  localparam int unsigned BP  = 10;
-  localparam int unsigned NPK = BP / 2;
+  localparam int unsigned BP  = 8;
+  localparam int unsigned CPK = BP / 4;
 
-  logic       rx_dv;      ///< MII receive data valid (model driven)
-  logic       rx_er;      ///< MII receive error (model driven, see test 3/4)
-  logic [3:0] rxd;        ///< MII receive nibble
-  logic       tx_en;      ///< MII transmit enable (adapter driven)
-  logic [3:0] txd;        ///< MII transmit nibble
-  logic       tx_er_o;    ///< adapter transmit error; must stay low throughout
+  logic       rx_dv;      ///< RMII CRS_DV, carrier sense plus frame data
+  logic [1:0] rxd;        ///< RMII receive chunk
+  logic       tx_en;      ///< RMII transmit enable (adapter driven)
+  logic [1:0] txd;        ///< RMII transmit chunk
   logic       oct_en_o;   ///< canonical receive octet valid
   logic [7:0] oct_d_o;    ///< canonical receive octet
   logic       oct_en_i;   ///< canonical transmit octet valid
   logic [7:0] oct_d_i;    ///< canonical transmit octet
 
-  es_mac_mii_serdes #(
+  es_mac_rmii_serdes #(
     .BYTE_PERIOD (BP)
-  ) u_mii (
-    .clk_i       (clk),
-    .rst_ni      (rst_n),
-    .mii_rx_dv_i (rx_dv),
-    .mii_rx_er_i (rx_er),
-    .mii_rxd_i   (rxd),
-    .mii_tx_en_o (tx_en),
-    .mii_tx_er_o (tx_er_o),
-    .mii_txd_o   (txd),
-    .oct_en_o    (oct_en_o),
-    .oct_d_o     (oct_d_o),
-    .oct_en_i    (oct_en_i),
-    .oct_d_i     (oct_d_i)
+  ) u_rmii (
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .rmii_crs_dv_i (rx_dv),
+    .rmii_rxd_i    (rxd),
+    .rmii_tx_en_o  (tx_en),
+    .rmii_txd_o    (txd),
+    .oct_en_o      (oct_en_o),
+    .oct_d_o       (oct_d_o),
+    .oct_en_i      (oct_en_i),
+    .oct_d_i       (oct_d_i)
   );
 
   // ---------------------------------------------------------------------------
-  // DUT 2: the edge configuration, BYTE_PERIOD = 2 (one clock per nibble).
+  // DUT 2: the edge configuration, BYTE_PERIOD = 4 (one clock per chunk).
   //
-  // Same pin groups as DUT 1, `f_` prefixed.  At one clock per nibble there is
+  // Same pin groups as DUT 1, `f_` prefixed.  At one clock per chunk there is
   // no room for a late sample, which is why this configuration is elaborated
   // separately.
   // ---------------------------------------------------------------------------
-  localparam int unsigned BP2  = 2;
+  localparam int unsigned BP2  = 4;
 
   logic       f_rx_dv;
-  logic       f_rx_er;
-  logic [3:0] f_rxd;
+  logic [1:0] f_rxd;
   logic       f_tx_en;
-  logic [3:0] f_txd;
-  logic       f_tx_er_o;
+  logic [1:0] f_txd;
   logic       f_oct_en_o;
   logic [7:0] f_oct_d_o;
   logic       f_oct_en_i;
   logic [7:0] f_oct_d_i;
 
-  es_mac_mii_serdes #(
+  es_mac_rmii_serdes #(
     .BYTE_PERIOD (BP2)
   ) u_fast (
-    .clk_i       (clk),
-    .rst_ni      (rst_n),
-    .mii_rx_dv_i (f_rx_dv),
-    .mii_rx_er_i (f_rx_er),
-    .mii_rxd_i   (f_rxd),
-    .mii_tx_en_o (f_tx_en),
-    .mii_tx_er_o (f_tx_er_o),
-    .mii_txd_o   (f_txd),
-    .oct_en_o    (f_oct_en_o),
-    .oct_d_o     (f_oct_d_o),
-    .oct_en_i    (f_oct_en_i),
-    .oct_d_i     (f_oct_d_i)
+    .clk_i         (clk),
+    .rst_ni        (rst_n),
+    .rmii_crs_dv_i (f_rx_dv),
+    .rmii_rxd_i    (f_rxd),
+    .rmii_tx_en_o  (f_tx_en),
+    .rmii_txd_o    (f_txd),
+    .oct_en_o      (f_oct_en_o),
+    .oct_d_o       (f_oct_d_o),
+    .oct_en_i      (f_oct_en_i),
+    .oct_d_i       (f_oct_d_i)
   );
 
   // ---------------------------------------------------------------------------
-  // Checking helpers (the sw_sync_fifo_tb convention).
+  // Checking helpers (the es_sync_fifo_tb convention).
   // ---------------------------------------------------------------------------
   int unsigned errors;
   int unsigned checks;
@@ -169,20 +164,19 @@ module sw_mii_tb;
     get_oct = v[63-k*8 -: 8];
   endfunction
 
-  // Icarus Verilog cannot take a part-select of a function call result, so the
-  // nibble selectors below stage the octet through a local first.
-  /// Low nibble of octet `k`, as the MII carries it first on the wire.
-  function automatic logic [3:0] get_lo(input logic [63:0] v, input int unsigned k);
+  /// Chunk c (0..3) of octet k: Ethernet is LSB-first on the wire, so chunk 0
+  /// carries bits [1:0] and chunk 3 bits [7:6].  Icarus Verilog cannot take a
+  /// part-select of a function call result, so the octet is staged first.
+  function automatic logic [1:0] get_chk(input logic [63:0] v, input int unsigned k,
+                                         input int unsigned c);
     logic [7:0] o;
     o = get_oct(v, k);
-    get_lo = o[3:0];
-  endfunction
-
-  /// High nibble of octet `k`.
-  function automatic logic [3:0] get_hi(input logic [63:0] v, input int unsigned k);
-    logic [7:0] o;
-    o = get_oct(v, k);
-    get_hi = o[7:4];
+    case (c)
+      0:       get_chk = o[1:0];
+      1:       get_chk = o[3:2];
+      2:       get_chk = o[5:4];
+      default: get_chk = o[7:6];
+    endcase
   endfunction
 
   /// Advance exactly one cycle and land on a negedge: the mid-cycle sample
@@ -213,29 +207,36 @@ module sw_mii_tb;
   endtask
 
   // ---------------------------------------------------------------------------
-  // RX drive: present a frame as nibble windows counted from the DV rise.
+  // RX drive: present a frame as chunk windows counted from the CRS_DV rise.
   //
   // `start_off` delays the frame start by that many clocks - a non-multiple of
   // BYTE_PERIOD proves that the adapter self-synchronises instead of requiring
-  // grid alignment.  `er_oct` is the octet index during whose windows RX_ER is
-  // asserted (>= n means "never").  The task returns after the DV has dropped.
+  // grid alignment.  `chunks` limits how many chunks of the *last* octet are
+  // presented (4 = a complete frame; fewer truncates it mid-octet).  The task
+  // returns after the CRS_DV has dropped.
   // ---------------------------------------------------------------------------
-  task automatic mii_drive(input logic [63:0] octs, input int unsigned n,
-                           input int unsigned start_off, input int unsigned er_oct);
+  task automatic rmii_drive(input logic [63:0] octs, input int unsigned n,
+                            input int unsigned start_off, input int unsigned chunks);
+    int unsigned last;
     repeat (start_off) @(posedge clk);
-    @(posedge clk);  // edge E0: the first lo window opens
+    @(posedge clk);  // edge E0: the first chunk window opens
     for (int unsigned k = 0; k < n; k++) begin
-      rx_dv <= 1'b1;
-      rx_er <= (k == er_oct);
-      rxd   <= get_lo(octs, k);  // lo window: NPK cycles from now
-      repeat (NPK) @(posedge clk);  // the hi window opens here
-      rx_er <= (k == er_oct);
-      rxd   <= get_hi(octs, k);
-      repeat (NPK) @(posedge clk);  // the next lo window opens here
+      last = (k == n - 1) ? chunks : 4;
+      for (int unsigned c = 0; c < 4; c++) begin
+        if (c == 0) begin
+          rx_dv <= 1'b1;
+        end else if (c == last) begin
+          rx_dv <= 1'b0;  // truncate: CRS_DV drops mid-octet
+          rxd   <= 2'h0;
+        end
+        if (c < last) begin
+          rxd <= get_chk(octs, k, c);
+        end
+        repeat (CPK) @(posedge clk);
+      end
     end
     rx_dv <= 1'b0;  // idle from the cycle after the frame
-    rx_er <= 1'b0;
-    rxd   <= 4'h0;
+    rxd   <= 2'h0;
   endtask
 
   // ---------------------------------------------------------------------------
@@ -290,8 +291,8 @@ module sw_mii_tb;
   // ---------------------------------------------------------------------------
   // TX drive and check.  The canonical octet stream is presented aligned to
   // the reset grid (as es_mac_tx_frame guarantees), one octet per BYTE_PERIOD
-  // clocks; the nibbles on the pins are checked in the first clock of each
-  // nibble window.  `octets_skew` starts the frame that many octet times
+  // clocks; the chunks on the pins are checked in the first clock of each
+  // chunk window.  `octets_skew` starts the frame that many octet times
   // later, which must not change anything: the adapter's transmit counter
   // free-runs from reset and every whole octet time is on the grid.
   // ---------------------------------------------------------------------------
@@ -302,15 +303,13 @@ module sw_mii_tb;
     for (int unsigned k = 0; k < n; k++) begin
       oct_en_i <= 1'b1;  // the octet window opens at this edge
       oct_d_i  <= get_oct(octs, k);
-      @(negedge clk);
-      expect_1bit(tx_en, 1'b1, $sformatf("%s: tx en (octet %0d low window)", tag, k));
-      expect_data({4'h0, txd}, {4'h0, get_lo(octs, k)}, $sformatf(
-                  "%s: tx low nibble (octet %0d)", tag, k));
-      repeat (NPK) step1();
-      expect_1bit(tx_en, 1'b1, $sformatf("%s: tx en (octet %0d high window)", tag, k));
-      expect_data({4'h0, txd}, {4'h0, get_hi(octs, k)}, $sformatf(
-                  "%s: tx high nibble (octet %0d)", tag, k));
-      repeat (NPK) @(posedge clk);  // back to the next window's edge
+      for (int unsigned c = 0; c < 4; c++) begin
+        @(negedge clk);
+        expect_1bit(tx_en, 1'b1, $sformatf("%s: tx en (octet %0d chunk %0d)", tag, k, c));
+        expect_data({6'h0, txd}, {6'h0, get_chk(octs, k, c)}, $sformatf(
+                    "%s: tx chunk %0d (octet %0d)", tag, c, k));
+        repeat (CPK) @(posedge clk);  // to the next chunk window edge
+      end
     end
     oct_en_i <= 1'b0;  // the enable drops at this boundary
     oct_d_i  <= 8'h00;
@@ -319,15 +318,15 @@ module sw_mii_tb;
   endtask
 
   // ---------------------------------------------------------------------------
-  // RX drive for the BYTE_PERIOD = 2 instance: one clock per nibble.
+  // RX drive for the BYTE_PERIOD = 4 instance: one clock per chunk.
   // ---------------------------------------------------------------------------
   task automatic fast_drive(input logic [63:0] octs, input int unsigned n);
     for (int unsigned k = 0; k < n; k++) begin
-      @(posedge clk);
-      f_rx_dv <= 1'b1;
-      f_rxd   <= get_lo(octs, k);  // low nibble window: one clock
-      @(posedge clk);
-      f_rxd <= get_hi(octs, k);  // high nibble window: one clock
+      for (int unsigned c = 0; c < 4; c++) begin
+        @(posedge clk);
+        f_rx_dv <= 1'b1;
+        f_rxd   <= get_chk(octs, k, c);
+      end
     end
     @(posedge clk);
     f_rx_dv <= 1'b0;
@@ -341,13 +340,11 @@ module sw_mii_tb;
     checks     = 0;
     cyc        = 0;
     rx_dv      = 1'b0;
-    rx_er      = 1'b0;
-    rxd        = 4'h0;
+    rxd        = 2'h0;
     oct_en_i   = 1'b0;
     oct_d_i    = 8'h00;
     f_rx_dv    = 1'b0;
-    f_rx_er    = 1'b0;
-    f_rxd      = 4'h0;
+    f_rxd      = 2'h0;
     f_oct_en_i = 1'b0;
     f_oct_d_i  = 8'h00;
 
@@ -357,14 +354,14 @@ module sw_mii_tb;
     rst_n = 1'b1;
 
     $display("=====================================================================");
-    $display(" sw_mii_tb: MII symbol adapter (BYTE_PERIOD = %0d and %0d)", BP, BP2);
+    $display(" es_rmii_tb: RMII symbol adapter (BYTE_PERIOD = %0d and %0d)", BP, BP2);
     $display("=====================================================================");
 
     // ---- 1. grid-aligned frame through the main instance -----------------
-    // start_off = 2*BP-1 puts the first DV-high cycle on a grid boundary,
+    // start_off = 2*BP-1 puts the first CRS_DV-high cycle on a grid boundary,
     // which is what a synchronous outer shell would produce.
     fork
-      mii_drive(64'hA5_3C_00_FF_11_22_33_44, 4, 2 * BP - 1, 99);
+      rmii_drive(64'hA5_3C_00_FF_11_22_33_44, 4, 2 * BP - 1, 4);
       check_presentation(64'hA5_3C_00_FF_11_22_33_44, 4, "aligned");
     join
     check_stays_idle(2 * BP, "aligned: idle after the frame");
@@ -373,55 +370,25 @@ module sw_mii_tb;
     // The frame starts 3 clocks into an octet time - no grid boundary.  The
     // adapter must still assemble it correctly.
     fork
-      mii_drive(64'h12_34_56_78_9A_BC_DE_F0, 4, 3, 99);
+      rmii_drive(64'h12_34_56_78_9A_BC_DE_F0, 4, 3, 4);
       check_presentation(64'h12_34_56_78_9A_BC_DE_F0, 4, "unaligned");
     join
     check_stays_idle(2 * BP, "unaligned: idle after the frame");
 
-    // ---- 3. RX_ER during the first octet: nothing is presented -----------
+    // ---- 3. truncated octet: nothing is presented ------------------------
+    // The single octet only gets two of its four chunks before CRS_DV drops;
+    // a partial octet must never reach the canonical stream.
     fork
-      mii_drive(64'hAA_BB_CC_DD_11_22_33_44, 3, 2 * BP, 0);
-      check_stays_idle(6 * BP, "ER in octet 0");
+      rmii_drive(64'hAA_BB_CC_DD_11_22_33_44, 1, 2 * BP, 2);
+      check_stays_idle(8 * BP, "truncated octet");
     join
 
-    // ---- 4. RX_ER during the second octet: truncated after octet 0 ------
-    fork
-      mii_drive(64'h55_D5_AA_BB_11_22_33_44, 3, 2 * BP, 1);
-      begin
-        int unsigned waited;
-        waited = 0;
-        while (oct_en_o !== 1'b1 && waited < 5000) begin
-          @(negedge clk);
-          waited++;
-        end
-        checks++;
-        if (oct_en_o !== 1'b1) begin
-          errors++;
-          $display("[%0t] ERROR ER in octet 1: octet 0 was not presented", $time);
-        end else begin
-          $display("[%0t] PASS  ER in octet 1: octet 0 presented", $time);
-        end
-        expect_data(oct_d_o, 8'h55, "ER in octet 1: octet 0 value");
-        // octet 0's window still runs its full length...
-        repeat (BP - 1) step1();
-        expect_1bit(oct_en_o, 1'b1, "ER in octet 1: window end en");
-        // ...and the errored octet 1 is never presented
-        step1();
-        expect_1bit(oct_en_o, 1'b0, "ER in octet 1: enable dropped after octet 0");
-      end
-    join
-    // the sticky error flag must have cleared on the idle link
-    fork
-      mii_drive(64'h77_88_11_22_33_44_55_66, 2, 2 * BP, 99);
-      check_presentation(64'h77_88_11_22_33_44_55_66, 2, "after ER");
-    join
-
-    // ---- 5. TX serialisation on the reset grid ---------------------------
+    // ---- 4. TX serialisation on the reset grid ---------------------------
     tx_frame_and_check(64'h55_D5_A5_3C_00_FF_0F_F0, 4, 2, "tx grid-aligned");
     // a second frame later on: the free-running counter must still line up
     tx_frame_and_check(64'hC1_02_03_04_05_06_07_08, 2, 4, "tx later frame");
 
-    // ---- 6. BYTE_PERIOD = 2 edge case ------------------------------------
+    // ---- 5. BYTE_PERIOD = 4 edge case ------------------------------------
     fork
       fast_drive(64'h5A_C3_00_00_00_00_00_00, 2);
       begin
@@ -433,13 +400,13 @@ module sw_mii_tb;
         end
         expect_1bit(f_oct_en_o, 1'b1, "fast: enable rose");
         expect_data(f_oct_d_o, 8'h5A, "fast: octet 0");
-        step1();
+        repeat (BP2 - 1) step1();
         expect_1bit(f_oct_en_o, 1'b1, "fast: octet 0 window end en");
         expect_data(f_oct_d_o, 8'h5A, "fast: octet 0 window end value");
         step1();
         expect_1bit(f_oct_en_o, 1'b1, "fast: octet 1 window en");
         expect_data(f_oct_d_o, 8'hC3, "fast: octet 1");
-        step1();
+        repeat (BP2 - 1) step1();
         expect_1bit(f_oct_en_o, 1'b1, "fast: octet 1 window end en");
         expect_data(f_oct_d_o, 8'hC3, "fast: octet 1 window end value");
         step1();
@@ -447,42 +414,38 @@ module sw_mii_tb;
       end
     join
 
-    // fast TX: two octets, one clock per nibble, aligned to its own grid
+    // fast TX: two octets, one clock per chunk, aligned to its own grid
     align_to_grid(BP2);
     for (int unsigned k = 0; k < 2; k++) begin
       f_oct_en_i <= 1'b1;
       f_oct_d_i  <= get_oct(64'h9C_4E_00_00_00_00_00_00, k);
-      @(negedge clk);
-      expect_1bit(f_tx_en, 1'b1, $sformatf("fast tx: en (octet %0d low window)", k));
-      expect_data({4'h0, f_txd}, {4'h0, get_lo(64'h9C_4E_00_00_00_00_00_00, k)}, $sformatf(
-                  "fast tx: low nibble (octet %0d)", k));
-      step1();
-      expect_data({4'h0, f_txd}, {4'h0, get_hi(64'h9C_4E_00_00_00_00_00_00, k)}, $sformatf(
-                  "fast tx: high nibble (octet %0d)", k));
-      @(posedge clk);  // next window opens at this edge
+      for (int unsigned c = 0; c < 4; c++) begin
+        @(negedge clk);
+        expect_1bit(f_tx_en, 1'b1, $sformatf("fast tx: en (octet %0d chunk %0d)", k, c));
+        expect_data({6'h0, f_txd}, {6'h0, get_chk(64'h9C_4E_00_00_00_00_00_00, k, c)}, $sformatf(
+                    "fast tx: chunk %0d (octet %0d)", c, k));
+        @(posedge clk);  // the next chunk window opens here
+      end
     end
     f_oct_en_i <= 1'b0;
     @(negedge clk);
     expect_1bit(f_tx_en, 1'b0, "fast tx: en dropped after the frame");
 
     // ---- verdict ----------------------------------------------------------
-    expect_eq(tx_er_o, 1'b0, "mii_tx_er_o held low throughout");
-    expect_eq(f_tx_er_o, 1'b0, "fast mii_tx_er_o held low throughout");
-
     $display("-----------------------------------------------------------------------");
     if (errors == 0) begin
-      $display(" sw_mii_tb: PASSED (%0d checks)", checks);
+      $display(" es_rmii_tb: PASSED (%0d checks)", checks);
       $finish;
     end else begin
-      $fatal(1, " sw_mii_tb: FAILED (%0d of %0d checks failed)", errors, checks);
+      $fatal(1, " es_rmii_tb: FAILED (%0d of %0d checks failed)", errors, checks);
     end
   end
 
   // Watchdog: an adapter that stops presenting or serialising must fail the
   // bench rather than hang the regression.
   initial begin
-    #10_000_000;
-    $fatal(1, "sw_mii_tb: timeout");
+    #40_000_000;
+    $fatal(1, "es_rmii_tb: timeout");
   end
 
-endmodule : sw_mii_tb
+endmodule : es_rmii_tb

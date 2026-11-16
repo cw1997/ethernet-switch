@@ -115,7 +115,7 @@ module es_switch_de2_115_top (
   es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
-    .PORT_SPEED  ({NUM_PORTS{2'(SW_SPEED_100M)}}),
+    .PORT_SPEED  ({NUM_PORTS{2'(ES_SPEED_100M)}}),
     .CAM_SETS    (128),
     .CAM_WAYS    (4)
   ) u_switch (

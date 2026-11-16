@@ -20,18 +20,18 @@
 `default_nettype none
 
 module es_gmii_top #(
-  parameter int unsigned NUM_PORTS             = SW_DEFAULT_NUM_PORTS,
+  parameter int unsigned NUM_PORTS             = ES_DEFAULT_NUM_PORTS,
   parameter int unsigned CLK_FREQ_HZ           = 125_000_000,
   parameter logic [NUM_PORTS*48-1:0] PORT_MAC  = '0,
   parameter logic [NUM_PORTS*2-1:0] PORT_SPEED = {NUM_PORTS{2'd2}},
-  parameter int unsigned MIN_FRAME_LEN         = SW_PL_DEF_MIN_FRAME_LEN,
-  parameter int unsigned MAX_FRAME_LEN         = SW_PL_DEF_MAX_FRAME_LEN,
-  parameter int unsigned SLOTS                 = SW_PL_DEF_SLOTS,
-  parameter int unsigned SLOT_BYTES            = SW_PL_DEF_SLOT_BYTES,
-  parameter int unsigned DESC_DEPTH            = SW_PL_DEF_DESC_DEPTH,
-  parameter int unsigned TX_QUEUE_DEPTH        = SW_PL_DEF_TX_QUEUE_DEPTH,
-  parameter int unsigned CAM_SETS              = SW_PL_DEF_CAM_SETS,
-  parameter int unsigned CAM_WAYS              = SW_PL_DEF_CAM_WAYS,
+  parameter int unsigned MIN_FRAME_LEN         = ES_PL_DEF_MIN_FRAME_LEN,
+  parameter int unsigned MAX_FRAME_LEN         = ES_PL_DEF_MAX_FRAME_LEN,
+  parameter int unsigned SLOTS                 = ES_PL_DEF_SLOTS,
+  parameter int unsigned SLOT_BYTES            = ES_PL_DEF_SLOT_BYTES,
+  parameter int unsigned DESC_DEPTH            = ES_PL_DEF_DESC_DEPTH,
+  parameter int unsigned TX_QUEUE_DEPTH        = ES_PL_DEF_TX_QUEUE_DEPTH,
+  parameter int unsigned CAM_SETS              = ES_PL_DEF_CAM_SETS,
+  parameter int unsigned CAM_WAYS              = ES_PL_DEF_CAM_WAYS,
   parameter int unsigned LEARNING_EN           = 1,
   parameter logic [1:0] FLOOD_MODE             = 2'd1,
   parameter int unsigned IFG_OCTETS            = 12
@@ -66,7 +66,7 @@ module es_gmii_top #(
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_port
       localparam int unsigned BP_G =
-          sw_byte_period(CLK_FREQ_HZ, sw_speed_e'(PORT_SPEED[g*2 +: 2]));
+          es_byte_period(CLK_FREQ_HZ, es_speed_e'(PORT_SPEED[g*2 +: 2]));
 
       es_mac_gmii_adapt #(
         .BYTE_PERIOD    (BP_G),

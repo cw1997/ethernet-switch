@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_pipe_stage_tb.sv
+//  File        : es_pipe_stage_tb.sv
 //  Description : Self-checking regression for es_common_pipe_stage.
 //
 //                Models the WIRE, not the RTL: the only assumption is that a
@@ -22,7 +22,7 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-module sw_pipe_stage_case #(
+module es_pipe_stage_case #(
   parameter int unsigned DP        = 1,
   parameter int unsigned CUT_READY = 0,
   parameter int unsigned FLUSH_EN  = 0,
@@ -193,12 +193,12 @@ module sw_pipe_stage_case #(
     done_o = 1'b1;
   end
 
-endmodule : sw_pipe_stage_case
+endmodule : es_pipe_stage_case
 
 // ============================================================================
 //  Top: four configurations in parallel, one shared clock.
 // ============================================================================
-module sw_pipe_stage_tb;
+module es_pipe_stage_tb;
 
   logic clk;
   logic [3:0] pass;
@@ -209,7 +209,7 @@ module sw_pipe_stage_tb;
     forever #5 clk = ~clk;
   end
 
-  sw_pipe_stage_case #(
+  es_pipe_stage_case #(
     .DP        (0),
     .CUT_READY (0),
     .FLUSH_EN  (0),
@@ -219,7 +219,7 @@ module sw_pipe_stage_tb;
     .pass_o (pass[0]),
     .done_o (done[0])
   );
-  sw_pipe_stage_case #(
+  es_pipe_stage_case #(
     .DP        (1),
     .CUT_READY (0),
     .FLUSH_EN  (1),
@@ -229,7 +229,7 @@ module sw_pipe_stage_tb;
     .pass_o (pass[1]),
     .done_o (done[1])
   );
-  sw_pipe_stage_case #(
+  es_pipe_stage_case #(
     .DP        (1),
     .CUT_READY (1),
     .FLUSH_EN  (1),
@@ -239,7 +239,7 @@ module sw_pipe_stage_tb;
     .pass_o (pass[2]),
     .done_o (done[2])
   );
-  sw_pipe_stage_case #(
+  es_pipe_stage_case #(
     .DP        (2),
     .CUT_READY (0),
     .FLUSH_EN  (1),
@@ -252,17 +252,17 @@ module sw_pipe_stage_tb;
 
   initial begin : watchdog
     #500000;
-    $fatal(1, "sw_pipe_stage_tb: timeout");
+    $fatal(1, "es_pipe_stage_tb: timeout");
   end
 
   initial begin : verdict
     wait (done == 4'b1111);
     if (pass != 4'b1111) begin
-      $display("sw_pipe_stage_tb: FAILED");
-      $fatal(1, "sw_pipe_stage_tb: one or more cases failed");
+      $display("es_pipe_stage_tb: FAILED");
+      $fatal(1, "es_pipe_stage_tb: one or more cases failed");
     end
-    $display("sw_pipe_stage_tb: PASSED (4 configurations)");
+    $display("es_pipe_stage_tb: PASSED (4 configurations)");
     $finish;
   end
 
-endmodule : sw_pipe_stage_tb
+endmodule : es_pipe_stage_tb

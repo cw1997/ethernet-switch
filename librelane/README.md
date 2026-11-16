@@ -43,7 +43,7 @@ To check a key against the pinned tag: `librelane/config/removals.py` lists remo
 
 ## 2. `SYNTH_PARAMETERS` — this build's change record
 
-The flow elaborates a **reduced** instance so it completes on this PDK. The full RTL defaults (`MAX_FRAME_LEN=1518`, `SLOTS=2`, `SLOT_BYTES=2048`, `TX_QUEUE_DEPTH=256`, `CAM_SETS=128`, `CAM_WAYS=4`) are what `make sim` and `make param-scan` exercise; the flow uses the smaller set below. `VERILOG_DEFINES: ["SYNTHESIS"]` also selects the same reduced geometry directly from `es_switch_pl_defs.sv`, so `make synth` (which defines the same macro) elaborates the identical instance — the `SYNTH_PARAMETERS` below restate it explicitly rather than being the only mechanism.
+The flow elaborates a **reduced** instance so it completes on this PDK. The full RTL defaults (`MAX_FRAME_LEN=1518`, `SLOTS=2`, `SLOT_BYTES=2048`, `TX_QUEUE_DEPTH=256`, `CAM_SETS=128`, `CAM_WAYS=4`) are what `make sim` and `make param-scan` exercise; the flow uses the smaller set below. `VERILOG_DEFINES: ["SYNTHESIS"]` also selects the same reduced geometry directly from `es_switch_defs.sv`, so `make synth` (which defines the same macro) elaborates the identical instance — the `SYNTH_PARAMETERS` below restate it explicitly rather than being the only mechanism.
 
 | Key | This build | Status in this rewrite |
 |---|---|---|

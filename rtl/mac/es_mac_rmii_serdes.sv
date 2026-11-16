@@ -40,7 +40,7 @@
 //                Unlike a real RMII PHY at 10 Mbit/s, which repeats each
 //                2-bit symbol ten times at the fixed 50 MHz REF_CLK, this
 //                model stretches the chunk windows instead - the symbol rate
-//                follows sw_byte_period, exactly as the GMII front-end
+//                follows es_byte_period, exactly as the GMII front-end
 //                stretches its octet windows.  Symbol repetition belongs in
 //                the outer shell, together with the clocking.
 //

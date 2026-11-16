@@ -20,15 +20,15 @@ module es_switch_stage_5_tx #(
   sof_i,
   eof_i,
   input var logic [7:0] data_i,
-  output logic [sw_pl_fifo_cnt_w(sw_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] free_o,
+  output logic [es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] free_o,
   output logic b_valid_o,
   b_sof_o,
   b_eof_o,
   input var logic b_ready_i,
   output logic [7:0] b_data_o
 );
-  localparam int unsigned DEPTH = sw_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN);
-  localparam int unsigned CW = sw_pl_fifo_cnt_w(DEPTH);
+  localparam int unsigned DEPTH = es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN);
+  localparam int unsigned CW = es_pl_fifo_cnt_w(DEPTH);
 
   logic full, empty, write_byte, read_byte, commit, finish;
   logic [CW-1:0] frames_q, frames_d;

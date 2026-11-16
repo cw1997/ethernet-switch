@@ -1,17 +1,17 @@
 // ============================================================================
-//  File        : tb_sw_pl_rmii.sv
+//  File        : tb_es_pl_rmii.sv
 //  Description : Self-checking four-port regression for the staged `es_rmii_top`
-//                top.  Four independent `sw_rmii_if` wire models present COMPLETE
+//                top.  Four independent `es_rmii_if` wire models present COMPLETE
 //                wire frames (preamble/SFD + client + FCS) on the packed RMII
 //                dibit pins.  On the transmit side each port has an independent
 //                `rmii_wire_mon` that reassembles the dibit stream into octets
-//                and checks preamble and FCS against the independent `sw_tb_pkg`
+//                and checks preamble and FCS against the independent `es_tb_pkg`
 //                reference.
 //
 //                Why a separate TX monitor: the rewritten `es_mac_rmii_serdes`
 //                serialises TX from a FREE-RUNNING reset-grid chunk counter, so
 //                a frame can start at any of the four chunk phases and one chunk
-//                per octet boundary is presented one clock early.  sw_rmii_if's
+//                per octet boundary is presented one clock early.  es_rmii_if's
 //                built-in monitor counts its windows from the TX_EN rise and
 //                assembles dibits in a fixed order, so it reconstructs every
 //                octet rotated by one two-bit chunk.  No data/enable delay fixes
@@ -31,7 +31,7 @@
 //                arbitrary because both the adapters and the wire models count
 //                BYTE_PERIOD clocks per octet, not nanoseconds.  Ports are all
 //                100 Mbit/s on a 50 MHz core, giving BYTE_PERIOD =
-//                sw_byte_period(50 MHz, 100M) = 4 (one clock per RMII dibit,
+//                es_byte_period(50 MHz, 100M) = 4 (one clock per RMII dibit,
 //                four dibits per octet).  `link_up_i` is tied high; the BFM
 //                `enable_i` is therefore 1'b1.
 //
@@ -46,7 +46,7 @@
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
 // ----------------------------------------------------------------------------
 // Independent RMII wire monitor.  One dibit is captured per clock while TX_EN
@@ -56,7 +56,7 @@
 // cleared by `clear_i` so each stimulus phase starts from a known state.
 // ----------------------------------------------------------------------------
 module rmii_wire_mon
-  import sw_tb_pkg::*;
+  import es_tb_pkg::*;
 #(
   parameter int unsigned PORT_ID = 0
 ) (
@@ -157,15 +157,15 @@ module rmii_wire_mon
   end
 endmodule : rmii_wire_mon
 
-module tb_sw_pl_rmii
-  import sw_tb_pkg::*;
+module tb_es_pl_rmii
+  import es_tb_pkg::*;
 #(
   parameter int unsigned NUM_PORTS = 4
 ) ();
 
   localparam int unsigned CLK_HZ = 50_000_000;
-  localparam int unsigned BP = sw_byte_period(CLK_HZ, SW_SPEED_100M);
-  localparam logic [NUM_PORTS*2-1:0] SPEEDS = {NUM_PORTS{2'(SW_SPEED_100M)}};
+  localparam int unsigned BP = es_byte_period(CLK_HZ, ES_SPEED_100M);
+  localparam logic [NUM_PORTS*2-1:0] SPEEDS = {NUM_PORTS{2'(ES_SPEED_100M)}};
   localparam int unsigned CLIENT_LEN = 64;
   /// A 64-octet client frame is 304 dibits; 1500 clocks covers the egress
   /// serialisation, pipeline latency and IFG before any count verdict.
@@ -209,7 +209,7 @@ module tb_sw_pl_rmii
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
-      sw_rmii_if #(
+      es_rmii_if #(
         .PORT_ID     (g),
         .BYTE_PERIOD (BP),
         .IFG_OCTETS  (12)
@@ -258,15 +258,15 @@ module tb_sw_pl_rmii
 
   // Constant hierarchical dispatch: a run-time g_phy[p].u_if reference cannot
   // select an elaborated instance in Icarus.
-  task automatic send_frame(input int unsigned p, input sw_mac_t dst,
-                            input sw_mac_t src, input int unsigned len,
+  task automatic send_frame(input int unsigned p, input es_mac_t dst,
+                            input es_mac_t src, input int unsigned len,
                             input bit bad_fcs);
     case (p)
       0: g_phy[0].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       1: g_phy[1].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       2: g_phy[2].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       3: g_phy[3].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
-      default: $fatal(1, "tb_sw_pl_rmii: invalid sending port %0d", p);
+      default: $fatal(1, "tb_es_pl_rmii: invalid sending port %0d", p);
     endcase
   endtask
 
@@ -284,7 +284,7 @@ module tb_sw_pl_rmii
   endtask
 
   task automatic expect_on(input int unsigned port, input int unsigned cnt,
-                           input sw_mac_t dst, input sw_mac_t src,
+                           input es_mac_t dst, input es_mac_t src,
                            input int unsigned len, input string label);
     check(mon_cnt[port*16 +: 16] == 16'(cnt), {label, ": frame count"});
     if (cnt != 0) begin
@@ -296,14 +296,14 @@ module tb_sw_pl_rmii
   endtask
 
   // ---- stimulus -------------------------------------------------------------
-  sw_mac_t host_a, host_b, host_c, bcast;
+  es_mac_t host_a, host_b, host_c, bcast;
   int unsigned p;
 
   initial begin : main_proc
     host_a = 48'h02_AA_00_00_00_01;
     host_b = 48'h02_BB_00_00_00_02;
     host_c = 48'h02_CC_00_00_00_03;
-    bcast  = SW_MAC_BROADCAST;
+    bcast  = ES_MAC_BROADCAST;
 
     rst_n   = 1'b0;
     clear   = 1'b0;
@@ -314,7 +314,7 @@ module tb_sw_pl_rmii
     idle(20);
     clear_monitors();
 
-    $display("tb_sw_pl_rmii: NUM_PORTS=%0d CLK_HZ=%0d BYTE_PERIOD=%0d", NUM_PORTS, CLK_HZ, BP);
+    $display("tb_es_pl_rmii: NUM_PORTS=%0d CLK_HZ=%0d BYTE_PERIOD=%0d", NUM_PORTS, CLK_HZ, BP);
 
     // ---- 1. reset and idle: no phantom traffic ----------------------------
     for (p = 0; p < NUM_PORTS; p++)
@@ -355,9 +355,9 @@ module tb_sw_pl_rmii
     for (p = 0; p < NUM_PORTS; p++)
       expect_on(p, 0, bcast, host_c, CLIENT_LEN, "bad FCS");
 
-    $display("tb_sw_pl_rmii: %0d checks, %0d errors", checks, errors);
-    if (errors != 0) $fatal(1, "tb_sw_pl_rmii: FAILED");
-    $display("tb_sw_pl_rmii: PASSED");
+    $display("tb_es_pl_rmii: %0d checks, %0d errors", checks, errors);
+    if (errors != 0) $fatal(1, "tb_es_pl_rmii: FAILED");
+    $display("tb_es_pl_rmii: PASSED");
     $finish;
   end
 
@@ -365,7 +365,7 @@ module tb_sw_pl_rmii
   // before reception or a stopped clock.  20 ms is far beyond normal runtime.
   initial begin : watchdog
     #20_000_000;
-    $fatal(1, "tb_sw_pl_rmii: timeout");
+    $fatal(1, "tb_es_pl_rmii: timeout");
   end
 
-endmodule : tb_sw_pl_rmii
+endmodule : tb_es_pl_rmii

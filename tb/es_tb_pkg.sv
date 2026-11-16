@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_tb_pkg.sv
+//  File        : es_tb_pkg.sv
 //  Description : Verification support package for the Layer-2 switch testbench.
 //
 //                The package deliberately contains *independent* implementations
@@ -25,12 +25,12 @@
 //                Keeping the reference model bit-serial is what makes the
 //                comparison meaningful: a shared table bug would cancel out.
 // ============================================================================
-`ifndef SW_TB_PKG_SV
-`define SW_TB_PKG_SV
+`ifndef ES_TB_PKG_SV
+`define ES_TB_PKG_SV
 
-package sw_tb_pkg;
+package es_tb_pkg;
 
-  // The RTL's shared declarations (`sw_mac_t`, `SW_PREAMBLE_LEN`, `SW_FCS_LEN`)
+  // The RTL's shared declarations (`es_mac_t`, `ES_PREAMBLE_LEN`, `ES_FCS_LEN`)
   // live at compilation-unit scope in `rtl/es_defs.sv`, which every RTL file
   // includes, so they are already in scope inside this package and need no
   // import.  This is deliberate rather than accidental: see es_defs.sv for why
@@ -104,7 +104,7 @@ package sw_tb_pkg;
   /// and SFD octets, the MAC client data, and the four FCS octets.
   function automatic int unsigned tb_frame_octets(input int unsigned total_len,
                                                   input bit vlan_en = 1'b0);
-    tb_frame_octets = SW_PREAMBLE_LEN + total_len + SW_FCS_LEN;
+    tb_frame_octets = ES_PREAMBLE_LEN + total_len + ES_FCS_LEN;
   endfunction
 
   /// Build one complete Ethernet frame image: preamble, start-of-frame
@@ -128,7 +128,7 @@ package sw_tb_pkg;
   /// `corrupt_fcs` flips one bit of the first FCS octet, which is how the
   /// testbench injects a frame the receiver has to reject.
   function automatic tb_frame_buf_t tb_build_frame(
-      input sw_mac_t dst, input sw_mac_t src, input logic [15:0] l2type,
+      input es_mac_t dst, input es_mac_t src, input logic [15:0] l2type,
       input int unsigned total_len, input bit vlan_en = 1'b0, input bit corrupt_fcs = 1'b0);
     tb_frame_buf_t frame;
     int unsigned n;
@@ -182,19 +182,19 @@ package sw_tb_pkg;
     // ---- payload -----------------------------------------------------------
     // `n` indexes the frame image, which starts with the eight preamble octets,
     // while `total_len` counts only the MAC client data, so the payload runs to
-    // SW_PREAMBLE_LEN + total_len.
+    // ES_PREAMBLE_LEN + total_len.
     p = n;
-    for (i = 0; p < SW_PREAMBLE_LEN + total_len; i++) begin
+    for (i = 0; p < ES_PREAMBLE_LEN + total_len; i++) begin
       frame = tb_put_octet(frame, p, 8'(i));
       p++;
     end
-    n   = SW_PREAMBLE_LEN + total_len;
+    n   = ES_PREAMBLE_LEN + total_len;
 
     // ---- FCS ---------------------------------------------------------------
     // The FCS covers the MAC client data only: it starts after the eight
     // preamble and SFD octets and runs to the end of the client data, which is
     // exactly what a real MAC transmits and what a real receiver verifies.
-    fcs = tb_crc32(frame, total_len, SW_PREAMBLE_LEN);
+    fcs = tb_crc32(frame, total_len, ES_PREAMBLE_LEN);
     if (corrupt_fcs) fcs[0] = ~fcs[0];
     frame = tb_put_octet(frame, n, fcs[7:0]);
     n++;
@@ -232,7 +232,7 @@ package sw_tb_pkg;
   localparam int REC_FCS_LSB = REC_DST_LSB + 48;  // FCS verdict
   localparam int REC_PRE_LSB = REC_FCS_LSB + 1;   // preamble verdict
 
-  function automatic tb_rec_t tb_rec_pack(input sw_mac_t dst, input sw_mac_t src,
+  function automatic tb_rec_t tb_rec_pack(input es_mac_t dst, input es_mac_t src,
                                           input logic [15:0] l2type, input int unsigned len,
                                           input bit fcs_ok = 1'b0, input bit preamble_ok = 1'b0);
     tb_rec_pack                  = '0;
@@ -244,11 +244,11 @@ package sw_tb_pkg;
     tb_rec_pack[REC_PRE_LSB]     = preamble_ok;
   endfunction
 
-  function automatic sw_mac_t tb_rec_dst(input tb_rec_t r);
+  function automatic es_mac_t tb_rec_dst(input tb_rec_t r);
     tb_rec_dst = r[REC_DST_LSB +: 48];
   endfunction
 
-  function automatic sw_mac_t tb_rec_src(input tb_rec_t r);
+  function automatic es_mac_t tb_rec_src(input tb_rec_t r);
     tb_rec_src = r[REC_SRC_LSB +: 48];
   endfunction
 
@@ -275,8 +275,8 @@ package sw_tb_pkg;
   /// four octets.
   function automatic tb_rec_t tb_rec_from_wire(input tb_frame_buf_t b, input int unsigned n,
                                                input bit fcs_ok, input bit preamble_ok);
-    sw_mac_t d;
-    sw_mac_t s;
+    es_mac_t d;
+    es_mac_t s;
     int unsigned i;
     d = 48'd0;
     s = 48'd0;
@@ -287,6 +287,6 @@ package sw_tb_pkg;
     );
   endfunction
 
-endpackage : sw_tb_pkg
+endpackage : es_tb_pkg
 
-`endif  // SW_TB_PKG_SV
+`endif  // ES_TB_PKG_SV

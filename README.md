@@ -61,7 +61,7 @@ Every wrapper exposes the same configuration surface (board shells fix some of i
 |---|---|---|
 | `NUM_PORTS` | 4 | number of ports |
 | `CLK_FREQ_HZ` | 125 MHz (GMII) / 50 MHz (MII, RMII) | core clock frequency |
-| `PORT_SPEED` | `2'd2` GMII / `2'd1` MII,RMII | per-port `sw_speed_e`, packed `N*2` bits |
+| `PORT_SPEED` | `2'd2` GMII / `2'd1` MII,RMII | per-port `es_speed_e`, packed `N*2` bits |
 | `PORT_MAC` | `'0` | per-port MAC, packed `N*48`; zero derives a local address |
 | `MIN_FRAME_LEN` | 60 | minimum accepted client bytes, excluding FCS |
 | `MAX_FRAME_LEN` | 1518 | maximum accepted client bytes |
@@ -75,7 +75,7 @@ Every wrapper exposes the same configuration surface (board shells fix some of i
 | `FLOOD_MODE` | `2'd1` | flooding policy (below) |
 | `IFG_OCTETS` | 12 | inter-frame gap in octets |
 
-**Simulation vs synthesis defaults.** The table above is the *simulation* default. When `SYNTHESIS` is defined — which both `make synth` and LibreLane do — `es_switch_pl_defs.sv` supplies a reduced geometry (`MAX_FRAME_LEN=256`, `SLOTS=1`, `SLOT_BYTES=512`, `TX_QUEUE_DEPTH=64`, `CAM_SETS=16`, `CAM_WAYS=2`). The effective TX depth is max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN), giving 512 bytes per port in synthesis and 3036 bytes with full simulation defaults. LibreLane restates the same reduced values in `SYNTH_PARAMETERS`.
+**Simulation vs synthesis defaults.** The table above is the *simulation* default. When `SYNTHESIS` is defined — which both `make synth` and LibreLane do — `es_switch_defs.sv` supplies a reduced geometry (`MAX_FRAME_LEN=256`, `SLOTS=1`, `SLOT_BYTES=512`, `TX_QUEUE_DEPTH=64`, `CAM_SETS=16`, `CAM_WAYS=2`). The effective TX depth is max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN), giving 512 bytes per port in synthesis and 3036 bytes with full simulation defaults. LibreLane restates the same reduced values in `SYNTH_PARAMETERS`.
 
 `FLOOD_MODE`: **0** = forward broadcast only; **1** = also flood unknown unicast (default); **2** = also flood unknown group/multicast. `LEARNING_EN` and `FLOOD_MODE` are pure elaboration parameters — there is no run-time control path.
 
@@ -83,7 +83,7 @@ Every wrapper exposes the same configuration surface (board shells fix some of i
 
 The handshake is `<src>_o_valid/<src>_o_ready` ↔ `<dst>_i_valid/<dst>_i_ready`; RX carries `sof/eof/err/fcs`, TX carries `sof/eof`. GMII top ports: `clk_i`, `rst_ni`, `link_up_i[N]`, `gmii_rx_en_i[N]`, `gmii_rx_data_i[N*8]`, `gmii_tx_en_o[N]`, `gmii_tx_data_o[N*8]`. MII/RMII tops replace the data buses with their nibble/dibit pins and RX_ER signals.
 
-A port needs one elaboration-time constant, `BYTE_PERIOD = sw_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`: the number of `clk_i` cycles per octet. At 125 MHz that is 1 (1000BASE-T), 10 (100BASE-TX), 100 (10BASE-T); at 50 MHz a 100 Mbit/s port is 4. Line rate is expressed with **clock enables, not extra clock domains** — the whole design is single-clock and free of clock-domain crossings.
+A port needs one elaboration-time constant, `BYTE_PERIOD = es_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`: the number of `clk_i` cycles per octet. At 125 MHz that is 1 (1000BASE-T), 10 (100BASE-TX), 100 (10BASE-T); at 50 MHz a 100 Mbit/s port is 4. Line rate is expressed with **clock enables, not extra clock domains** — the whole design is single-clock and free of clock-domain crossings.
 
 ## 8. Repository map
 

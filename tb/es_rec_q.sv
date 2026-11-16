@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_rec_q.sv
+//  File        : es_rec_q.sv
 //  Description : A queue of scoreboard records with fixed capacity.
 //
 //                Icarus Verilog cannot elaborate an unpacked array of queues,
@@ -19,13 +19,13 @@
 //                keeping the datapath ports read-only in the rest of the module
 //                makes it obvious that this is a testbench component.
 // ============================================================================
-`ifndef SW_REC_Q_SV
-`define SW_REC_Q_SV
+`ifndef ES_REC_Q_SV
+`define ES_REC_Q_SV
 
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
-module sw_rec_q
-  import sw_tb_pkg::*;
+module es_rec_q
+  import es_tb_pkg::*;
 #(
   /// Number of records the queue can hold.
   parameter int unsigned DEPTH = 512
@@ -180,6 +180,6 @@ module sw_rec_q
     @(posedge clk_i);
   endtask
 
-endmodule : sw_rec_q
+endmodule : es_rec_q
 
-`endif  // SW_REC_Q_SV
+`endif  // ES_REC_Q_SV

@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb/sw_phy_88e1111_tb.sv
+//  File        : tb/es_phy_88e1111_tb.sv
 //  Description : Clause-22 PHY discovery and link-policy regression of
 //                `es_perips_phy_88e1111`.
 //
@@ -33,7 +33,7 @@
 // the model owns the MDIO reply and the register file, the DUT only sees the
 // two pins, which is what makes a manager bug invisible to the model and
 // therefore visible to the checks.
-module sw_phy_88e1111_tb;
+module es_phy_88e1111_tb;
 
   // --------------------------------------------------------------------------
   // Clock, reset and MDIO pins
@@ -182,7 +182,7 @@ module sw_phy_88e1111_tb;
     present = 1;
     repeat (60000) @(negedge clk);
     check(enabled, "management retries and recovers");
-    $display("sw_phy_88e1111_tb: %0d checks %0d errors", checks, errors);
+    $display("es_phy_88e1111_tb: %0d checks %0d errors", checks, errors);
     if (errors) $fatal(1, "PHY failed");
     $finish;
   end
@@ -196,4 +196,4 @@ module sw_phy_88e1111_tb;
     #3_000_000;
     $fatal(1, "PHY timeout");
   end
-endmodule : sw_phy_88e1111_tb
+endmodule : es_phy_88e1111_tb

@@ -1,6 +1,6 @@
 // Frozen pre-extraction cycle reference; test-only, never synthesised.
 // ============================================================================
-//  File        : sw_sync_fifo_reference.sv
+//  File        : es_sync_fifo_reference.sv
 //  Description : Parameterised synchronous FIFO with a first-word-fall-through
 //                (FWFT) read port and a *frame-granular abort* capability.
 //
@@ -24,8 +24,8 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef SW_SYNC_FIFO_REFERENCE_SV
-`define SW_SYNC_FIFO_REFERENCE_SV
+`ifndef ES_SYNC_FIFO_REFERENCE_SV
+`define ES_SYNC_FIFO_REFERENCE_SV
 
 // Any name used in this file that is not declared is a typo - most likely in a
 // port connection - and `default_nettype none` makes it an elaboration error
@@ -33,7 +33,7 @@
 // design.  Restored at the end of the file; the rationale is in AGENTS.md.
 `default_nettype none
 
-module sw_sync_fifo_reference #(
+module es_sync_fifo_reference #(
   /// Entry width in bits.
   parameter int unsigned WIDTH  = 64,
   /// Number of entries; any value >= 2, not necessarily a power of two.
@@ -147,11 +147,11 @@ module sw_sync_fifo_reference #(
   assign empty_o   = (count == '0);
   assign rd_data_o = mem[rd_ptr];   // FWFT: valid while `empty_o` is low
 
-endmodule : sw_sync_fifo_reference
+endmodule : es_sync_fifo_reference
 
 // Hand the nettype default back.  A file that leaves it `none` changes the
 // meaning of every name compiled after it, in a file that has nothing to do
 // with the change that caused the breakage.
 `default_nettype wire
 
-`endif  // SW_SYNC_FIFO_REFERENCE_SV
+`endif  // ES_SYNC_FIFO_REFERENCE_SV

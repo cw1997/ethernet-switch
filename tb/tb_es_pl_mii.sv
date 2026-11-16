@@ -1,11 +1,11 @@
 // ============================================================================
-//  File        : tb_sw_pl_mii.sv
+//  File        : tb_es_pl_mii.sv
 //  Description : Self-checking four-port regression for the staged `es_mii_top`
-//                top.  Four independent `sw_mii_if` wire models present COMPLETE
+//                top.  Four independent `es_mii_if` wire models present COMPLETE
 //                wire frames (preamble/SFD + client + FCS) on the packed MII
 //                nibble pins and reassemble every transmitted frame at the wire
 //                boundary, checking preamble and FCS against the independent
-//                `sw_tb_pkg` reference.
+//                `es_tb_pkg` reference.
 //
 //                Scenarios: reset/idle, broadcast flooding with no source-port
 //                loopback, learning followed by known-unicast delivery to the
@@ -15,7 +15,7 @@
 //                arbitrary because both the adapters and the wire models count
 //                BYTE_PERIOD clocks per octet, not nanoseconds.  Ports are all
 //                100 Mbit/s on a 50 MHz core (CLK_FREQ_HZ), giving
-//                BYTE_PERIOD = sw_byte_period(50 MHz, 100M) = 4, i.e. two core
+//                BYTE_PERIOD = es_byte_period(50 MHz, 100M) = 4, i.e. two core
 //                clocks per MII nibble.  `link_up_i` is tied high because this
 //                top has no PHY-management dependency; the wire models therefore
 //                use `enable_i = 1'b1`.
@@ -24,25 +24,25 @@
 //                unpacked arrays and no variable hierarchical task calls.  BFM
 //                tasks are reached through a constant `case` dispatch over the
 //                four generated instances (g_phy[p].u_if), matching the proven
-//                pattern in tb_sw_vivado_top.sv.  Timeout watchdog bounds a
+//                pattern in tb_es_vivado_top.sv.  Timeout watchdog bounds a
 //                fabric deadlock; every check prints PASS/FAIL and the run ends
 //                with an explicit error count plus $fatal/$finish.
 // ============================================================================
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
-module tb_sw_pl_mii
-  import sw_tb_pkg::*;
+module tb_es_pl_mii
+  import es_tb_pkg::*;
 #(
   parameter int unsigned NUM_PORTS = 4
 ) ();
 
   localparam int unsigned CLK_HZ = 50_000_000;
   /// Core clocks per octet time, derived with the same function the DUT uses.
-  localparam int unsigned BP = sw_byte_period(CLK_HZ, SW_SPEED_100M);
-  localparam logic [NUM_PORTS*2-1:0] SPEEDS = {NUM_PORTS{2'(SW_SPEED_100M)}};
+  localparam int unsigned BP = es_byte_period(CLK_HZ, ES_SPEED_100M);
+  localparam logic [NUM_PORTS*2-1:0] SPEEDS = {NUM_PORTS{2'(ES_SPEED_100M)}};
   localparam int unsigned CLIENT_LEN = 64;
   /// Generous post-send settle: a 64-octet client frame is 76 wire octets, and
   /// at BP=4 the egress MAC serialises that in 304 clocks after the store-and-
@@ -58,7 +58,7 @@ module tb_sw_pl_mii
   logic [NUM_PORTS*4-1:0] mii_rxd, mii_txd;
   // The new es_mac_mii_serdes drives TXD from a free-running reset-grid nibble
   // counter, so a nibble is stable on the FIRST clock of each two-clock window
-  // and can change on the second.  sw_mii_if samples the middle (second) clock
+  // and can change on the second.  es_mii_if samples the middle (second) clock
   // of each window counted from the TX_EN rise, which therefore reads one clock
   // late.  A single registration of TXD - only on the monitor input, never on
   // the pins the DUT drives - re-aligns the independent wire model with the
@@ -95,7 +95,7 @@ module tb_sw_pl_mii
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_phy
-      sw_mii_if #(
+      es_mii_if #(
         .PORT_ID     (g),
         .BYTE_PERIOD (BP),
         .IFG_OCTETS  (12)
@@ -130,15 +130,15 @@ module tb_sw_pl_mii
 
   // Constant hierarchical dispatch.  A run-time g_phy[p].u_if reference cannot
   // select an elaborated instance in Icarus, so each port has its own case arm.
-  task automatic send_frame(input int unsigned p, input sw_mac_t dst,
-                            input sw_mac_t src, input int unsigned len,
+  task automatic send_frame(input int unsigned p, input es_mac_t dst,
+                            input es_mac_t src, input int unsigned len,
                             input bit bad_fcs);
     case (p)
       0: g_phy[0].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       1: g_phy[1].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       2: g_phy[2].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
       3: g_phy[3].u_if.send(dst, src, TB_ET_IPV4, len, 1'b0, bad_fcs);
-      default: $fatal(1, "tb_sw_pl_mii: invalid sending port %0d", p);
+      default: $fatal(1, "tb_es_pl_mii: invalid sending port %0d", p);
     endcase
   endtask
 
@@ -148,7 +148,7 @@ module tb_sw_pl_mii
       1: g_phy[1].u_if.pop_frame(r, POP_TIMEOUT);
       2: g_phy[2].u_if.pop_frame(r, POP_TIMEOUT);
       3: g_phy[3].u_if.pop_frame(r, POP_TIMEOUT);
-      default: $fatal(1, "tb_sw_pl_mii: invalid receiving port %0d", p);
+      default: $fatal(1, "tb_es_pl_mii: invalid receiving port %0d", p);
     endcase
   endtask
 
@@ -183,8 +183,8 @@ module tb_sw_pl_mii
   endfunction
 
   // Full content verdict on one received wire record.
-  task automatic check_frame(input tb_rec_t r, input sw_mac_t dst,
-                             input sw_mac_t src, input int unsigned len,
+  task automatic check_frame(input tb_rec_t r, input es_mac_t dst,
+                             input es_mac_t src, input int unsigned len,
                              input string tag);
     check(tb_rec_len(r) == len,       {tag, ": client length"});
     check(tb_rec_dst(r) == dst,       {tag, ": destination MAC"});
@@ -197,7 +197,7 @@ module tb_sw_pl_mii
   // Expected frame count for a port; a non-zero count also drains and verifies
   // one frame, so every scenario leaves all monitor queues empty for the next.
   task automatic expect_on(input int unsigned p, input int unsigned cnt,
-                           input sw_mac_t dst, input sw_mac_t src,
+                           input es_mac_t dst, input es_mac_t src,
                            input int unsigned len, input string tag);
     tb_rec_t r;
     check(pending(p) == cnt, {tag, ": frame count"});
@@ -226,14 +226,14 @@ module tb_sw_pl_mii
   endtask
 
   // ---- stimulus -------------------------------------------------------------
-  sw_mac_t host_a, host_b, host_c, bcast;
+  es_mac_t host_a, host_b, host_c, bcast;
   int unsigned p;
 
   initial begin : main_proc
     host_a = 48'h02_AA_00_00_00_01;
     host_b = 48'h02_BB_00_00_00_02;
     host_c = 48'h02_CC_00_00_00_03;
-    bcast  = SW_MAC_BROADCAST;
+    bcast  = ES_MAC_BROADCAST;
 
     rst_n   = 1'b0;
     link_up = '1;
@@ -242,7 +242,7 @@ module tb_sw_pl_mii
     rst_n = 1'b1;
     idle(20);
 
-    $display("tb_sw_pl_mii: NUM_PORTS=%0d CLK_HZ=%0d BYTE_PERIOD=%0d", NUM_PORTS, CLK_HZ, BP);
+    $display("tb_es_pl_mii: NUM_PORTS=%0d CLK_HZ=%0d BYTE_PERIOD=%0d", NUM_PORTS, CLK_HZ, BP);
 
     // ---- 1. reset and idle: no phantom traffic ----------------------------
     for (p = 0; p < NUM_PORTS; p++)
@@ -290,9 +290,9 @@ module tb_sw_pl_mii
 
     check_queues();
 
-    $display("tb_sw_pl_mii: %0d checks, %0d errors", checks, errors);
-    if (errors != 0) $fatal(1, "tb_sw_pl_mii: FAILED");
-    $display("tb_sw_pl_mii: PASSED");
+    $display("tb_es_pl_mii: %0d checks, %0d errors", checks, errors);
+    if (errors != 0) $fatal(1, "tb_es_pl_mii: FAILED");
+    $display("tb_es_pl_mii: PASSED");
     $finish;
   end
 
@@ -300,7 +300,7 @@ module tb_sw_pl_mii
   // before reception or a stopped clock.  20 ms is far beyond normal runtime.
   initial begin : watchdog
     #20_000_000;
-    $fatal(1, "tb_sw_pl_mii: timeout");
+    $fatal(1, "tb_es_pl_mii: timeout");
   end
 
-endmodule : tb_sw_pl_mii
+endmodule : tb_es_pl_mii

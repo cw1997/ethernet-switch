@@ -214,7 +214,7 @@ env:
   # Built on the runner host from ci/toolchain/Dockerfile - see that file for
   # why it is a local tag and not a registry reference.  The lint/test jobs run
   # all gates through `docker run` and both consume this tag.
-  TOOLCHAIN_IMAGE: sw-toolchain:26.04
+  TOOLCHAIN_IMAGE: es-toolchain:26.04
 
   # ---- the physical flow -------------------------------------------------
   # An exact tag, not a floating `latest`: this is a Nix closure, the RTL is

@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : sw_rx_engine_tb.sv
+//  File        : es_rx_engine_tb.sv
 //  Description : Stage 1 queue and descriptor regression. Byte values encode
 //                their offsets so dropped prefixes and queue wrap are visible.
 //                No MAC or downstream validation is required by this model.
@@ -7,9 +7,9 @@
 `timescale 1ns/1ps
 `include "es_defs.sv"
 
-module sw_rx_engine_tb;
+module es_rx_engine_tb;
   localparam int unsigned N = 3, MAX_LEN = 64;
-  localparam int unsigned DW = sw_pl_rx_desc_w(N), BASE = sw_pl_desc_w(N);
+  localparam int unsigned DW = es_pl_rx_desc_w(N), BASE = es_pl_desc_w(N);
   logic clk = 0, rst_n = 0;
   always #5 clk = !clk;
   logic link_up = 1, valid = 0, ready, sof = 0, eof = 0, err = 0;
@@ -80,9 +80,9 @@ module sw_rx_engine_tb;
 
   task automatic descriptor(input int stored, input int measured, input bit bad);
     check(desc_valid &&
-          desc[sw_pl_desc_stored_lsb(N) +: SW_LEN_W] == SW_LEN_W'(stored) &&
-          desc[BASE +: SW_LEN_W+1] == (SW_LEN_W+1)'(measured) &&
-          desc[BASE+SW_PL_RX_ERR_LSB] == bad, "descriptor counts and verdict");
+          desc[es_pl_desc_stored_lsb(N) +: ES_LEN_W] == ES_LEN_W'(stored) &&
+          desc[BASE +: ES_LEN_W+1] == (ES_LEN_W+1)'(measured) &&
+          desc[BASE+ES_PL_RX_ERR_LSB] == bad, "descriptor counts and verdict");
     @(negedge clk); desc_ready = 1;
     @(posedge clk); #1; desc_ready = 0;
   endtask
@@ -102,15 +102,15 @@ module sw_rx_engine_tb;
   task automatic vlan_case(input int unsigned len, input bit reject);
     logic [DW-1:0] held;
     @(negedge clk);
-    candidate_desc = {64'b0, 1'b0, 1'b1, 16'h8100, (SW_LEN_W+1)'(len),
-                      1'b0, SW_LEN_W'(len), 48'hffff_ffff_ffff,
-                      48'h0201_0203_0405, SW_LEN_W'(len), sw_port_w(N)'(0)};
+    candidate_desc = {64'b0, 1'b0, 1'b1, 16'h8100, (ES_LEN_W+1)'(len),
+                      1'b0, ES_LEN_W'(len), 48'hffff_ffff_ffff,
+                      48'h0201_0203_0405, ES_LEN_W'(len), es_port_w(N)'(0)};
     validate_valid = 1;
     check(validate_ready, "validate accepts descriptor");
     @(negedge clk); validate_valid = 0;
-    check(checked_valid && checked_desc[BASE+SW_PL_RX_ERR_LSB] == reject &&
-          checked_desc[sw_pl_desc_len_lsb(N) +: SW_LEN_W] == (reject ? '0 : SW_LEN_W'(len)) &&
-          checked_desc[sw_pl_desc_stored_lsb(N) +: SW_LEN_W] == SW_LEN_W'(len),
+    check(checked_valid && checked_desc[BASE+ES_PL_RX_ERR_LSB] == reject &&
+          checked_desc[es_pl_desc_len_lsb(N) +: ES_LEN_W] == (reject ? '0 : ES_LEN_W'(len)) &&
+          checked_desc[es_pl_desc_stored_lsb(N) +: ES_LEN_W] == ES_LEN_W'(len),
           reject ? "reject truncated VLAN with intact accounting" : "accept complete VLAN header");
     held = checked_desc;
     repeat (3) @(negedge clk);
@@ -148,14 +148,14 @@ module sw_rx_engine_tb;
     for (int frame = 0; frame < 2; frame++)
       for (int i = 0; i < MAX_LEN; i++) beat(i, i == MAX_LEN-1, 0);
     check(!ready, "full descriptor and byte queues block admission");
-    check(desc[BASE+SW_PL_RX_ERR_LSB+1 +: 32] == 32'h87654321, "EOF delivers raw FCS");
+    check(desc[BASE+ES_PL_RX_ERR_LSB+1 +: 32] == 32'h87654321, "EOF delivers raw FCS");
     for (int frame = 0; frame < 2; frame++) begin
       descriptor(MAX_LEN, MAX_LEN, 0); consume(MAX_LEN);
     end
     check(empty && !desc_valid && ready, "queues wrap and recover after congestion");
     vlan_case(17, 1);
     vlan_case(18, 0);
-    $display("sw_rx_engine_tb: %0d checks, %0d errors", checks, errors);
+    $display("es_rx_engine_tb: %0d checks, %0d errors", checks, errors);
     if (errors != 0) $fatal(1, "stage 1 regression failed");
     $finish;
   end

@@ -77,7 +77,7 @@ module es_common_crc32 (
     c = 32'(idx);
     // Eight reflected shift steps build the table entry for octet value idx.
     for (int unsigned b = 0; b < 8; b++) begin
-      c = c[0] ? ((c >> 1) ^ SW_CRC32_POLY) : (c >> 1);
+      c = c[0] ? ((c >> 1) ^ ES_CRC32_POLY) : (c >> 1);
     end
     crc_table_word = c;
   endfunction
@@ -108,16 +108,16 @@ module es_common_crc32 (
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
-      crc <= SW_CRC32_INIT;
+      crc <= ES_CRC32_INIT;
     end else if (clr_i) begin
-      crc <= SW_CRC32_INIT;
+      crc <= ES_CRC32_INIT;
     end else if (en_i) begin
       crc <= crc_d;
     end
   end
 
-  assign crc_fin_o  = crc ^ SW_CRC32_XOROUT;
-  assign resid_ok_o = (crc == SW_CRC32_RESIDUE);
+  assign crc_fin_o  = crc ^ ES_CRC32_XOROUT;
+  assign resid_ok_o = (crc == ES_CRC32_RESIDUE);
 
 endmodule : es_common_crc32
 

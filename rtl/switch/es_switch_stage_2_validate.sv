@@ -21,17 +21,17 @@ module es_switch_stage_2_validate #(
   rst_ni,
   input var logic i_valid,
   output logic i_ready,
-  input var logic [sw_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
+  input var logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
   output logic o_valid,
   input var logic o_ready,
-  output logic [sw_pl_rx_desc_w(NUM_PORTS)-1:0] o_desc
+  output logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] o_desc
 );
-  localparam int unsigned DW = sw_pl_rx_desc_w(NUM_PORTS);
-  localparam int unsigned PW = sw_port_w(NUM_PORTS);
-  localparam int unsigned FW = SW_LEN_W + 1;
-  localparam int unsigned BASE = sw_pl_desc_w(NUM_PORTS);
-  localparam int unsigned ERR = BASE + SW_PL_RX_ERR_LSB;
-  localparam logic [47:0] OWN_MAC = (PORT_MAC == '0) ? sw_default_mac(PORT_ID) : PORT_MAC;
+  localparam int unsigned DW = es_pl_rx_desc_w(NUM_PORTS);
+  localparam int unsigned PW = es_port_w(NUM_PORTS);
+  localparam int unsigned FW = ES_LEN_W + 1;
+  localparam int unsigned BASE = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned ERR = BASE + ES_PL_RX_ERR_LSB;
+  localparam logic [47:0] OWN_MAC = (PORT_MAC == '0) ? es_default_mac(PORT_ID) : PORT_MAC;
   logic [47:0] src, dst;
   logic [15:0] length_type, declared_len, padded_len;
   logic [FW-1:0] measured;
@@ -40,27 +40,27 @@ module es_switch_stage_2_validate #(
   logic [DW-1:0] verdict;
   logic accept, valid_d;
 
-  assign src = i_desc[sw_pl_desc_srcm_lsb(NUM_PORTS) +: 48];
-  assign dst = i_desc[sw_pl_desc_dstm_lsb(NUM_PORTS) +: 48];
+  assign src = i_desc[es_pl_desc_srcm_lsb(NUM_PORTS) +: 48];
+  assign dst = i_desc[es_pl_desc_dstm_lsb(NUM_PORTS) +: 48];
   assign measured = i_desc[BASE +: FW];
-  assign length_type = i_desc[BASE+SW_PL_RX_TYPE_LSB +: 16];
-  assign vlan = i_desc[BASE+SW_PL_RX_VLAN_LSB];
-  assign declared_len = length_type + 16'(SW_HDR_LEN);
-  assign padded_len = (declared_len < 16'(SW_PL_MIN_WIRE_CLIENT)) ?
-                      16'(SW_PL_MIN_WIRE_CLIENT) : declared_len;
+  assign length_type = i_desc[BASE+ES_PL_RX_TYPE_LSB +: 16];
+  assign vlan = i_desc[BASE+ES_PL_RX_VLAN_LSB];
+  assign declared_len = length_type + 16'(ES_HDR_LEN);
+  assign padded_len = (declared_len < 16'(ES_PL_MIN_WIRE_CLIENT)) ?
+                      16'(ES_PL_MIN_WIRE_CLIENT) : declared_len;
 
   assign checks[0] = i_desc[ERR];
   assign checks[1] = (measured < FW'(MIN_FRAME_LEN)) || (measured > FW'(MAX_FRAME_LEN));
-  assign checks[2] = vlan && (measured < FW'(SW_HDR_LEN_VLAN));
-  assign checks[3] = !sw_is_unicast(src);
+  assign checks[2] = vlan && (measured < FW'(ES_HDR_LEN_VLAN));
+  assign checks[3] = !es_is_unicast(src);
   assign checks[4] = (src == OWN_MAC) || (dst == OWN_MAC);
   assign checks[5] = (src == dst);
   assign checks[6] = (src == '0) || (dst == '0);
   assign checks[7] = (length_type > 16'd1500) && (length_type < 16'd1536);
-  assign checks[8] = !vlan && sw_is_8023_length(length_type) && (16'(measured) != padded_len);
+  assign checks[8] = !vlan && es_is_8023_length(length_type) && (16'(measured) != padded_len);
   assign reject = |checks;
-  assign verdict = {i_desc[DW-1:ERR+1], reject, i_desc[ERR-1:PW+SW_LEN_W],
-                   reject ? SW_LEN_W'(0) : i_desc[PW +: SW_LEN_W], i_desc[PW-1:0]};
+  assign verdict = {i_desc[DW-1:ERR+1], reject, i_desc[ERR-1:PW+ES_LEN_W],
+                   reject ? ES_LEN_W'(0) : i_desc[PW +: ES_LEN_W], i_desc[PW-1:0]};
 
   assign i_ready = !o_valid || o_ready;
   assign accept = i_valid && i_ready;

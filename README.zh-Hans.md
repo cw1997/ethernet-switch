@@ -61,7 +61,7 @@
 |---|---|---|
 | `NUM_PORTS` | 4 | 端口数 |
 | `CLK_FREQ_HZ` | GMII 125 MHz / MII、RMII 50 MHz | 核心时钟频率 |
-| `PORT_SPEED` | GMII `2'd2` / MII、RMII `2'd1` | 每端口 `sw_speed_e`，packed `N*2` 位 |
+| `PORT_SPEED` | GMII `2'd2` / MII、RMII `2'd1` | 每端口 `es_speed_e`，packed `N*2` 位 |
 | `PORT_MAC` | `'0` | 每端口 MAC，packed `N*48`；为零则派生本地地址 |
 | `MIN_FRAME_LEN` | 60 | 接受的最小 client 字节数 |
 | `MAX_FRAME_LEN` | 1518 | 接受的最大 client 字节数 |
@@ -75,7 +75,7 @@
 | `FLOOD_MODE` | `2'd1` | 洪泛策略（见下） |
 | `IFG_OCTETS` | 12 | 帧间隔八位组数 |
 
-**仿真与综合的默认几何不同。** 上表是**仿真**默认值。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 都会定义），`es_switch_pl_defs.sv` 提供一组缩小几何：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`。实际 TX 深度为 max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN)，综合为每口 512 字节，完整仿真默认值为每口 3036 字节。LibreLane 另在 `SYNTH_PARAMETERS` 中重申同一组缩小值。
+**仿真与综合的默认几何不同。** 上表是**仿真**默认值。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 都会定义），`es_switch_defs.sv` 提供一组缩小几何：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`。实际 TX 深度为 max(TX_QUEUE_DEPTH, 2 × MAX_FRAME_LEN)，综合为每口 512 字节，完整仿真默认值为每口 3036 字节。LibreLane 另在 `SYNTH_PARAMETERS` 中重申同一组缩小值。
 
 `FLOOD_MODE`：**0** = 只转发广播；**1** = 同时洪泛未知单播（默认）；**2** = 连未知组播/组地址也洪泛。`LEARNING_EN` 与 `FLOOD_MODE` 是纯 elaboration 参数，没有任何运行期配置路径。
 
@@ -83,7 +83,7 @@
 
 字节流握手形如 `<src>_o_valid/<src>_o_ready` ↔ `<dst>_i_valid/<dst>_i_ready`；RX 侧带 `sof/eof/err`，TX 侧带 `sof/eof`。GMII 顶层端口为 `clk_i`、`rst_ni`、`link_up_i[N]`、`gmii_rx_en_i[N]`、`gmii_rx_data_i[N*8]`、`gmii_tx_en_o[N]`、`gmii_tx_data_o[N*8]`；MII / RMII 顶层把数据总线换成各自的半字节/双比特引脚及 RX_ER 信号。
 
-每个端口只需要一个 elaboration 常量：`BYTE_PERIOD = sw_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，即一个八位组占多少个 `clk_i` 周期。125 MHz 下分别为 1（1000BASE-T）、10（100BASE-TX）、100（10BASE-T）；50 MHz 的 100 Mbit/s 端口为 4。线速用**时钟使能**表达，而不是另起时钟域——全设计单时钟、无跨时钟域。
+每个端口只需要一个 elaboration 常量：`BYTE_PERIOD = es_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，即一个八位组占多少个 `clk_i` 周期。125 MHz 下分别为 1（1000BASE-T）、10（100BASE-TX）、100（10BASE-T）；50 MHz 的 100 Mbit/s 端口为 4。线速用**时钟使能**表达，而不是另起时钟域——全设计单时钟、无跨时钟域。
 
 ## 8. 仓库结构
 

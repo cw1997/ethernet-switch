@@ -17,11 +17,11 @@
 // ============================================================================
 // 1.  CRC-32 constants (reflected IEEE 802.3 polynomial)
 // ============================================================================
-localparam logic [31:0] SW_CRC32_POLY   = 32'hEDB8_8320;
-localparam logic [31:0] SW_CRC32_INIT   = 32'hFFFF_FFFF;
-localparam logic [31:0] SW_CRC32_XOROUT = 32'hFFFF_FFFF;
+localparam logic [31:0] ES_CRC32_POLY   = 32'hEDB8_8320;
+localparam logic [31:0] ES_CRC32_INIT   = 32'hFFFF_FFFF;
+localparam logic [31:0] ES_CRC32_XOROUT = 32'hFFFF_FFFF;
 /// Residue of a valid frame after its FCS is absorbed in the reflected domain.
-localparam logic [31:0] SW_CRC32_RESIDUE = 32'hDEBB_20E3;
+localparam logic [31:0] ES_CRC32_RESIDUE = 32'hDEBB_20E3;
 
 // ============================================================================
 // 2.  CRC-32 helpers
@@ -29,18 +29,18 @@ localparam logic [31:0] SW_CRC32_RESIDUE = 32'hDEBB_20E3;
 /// One reflected bit step of the CRC-32 LFSR, as the receiver and transmitter
 /// both use it.  Provided so the residue above can be re-derived and checked
 /// rather than taken on trust.
-function automatic logic [31:0] sw_crc32_bit(input var logic [31:0] c,
+function automatic logic [31:0] es_crc32_bit(input var logic [31:0] c,
                                              input var logic b);
-  sw_crc32_bit = (c[0] ^ b) ? ((c >> 1) ^ SW_CRC32_POLY) : (c >> 1);
+  es_crc32_bit = (c[0] ^ b) ? ((c >> 1) ^ ES_CRC32_POLY) : (c >> 1);
 endfunction
 
 /// Absorb one octet into the LFSR, least significant bit first.
-function automatic logic [31:0] sw_crc32_absorb_octet(input var logic [31:0] c,
+function automatic logic [31:0] es_crc32_absorb_octet(input var logic [31:0] c,
                                                       input var logic [7:0] d);
   logic [31:0] x;
   x = c;
-  for (int unsigned i = 0; i < 8; i++) x = sw_crc32_bit(x, d[i]);
-  sw_crc32_absorb_octet = x;
+  for (int unsigned i = 0; i < 8; i++) x = es_crc32_bit(x, d[i]);
+  es_crc32_absorb_octet = x;
 endfunction
 
 // ============================================================================
@@ -51,8 +51,8 @@ endfunction
 /// A one-port fabric still needs one bit: a zero-width vector is not a legal
 /// declaration, so the degenerate case is clamped rather than left to
 /// `$clog2(1) = 0`.
-function automatic int unsigned sw_port_w(input int unsigned n);
-  sw_port_w = (n > 2) ? $clog2(n) : 1;
+function automatic int unsigned es_port_w(input int unsigned n);
+  es_port_w = (n > 2) ? $clog2(n) : 1;
 endfunction
 
 `default_nettype wire

@@ -66,8 +66,8 @@ MII 串行器要求的偶数窗口。两路 `ENET*_TX_CLK` 由 `negedge CLOCK_50
 ## 4. 板级自检 TB 与 `phy_enabled` force
 
 `hdl/tb_es_switch_de2_115_top.sv` 由 `make board-unit` 运行，用两个独立的
-`sw_mii_if` 线模型在打包的 MII 半字节引脚上驱动**完整线上帧**（前导/SFD +
-client + FCS），并在出线侧按 `sw_tb_pkg` 独立重组、校验前导与 FCS。
+`es_mii_if` 线模型在打包的 MII 半字节引脚上驱动**完整线上帧**（前导/SFD +
+client + FCS），并在出线侧按 `es_tb_pkg` 独立重组、校验前导与 FCS。
 
 关键限制：测试台**没有外部 MDIO PHY 从机模型**。管理器仅 `RESET_WAIT_MS`
 就要 20 ms 内核时钟，且无响应时读回上拉电平、停在管理错误状态，

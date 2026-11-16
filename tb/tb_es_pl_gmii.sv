@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : tb_sw_pl_gmii.sv
+//  File        : tb_es_pl_gmii.sv
 //  Description : Self-checking system regression for the GMII staged-switch
 //                top.  Drives COMPLETE wire frames (preamble/SFD/client/FCS)
 //                directly onto the packed GMII pins and independently
@@ -9,16 +9,16 @@
 //                testbench elaborates for 4/8/16/32/48 ports and for arbitrary
 //                set/way geometries via `iverilog -P`.  The wire model uses
 //                only packed vectors and the functional tb_put_octet/update
-//                idiom from sw_tb_pkg: Icarus cannot be trusted with a
+//                idiom from es_tb_pkg: Icarus cannot be trusted with a
 //                run-time-indexed unpacked array.
 // ============================================================================
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
-`include "sw_tb_pkg.sv"
+`include "es_tb_pkg.sv"
 
-module sw_pl_gmii_mon
-  import sw_tb_pkg::*;
+module es_pl_gmii_mon
+  import es_tb_pkg::*;
 #(
   parameter int unsigned PORT_ID = 0
 ) (
@@ -94,10 +94,10 @@ module sw_pl_gmii_mon
       idx      <= 0;
     end
   end
-endmodule : sw_pl_gmii_mon
+endmodule : es_pl_gmii_mon
 
-module tb_sw_pl_gmii
-  import sw_tb_pkg::*;
+module tb_es_pl_gmii
+  import es_tb_pkg::*;
 #(
   parameter int unsigned NUM_PORTS = 4,
   parameter int unsigned CAM_SETS  = 16,
@@ -146,7 +146,7 @@ module tb_sw_pl_gmii
   genvar g;
   generate
     for (g = 0; g < NUM_PORTS; g++) begin : g_mon
-      sw_pl_gmii_mon #(
+      es_pl_gmii_mon #(
         .PORT_ID (g)
       ) u_mon (
         .clk_i   (clk),
@@ -175,8 +175,8 @@ module tb_sw_pl_gmii
   endtask
 
   // Present a complete wire frame on one port, then a legal inter-frame gap.
-  task automatic send_frame(input int unsigned port, input sw_mac_t dst,
-                            input sw_mac_t src, input int unsigned client_len,
+  task automatic send_frame(input int unsigned port, input es_mac_t dst,
+                            input es_mac_t src, input int unsigned client_len,
                             input bit vlan_en, input bit corrupt_fcs);
     tb_frame_buf_t f;
     int unsigned n;
@@ -212,7 +212,7 @@ module tb_sw_pl_gmii
   endtask
 
   task automatic expect_on(input int unsigned port, input int unsigned cnt,
-                           input sw_mac_t dst, input sw_mac_t src,
+                           input es_mac_t dst, input es_mac_t src,
                            input int unsigned client_len, input string label);
     check(mon_cnt[port*16 +: 16] == 16'(cnt), {label, ": frame count"});
     if (cnt != 0) begin
@@ -226,7 +226,7 @@ module tb_sw_pl_gmii
   logic mixed_done;
   generate
     if ((NUM_PORTS == 4) && (CAM_SETS == 16) && (CAM_WAYS == 2)) begin : g_mixed
-      sw_mixed_gmii_check u_check (
+      es_mixed_gmii_check u_check (
         .clk_i  (clk),
         .rst_ni (rst_n),
         .done_o (mixed_done)
@@ -236,10 +236,10 @@ module tb_sw_pl_gmii
     end
   endgenerate
 
-  sw_mac_t host_a;
-  sw_mac_t host_b;
-  sw_mac_t host_c;
-  sw_mac_t bcast;
+  es_mac_t host_a;
+  es_mac_t host_b;
+  es_mac_t host_c;
+  es_mac_t bcast;
   int unsigned last_port;
   int unsigned p;
 
@@ -249,7 +249,7 @@ module tb_sw_pl_gmii
     host_a    = 48'h02_aa_00_00_00_01;
     host_b    = 48'h02_bb_00_00_00_02;
     host_c    = 48'h02_cc_00_00_00_03;
-    bcast     = SW_MAC_BROADCAST;
+    bcast     = ES_MAC_BROADCAST;
     last_port = NUM_PORTS - 1;
 
     rst_n   = 1'b0;
@@ -263,7 +263,7 @@ module tb_sw_pl_gmii
     idle(20);
     clear_monitors();
 
-    $display("tb_sw_pl_gmii: NUM_PORTS=%0d CAM=%0dx%0d", NUM_PORTS, CAM_SETS, CAM_WAYS);
+    $display("tb_es_pl_gmii: NUM_PORTS=%0d CAM=%0dx%0d", NUM_PORTS, CAM_SETS, CAM_WAYS);
 
     // ---- 1. reset and idle ------------------------------------------------
     for (p = 0; p < NUM_PORTS; p++)
@@ -382,27 +382,27 @@ module tb_sw_pl_gmii
 
     wait (mixed_done);
     if (errors == 0)
-      $display("tb_sw_pl_gmii: PASSED (%0d checks, %0d ports, CAM %0dx%0d)",
+      $display("tb_es_pl_gmii: PASSED (%0d checks, %0d ports, CAM %0dx%0d)",
                checks, NUM_PORTS, CAM_SETS, CAM_WAYS);
     else
-      $display("tb_sw_pl_gmii: FAILED (%0d of %0d checks)", errors, checks);
-    if (errors != 0) $fatal(1, "tb_sw_pl_gmii: FAILED");
+      $display("tb_es_pl_gmii: FAILED (%0d of %0d checks)", errors, checks);
+    if (errors != 0) $fatal(1, "tb_es_pl_gmii: FAILED");
     $finish;
   end
 
   initial begin : watchdog
     #20000000;
-    $fatal(1, "tb_sw_pl_gmii: timeout");
+    $fatal(1, "tb_es_pl_gmii: timeout");
   end
 
-endmodule : tb_sw_pl_gmii
+endmodule : tb_es_pl_gmii
 
 // ============================================================================
 // Mixed-speed wire check. A burst of three broadcasts crosses a 1x and a
 // 10x transmit octet window while competing for the slow queue's byte credit.
 // ============================================================================
-module sw_mixed_gmii_check
-  import sw_tb_pkg::*;
+module es_mixed_gmii_check
+  import es_tb_pkg::*;
 (
   input var logic clk_i, rst_ni,
   output logic done_o = 0
