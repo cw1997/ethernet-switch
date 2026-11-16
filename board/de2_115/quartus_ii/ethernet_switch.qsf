@@ -133,9 +133,9 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_sta
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_1_rx_parse.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_3_checksum.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_5_tx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_cam_table.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_cam_stage.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_decide.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_lookup_cam_table.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_lookup_cam_stage.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_lookup_decide.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_stage_4_lookup.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/switch/es_switch_fabric.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../../rtl/es_gmii_top.sv

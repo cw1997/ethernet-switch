@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_stage_4_cam_table.sv
+//  File        : es_switch_stage_4_lookup_cam_table.sv
 //  Description : Forwarding table for the staged switch: NUM_PORTS parallel
 //                lookups AND NUM_PORTS parallel learns in the SAME clock.
 //
@@ -37,15 +37,15 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_STAGE_4_CAM_TABLE_SV
-`define ES_SWITCH_STAGE_4_CAM_TABLE_SV
+`ifndef ES_SWITCH_STAGE_4_LOOKUP_CAM_TABLE_SV
+`define ES_SWITCH_STAGE_4_LOOKUP_CAM_TABLE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_stage_4_cam_table #(
+module es_switch_stage_4_lookup_cam_table #(
   parameter int unsigned NUM_PORTS = 4,
   parameter int unsigned NUM_SETS  = 128,
   parameter int unsigned NUM_WAYS  = 4
@@ -349,14 +349,14 @@ module es_switch_stage_4_cam_table #(
 `ifndef SYNTHESIS
   initial begin
     if (NUM_SETS < 1 || NUM_WAYS < 1 || NUM_PORTS < 1)
-      $error("es_switch_stage_4_cam_table: set/way/port counts out of range");
+      $error("es_switch_stage_4_lookup_cam_table: set/way/port counts out of range");
     if (NUM_PORTS > (1 << PW))
-      $error("es_switch_stage_4_cam_table: NUM_PORTS does not fit the port index");
+      $error("es_switch_stage_4_lookup_cam_table: NUM_PORTS does not fit the port index");
   end
 `endif
 
-endmodule : es_switch_stage_4_cam_table
+endmodule : es_switch_stage_4_lookup_cam_table
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_STAGE_4_CAM_TABLE_SV
+`endif  // ES_SWITCH_STAGE_4_LOOKUP_CAM_TABLE_SV

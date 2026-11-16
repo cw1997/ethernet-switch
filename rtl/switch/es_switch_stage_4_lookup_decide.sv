@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_stage_4_decide.sv
+//  File        : es_switch_stage_4_lookup_decide.sv
 //  Description : S3 - one combinational forwarding decision per CAM lane,
 //                followed by the E203-style valid/ready stage register.
 //
@@ -16,15 +16,15 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_STAGE_4_DECIDE_SV
-`define ES_SWITCH_STAGE_4_DECIDE_SV
+`ifndef ES_SWITCH_STAGE_4_LOOKUP_DECIDE_SV
+`define ES_SWITCH_STAGE_4_LOOKUP_DECIDE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_stage_4_decide #(
+module es_switch_stage_4_lookup_decide #(
   parameter int unsigned NUM_PORTS = 4,
   parameter logic [1:0] FLOOD_MODE = SW_FLOOD_BCAST_UKN
 ) (
@@ -134,8 +134,8 @@ module es_switch_stage_4_decide #(
     end
   endgenerate
 
-endmodule : es_switch_stage_4_decide
+endmodule : es_switch_stage_4_lookup_decide
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_STAGE_4_DECIDE_SV
+`endif  // ES_SWITCH_STAGE_4_LOOKUP_DECIDE_SV

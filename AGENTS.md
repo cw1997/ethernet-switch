@@ -224,7 +224,7 @@ to Verilator, Icarus or yosys:
   for a memory or a register file indexed by a constant, elaboration-time
   index. Icarus does not resolve an unpacked array that is indexed with a
   run-time value — the read comes back stale, and the failure surfaces far away
-  from the cause (see the packed-vector comments in `es_switch_stage_4_cam_table.sv`). Unpacked arrays
+  from the cause (see the packed-vector comments in `es_switch_stage_4_lookup_cam_table.sv`). Unpacked arrays
   also cannot be passed to a subroutine; pack them first.
 
 ### 3.2 Width discipline — the rule this repository exists to enforce
@@ -252,7 +252,7 @@ and that width must be the one you mean.**
 - Do not use `*` between two 32-bit vectors to express "count × count". A
   synthesis tool cannot see that the multiplier only ever reaches `NUM_PORTS`
   and will build the full array. Narrow the operand and write the wrap
-  explicitly instead - `cam_rr_add` in `es_switch_stage_4_cam_table.sv` advances a
+  explicitly instead - `cam_rr_add` in `es_switch_stage_4_lookup_cam_table.sv` advances a
   `WAYW`-bit pointer with `r + WAYW'(1)` rather than a 32-bit multiply.
 - An array/loop index in a comparison against a parameter is a sized cast of the
   parameter (`PW'(NUM_PORTS - 1)`), not a bare literal.
@@ -270,7 +270,7 @@ and that width must be the one you mean.**
   forever and the simulation hangs with time standing still, which looks like a
   dead clock and nothing else. Put accumulators in a **function** — a function
   has no sensitivity list at all. `cam_grant` and `cam_pick` in
-  `es_switch_stage_4_cam_table.sv` are the reference examples.
+  `es_switch_stage_4_lookup_cam_table.sv` are the reference examples.
 - **Never index a memory with a run-time value inside `always_comb`.** Stage the
   read into a flat vector with continuous assignments (in a generate loop, so
   the offset is a constant) and let the process read the vector. The generated
@@ -282,7 +282,7 @@ and that width must be the one you mean.**
   store silently never land. Both are documented at the site in the code.
 - **Writes into an unpacked array go through per-entry `always_ff` blocks in a
   generate loop**, not a loop inside one process (see `g_entry` in
-  `es_switch_stage_4_cam_table.sv`). A loop-indexed store is dropped silently by Icarus and
+  `es_switch_stage_4_lookup_cam_table.sv`). A loop-indexed store is dropped silently by Icarus and
   the per-entry form is also what a vendor tool wants to see to infer the
   storage.
 - Reset is **synchronous, active low, named `rst_ni`, and is the first branch of
@@ -298,7 +298,7 @@ module there contains only `logic` declarations, `assign` statements, pure
 functions and generate loops - **no `always` block of any kind**. Every
 sequential element is an `es_mems_reg_bank` instance, one per register
 (`DEPTH=1`) or one per array (`DEPTH=N`; the CAM entry array and the per-set
-round-robin pointers in `es_switch_stage_4_cam_table.sv`). The greppable invariant is
+round-robin pointers in `es_switch_stage_4_lookup_cam_table.sv`). The greppable invariant is
 that no line in the domain *begins a statement* with `always` -
 `grep -rn '^\s*always' rtl/switch` comes back empty - so ordinary prose in
 comments may still use the word. The remaining procedural blocks live in the

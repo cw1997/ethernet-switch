@@ -63,9 +63,9 @@ RTL_SRCS := \
   $(RTL_DIR)/switch/es_switch_stage_1_rx_parse.sv \
   $(RTL_DIR)/switch/es_switch_stage_3_checksum.sv \
   $(RTL_DIR)/switch/es_switch_stage_5_tx.sv \
-  $(RTL_DIR)/switch/es_switch_stage_4_cam_table.sv \
-  $(RTL_DIR)/switch/es_switch_stage_4_cam_stage.sv \
-  $(RTL_DIR)/switch/es_switch_stage_4_decide.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_lookup_cam_table.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_lookup_cam_stage.sv \
+  $(RTL_DIR)/switch/es_switch_stage_4_lookup_decide.sv \
   $(RTL_DIR)/switch/es_switch_stage_4_lookup.sv \
   $(RTL_DIR)/switch/es_switch_fabric.sv \
   $(RTL_DIR)/es_gmii_top.sv \

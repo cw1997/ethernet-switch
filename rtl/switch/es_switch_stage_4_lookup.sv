@@ -46,7 +46,7 @@ module es_switch_stage_4_lookup #(
   logic [NUM_PORTS-1:0] busy_dest;
   logic [PW-1:0] rr_q, rr_d;
 
-  es_switch_stage_4_cam_stage #(
+  es_switch_stage_4_lookup_cam_stage #(
     .NUM_PORTS   (NUM_PORTS),
     .NUM_SETS    (CAM_SETS),
     .NUM_WAYS    (CAM_WAYS),
@@ -62,7 +62,7 @@ module es_switch_stage_4_lookup #(
     .o_pkg     (cam_desc)
   );
 
-  es_switch_stage_4_decide #(
+  es_switch_stage_4_lookup_decide #(
     .NUM_PORTS  (NUM_PORTS),
     .FLOOD_MODE (FLOOD_MODE)
   ) u_decide (

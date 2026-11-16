@@ -1,5 +1,5 @@
 // ============================================================================
-//  File        : es_switch_stage_4_cam_stage.sv
+//  File        : es_switch_stage_4_lookup_cam_stage.sv
 //  Description : S2 - NUM_PORTS independent pipeline lanes, each issuing a
 //                destination lookup and a source learn in the SAME clock.
 //
@@ -25,15 +25,15 @@
 // ============================================================================
 `timescale 1ns/1ps
 
-`ifndef ES_SWITCH_STAGE_4_CAM_STAGE_SV
-`define ES_SWITCH_STAGE_4_CAM_STAGE_SV
+`ifndef ES_SWITCH_STAGE_4_LOOKUP_CAM_STAGE_SV
+`define ES_SWITCH_STAGE_4_LOOKUP_CAM_STAGE_SV
 
 `default_nettype none
 
 `include "es_defs.sv"
 `default_nettype none
 
-module es_switch_stage_4_cam_stage #(
+module es_switch_stage_4_lookup_cam_stage #(
   parameter int unsigned NUM_PORTS   = 4,
   parameter int unsigned NUM_SETS    = 128,
   parameter int unsigned NUM_WAYS    = 4,
@@ -138,7 +138,7 @@ module es_switch_stage_4_cam_stage #(
     end
   endgenerate
 
-  es_switch_stage_4_cam_table #(
+  es_switch_stage_4_lookup_cam_table #(
     .NUM_PORTS (NUM_PORTS),
     .NUM_SETS  (NUM_SETS),
     .NUM_WAYS  (NUM_WAYS)
@@ -155,8 +155,8 @@ module es_switch_stage_4_cam_stage #(
     .learn_ready_o (learn_ready)
   );
 
-endmodule : es_switch_stage_4_cam_stage
+endmodule : es_switch_stage_4_lookup_cam_stage
 
 `default_nettype wire
 
-`endif  // ES_SWITCH_STAGE_4_CAM_STAGE_SV
+`endif  // ES_SWITCH_STAGE_4_LOOKUP_CAM_STAGE_SV
