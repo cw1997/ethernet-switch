@@ -76,9 +76,12 @@ module es_switch_stage_1_rx #(
   // On early abort this is the number observed through the failing beat.
   // Only stored_len participates in queue reclamation.
   assign measured_len = {1'b0, count_q} + (ES_LEN_W+1)'(fire);
+  // One length only: the forwarding decision consumes stored_len, and the
+  // drop bit below carries abort_frame until validate supersedes it with the
+  // folded receive-error + validation verdict.
   assign descriptor = {crc_i, (fire && b_eof_i) ? b_fcs_i : 32'b0,
                        abort_frame, vlan, length_type, measured_len,
-                       abort_frame, stored_len, dst, src, stored_len, PW'(PORT_ID)};
+                       abort_frame, stored_len, dst, src, PW'(PORT_ID)};
 
   assign state_d = (state_q == S_DRAIN) ?
                        ((b_valid_i && b_eof_i) ? S_IDLE : S_DRAIN) :

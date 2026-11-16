@@ -20,13 +20,100 @@
 
 ## 2. 五级流水线
 
+fabric 为每个端口例化 Stage 1–3 和 5；Stage 4 是**共享**的交叉结构。级与级之间只传 `valid/ready` 描述符；帧字节只经由下述 FIFO 移动，从不穿过级间边界。
+
+```mermaid
+flowchart LR
+    subgraph lane["每条入端通道 - × NUM_PORTS"]
+        direction TB
+        RXMAC["MAC 接收适配器<br>前导码 / SFD 捕获，<br>线上 FCS 随 EOF 边带给出"] --> S1["Stage 1 - es_switch_stage_1_rx<br>SOF 准入、帧头解析，<br>字节 FIFO + 描述符 FIFO"]
+        S1 -->|"RX 描述符"| S2["Stage 2 - es_switch_stage_2_validate<br>九项并行帧头与长度检查"]
+        S2 -->|"校验描述符"| S3["Stage 3 - es_switch_stage_3_checksum<br>在写抽头上累积 CRC32，<br>与线上 FCS 比较"]
+    end
+    S3 -->|"前向描述符，每端口一份"| CAM
+    subgraph st4["Stage 4 - es_switch_stage_4_lookup（共享）"]
+        direction LR
+        CAM["cam_stage 通道<br>目的查找 + 源学习同拍完成，read-first"] --> DEC["decide<br>命中 / 洪泛 / 丢弃策略"]
+        DEC --> SCHED["调度器<br>整帧轮询授予，<br>原子预留字节信用"]
+        SCHED --> COPY["复制引擎，每源通道一个<br>每拍一个字节"]
+    end
+    COPY --> S5["Stage 5 - es_switch_stage_5_tx<br>每出端一个 TX 队列，<br>整帧提交"]
+    S5 --> TXMAC["MAC 发送适配器<br>前导码、填充、FCS、IFG"]
+    S1 -. 入端字节 FIFO .-> COPY
+    S1 -. CRC 写抽头 .-> S3
+```
+
 1. **`es_switch_stage_1_rx`** 每个入端在 SOF 预留字节及描述符空间，在 EOF 或确认错误时发布描述符。错误后停写，继续吞掉剩余字节。SOF 时空间不足由 MAC 整帧丢弃。
-2. **`es_switch_stage_2_validate`** 并行检查帧头和长度。拒绝时将转发长度置零，保留实际入队字节数。
-3. **`es_switch_stage_3_checksum`** 随 RX 写入累积 CRC32，再与原始 FCS 比较。失败时保留用于顺序回收的字节数。
+2. **`es_switch_stage_2_validate`** 并行执行九项帧头与长度检查，把接收错误位与判决折叠进描述符唯一的 drop 位。被拒帧保留实际入队字节数，其前缀按顺序回收。
+3. **`es_switch_stage_3_checksum`** 随 RX 写入累积 CRC32，与原始 FCS 比较后把判决折叠进同一个 drop 位。失败时保留用于顺序回收的字节数。
 4. **`es_switch_stage_4_lookup`** 仅为合法帧查询和学习 CAM，按顺序回收非法帧和无目标帧。整帧轮询一次预留全部目标及所需空间，目标不重叠的帧可以并行复制。
 5. **`es_switch_stage_5_tx`** 在 EOF 写入后提交整帧，上一帧发送时可复制下一帧。
 
+### 2.1 逐级细节
+
+**Stage 1 — 接收、解析、缓存。** SOF 准入要求字节 FIFO 能装下整帧 `MAX_FRAME_LEN`，且描述符 FIFO 有空位。SOF 时刻帧长未知——只有 802.3 长度字段能提前告知——所以按最坏情况预留，准入后的字节永不丢弃。`S_IDLE / S_FRAME / S_DRAIN` 状态机在首个确定性接收错误或超出长度上限的首字节处停写，剩余字节只吞不存。`es_switch_stage_1_rx_parse` 依次移入目的地址（0–5 字节）、源地址（6–11）、Length/Type（12–13），并由完整的 EtherType 推导 VLAN 标志。`crc_write_o` 只对真正写入 FIFO 的字节有效，Stage 3 的累加器看到的正是描述符所描述的那一帧。
+
+**Stage 2 — 校验。** 九项检查在描述符上并行执行：接收错误、长度超出 `[MIN_FRAME_LEN, MAX_FRAME_LEN]`、首个 VLAN 标签头截断、非单播源地址、源或目的等于端口 MAC、源与目的相同、任一地址全零、Length/Type 落在 1501–1535 区间、无标签 802.3 实收长度与填充后声明长度不符（§3）。判决与接收错误位一起 OR 进 drop 位；`stored_len` 不动，已入队前缀仍按字节精确回收。
+
+**Stage 3 — FCS 判决。** CRC32 累加器对写抽头的每个字节累积一次。SOF 选出种子，因此寄存器无需复位值；累加器输出包含当前拍，EOF 拍发布的描述符已经携带最终 CRC。输出判决把入端 drop 位与「线上 FCS ≠ 计算 CRC」OR 在一起写回同一位——下游只读一个 reject 位。比较在帧能触碰 CAM 之前完成（§3）。
+
+**Stage 4 — 查找、决策、复制。** `cam_stage` 每端口一条通道，同一拍内发出组合逻辑目的查找**和**源学习；查找是 read-first 的，同拍写入的学习对这一拍的查找不可见。学习被表拒绝的通道保持 `valid` 并把 `ready` 压低一拍——绝不静默丢弃学习。表为 `CAM_SETS × CAM_WAYS`，使用 §4 描述的 XOR 折叠哈希与 round-robin 替换指针。`decide` 按通道应用转发策略：广播 → 除源外全部端口；组播 → 仅 `FLOOD_MODE=2` 时洪泛；单播命中 → 学习到的端口；单播未命中 → `FLOOD_MODE=0` 之外都洪泛；被拒帧 → 空掩码。决策总是发布——空掩码的含义是*读取后丢弃*，因为字节仍要被回收。调度器按整帧轮询授予，仅当**所有**目标出端队列都有字节信用（`tx_free >= stored_len`）时才授予，队列在第一个字节移动之前被原子预留；目的地不重叠的授予可以并行，两条通道永不写同一个队列。每条源通道一个复制引擎，以每拍一个字节的速度读取自己的入端字节 FIFO。
+
+**Stage 5 — 发送队列。** 每个出端队列是直通（fall-through）FIFO，其帧计数只在整帧的 EOF 字节入队时递增、在 MAC 消费到该 EOF 时递减，因此 `valid` 只暴露**完整帧**。深度钳位到至少 `2 × MAX_FRAME_LEN`，提交整帧时另一帧总能在排空。
+
+### 2.2 描述符演化
+
+每一级都把描述符收窄到其消费者真正读取的字段：每个字段只携带一份，在最后一个读者之后被剥离。帧字节从不随描述符传递——它们留在入端字节 FIFO 中，直到复制引擎取走。
+
+```mermaid
+flowchart LR
+    D1["RX 描述符<br>src_port · stored_len · src · dst · drop<br>+ measured_len · Length/Type · VLAN · err<br>+ 线上 FCS · 计算 CRC"] -->|"Stage 2 消费元数据，<br>折叠 err + 判决"| D2["校验描述符<br>src_port · stored_len · src · dst · drop<br>+ 线上 FCS · 计算 CRC"]
+    D2 -->|"Stage 3 把 FCS 判决<br>折叠进 drop"| D3["前向描述符<br>src_port · stored_len · src · dst · drop"]
+    D3 -->|"CAM 追加 hit + port_onehot；<br>src_mac 已被学习消费"| D4["CAM 包<br>src_port · stored_len · dst · drop<br>hit · port_onehot"]
+    D4 -->|"decide 应用策略"| D5["决策<br>mask · stored_len"]
+```
+
+| 边界 | 宽度（位） |
+|---|---|
+| Stage 1 → 2 RX 描述符 | `202 + PW` |
+| Stage 2 → 3 校验描述符 | `172 + PW` |
+| Stage 3 → 4 前向描述符 | `108 + PW` |
+| CAM 通道 → decide 包 | `61 + PW + N` |
+| decide → 调度器决策 | `N + 11` |
+
+`PW = es_port_w(NUM_PORTS)`，`N = NUM_PORTS`；默认四端口下分别为 204 / 174 / 110 / 67 / 15 位。
+
+### 2.3 帧级并发
+
 背压期间描述符保持稳定。Payload 保存在入端字节队列中，由复制引擎按描述符顺序读取。慢速出端可能推迟广播复制，但各出端可以独立发送已经提交的整帧。
+
+流水线是帧级并发的：一条通道接收帧 E 时，其他通道更早的帧可以同时驻留在校验、FCS 判决和查找各级，每个出端队列独立排空。最多 `NUM_PORTS` 个复制同时进行——每源通道一个引擎，受目的地重叠限制，而不是受全局仲裁限制。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Stage 4 调度器
+    participant A as 出端队列 A（快 MAC）
+    participant B as 出端队列 B（慢 MAC）
+    Note over S: 广播描述符到达：<br>mask = A + B，stored_len = len
+    S->>A: 信用检查，tx_free >= len
+    S->>B: 信用检查，tx_free >= len
+    Note over S,B: 全有或全无：第一个字节复制之前，<br>所有队列已预留完毕
+    S->>A: 复制 len 字节，每拍一个
+    S->>B: 复制 len 字节，每拍一个
+    Note over A: EOF 提交后帧对 MAC 可见；<br>MAC 排空它时下一帧仍在复制
+    Note over B: 慢 MAC 只会在复制开始前推迟授予——<br>绝不会打断别处已经提交的整帧
+```
+
+### 2.4 不变量
+
+* 背压下描述符稳定：`valid` 与 `ready` 之间字段永不改变。
+* 准入后的字节永不丢弃；被拒帧或被过滤帧的前缀在该通道的下一帧到达 CAM 之前按 FIFO 顺序回收。
+* CAM 查找是 read-first 的；同拍学习从下一拍才可见。
+* 学习绝不静默丢弃：超出的学习经 `learn_ready_o` 反压。
+* 整帧授予在第一个字节复制之前预留全部目标出端直到 EOF。
+* 帧的 EOF 字节入队后才对其出端 MAC 可见。
+* FCS 判决在帧能触碰 CAM 之前完成。
 
 ## 3. 帧准入和丢弃规则
 

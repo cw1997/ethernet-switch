@@ -50,12 +50,14 @@ module es_switch_fabric #(
 );
 
   localparam int unsigned RAW_W = es_pl_rx_desc_w(NUM_PORTS);
+  localparam int unsigned CHK_W = es_pl_chk_desc_w(NUM_PORTS);
   localparam int unsigned DESC_W = es_pl_desc_w(NUM_PORTS);
   localparam int unsigned CW = es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));
 
   logic [NUM_PORTS-1:0] rx_valid, rx_ready, val_valid, val_ready;
   logic [NUM_PORTS-1:0] crc_valid, crc_ready;
-  logic [NUM_PORTS*RAW_W-1:0] rx_desc, val_desc;
+  logic [NUM_PORTS*RAW_W-1:0] rx_desc;
+  logic [NUM_PORTS*CHK_W-1:0] val_desc;
   logic [NUM_PORTS*DESC_W-1:0] crc_desc;
   logic [NUM_PORTS-1:0] buf_read, buf_empty;
   logic [NUM_PORTS*8-1:0] buf_data, tx_write_data;
@@ -109,7 +111,7 @@ module es_switch_fabric #(
         .i_desc  (rx_desc[g*RAW_W +: RAW_W]),
         .o_valid (val_valid[g]),
         .o_ready (val_ready[g]),
-        .o_desc  (val_desc[g*RAW_W +: RAW_W])
+        .o_desc  (val_desc[g*CHK_W +: CHK_W])
       );
 
       es_switch_stage_3_checksum #(
@@ -123,7 +125,7 @@ module es_switch_fabric #(
         .crc_o       (crc),
         .i_valid     (val_valid[g]),
         .i_ready     (val_ready[g]),
-        .i_desc      (val_desc[g*RAW_W +: RAW_W]),
+        .i_desc      (val_desc[g*CHK_W +: CHK_W]),
         .o_valid     (crc_valid[g]),
         .o_ready     (crc_ready[g]),
         .o_desc      (crc_desc[g*DESC_W +: DESC_W])

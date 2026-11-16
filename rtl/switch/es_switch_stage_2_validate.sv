@@ -1,7 +1,8 @@
 // ============================================================================
 //  File        : es_switch_stage_2_validate.sv
 //  Description : One ingress descriptor lane. Parallel header and length checks
-//                invalidate the forward length while preserving queue accounting.
+//                fold the receive-error bit and the verdict into the single
+//                drop bit while preserving queue accounting.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_SWITCH_STAGE_2_VALIDATE_SV
@@ -24,20 +25,23 @@ module es_switch_stage_2_validate #(
   input var logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
   output logic o_valid,
   input var logic o_ready,
-  output logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] o_desc
+  output logic [es_pl_chk_desc_w(NUM_PORTS)-1:0] o_desc
 );
-  localparam int unsigned DW = es_pl_rx_desc_w(NUM_PORTS);
+  localparam int unsigned CKW = es_pl_chk_desc_w(NUM_PORTS);
   localparam int unsigned PW = es_port_w(NUM_PORTS);
   localparam int unsigned FW = ES_LEN_W + 1;
   localparam int unsigned BASE = es_pl_desc_w(NUM_PORTS);
   localparam int unsigned ERR = BASE + ES_PL_RX_ERR_LSB;
+  localparam int unsigned FCS_LSB = BASE + ES_PL_RX_FCS_LSB;
+  localparam int unsigned CRC_LSB = BASE + ES_PL_RX_CRC_LSB;
+  localparam int unsigned STORED_LSB = es_pl_desc_stored_lsb(NUM_PORTS);
   localparam logic [47:0] OWN_MAC = (PORT_MAC == '0) ? es_default_mac(PORT_ID) : PORT_MAC;
   logic [47:0] src, dst;
   logic [15:0] length_type, declared_len, padded_len;
   logic [FW-1:0] measured;
-  logic vlan, reject;
+  logic vlan, reject, rx_reject;
   logic [8:0] checks;
-  logic [DW-1:0] verdict;
+  logic [CKW-1:0] verdict;
   logic accept, valid_d;
 
   assign src = i_desc[es_pl_desc_srcm_lsb(NUM_PORTS) +: 48];
@@ -59,8 +63,14 @@ module es_switch_stage_2_validate #(
   assign checks[7] = (length_type > 16'd1500) && (length_type < 16'd1536);
   assign checks[8] = !vlan && es_is_8023_length(length_type) && (16'(measured) != padded_len);
   assign reject = |checks;
-  assign verdict = {i_desc[DW-1:ERR+1], reject, i_desc[ERR-1:PW+ES_LEN_W],
-                   reject ? ES_LEN_W'(0) : i_desc[PW +: ES_LEN_W], i_desc[PW-1:0]};
+  // The receive-error bit and the header/length verdict fold into the single
+  // drop bit that Stage 3 re-writes with the FCS verdict.  The measured
+  // length, Length/Type and VLAN metadata have no consumer past this boundary
+  // and stop here; only the FCS and CRC travel on for the comparison.
+  assign rx_reject = i_desc[ERR] || reject;
+  assign verdict = {i_desc[CRC_LSB +: 32], i_desc[FCS_LSB +: 32],
+                    rx_reject, i_desc[STORED_LSB +: ES_LEN_W],
+                    dst, src, i_desc[PW-1:0]};
 
   assign i_ready = !o_valid || o_ready;
   assign accept = i_valid && i_ready;
@@ -78,7 +88,7 @@ module es_switch_stage_2_validate #(
   );
   // The descriptor payload is ignored until its resettable valid bit is set.
   es_mems_reg_bank #(
-    .WIDTH (DW),
+    .WIDTH (CKW),
     .DEPTH (1)
   ) u_desc_q (
     .clk_i     (clk_i),

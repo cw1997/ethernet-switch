@@ -9,7 +9,8 @@
 
 module es_rx_engine_tb;
   localparam int unsigned N = 3, MAX_LEN = 64;
-  localparam int unsigned DW = es_pl_rx_desc_w(N), BASE = es_pl_desc_w(N);
+  localparam int unsigned DW = es_pl_rx_desc_w(N), BASE = es_pl_desc_w(N),
+                          CKW = es_pl_chk_desc_w(N);
   logic clk = 0, rst_n = 0;
   always #5 clk = !clk;
   logic link_up = 1, valid = 0, ready, sof = 0, eof = 0, err = 0;
@@ -48,7 +49,8 @@ module es_rx_engine_tb;
   // Lower the configured minimum only here to isolate truncated VLAN
   // from the runt rule. Stall the result to check ready/valid retention.
   logic validate_valid = 0, validate_ready, checked_valid, checked_ready = 0;
-  logic [DW-1:0] candidate_desc, checked_desc;
+  logic [DW-1:0] candidate_desc;
+  logic [CKW-1:0] checked_desc;
   es_switch_stage_2_validate #(
     .NUM_PORTS     (N),
     .MIN_FRAME_LEN (14),
@@ -104,12 +106,13 @@ module es_rx_engine_tb;
     @(negedge clk);
     candidate_desc = {64'b0, 1'b0, 1'b1, 16'h8100, (ES_LEN_W+1)'(len),
                       1'b0, ES_LEN_W'(len), 48'hffff_ffff_ffff,
-                      48'h0201_0203_0405, ES_LEN_W'(len), es_port_w(N)'(0)};
+                      48'h0201_0203_0405, es_port_w(N)'(0)};
     validate_valid = 1;
     check(validate_ready, "validate accepts descriptor");
     @(negedge clk); validate_valid = 0;
-    check(checked_valid && checked_desc[BASE+ES_PL_RX_ERR_LSB] == reject &&
-          checked_desc[es_pl_desc_len_lsb(N) +: ES_LEN_W] == (reject ? '0 : ES_LEN_W'(len)) &&
+    // The folded verdict lands in the drop bit at the top of the forward
+    // region; there is no separate forward-length field to check.
+    check(checked_valid && checked_desc[BASE-1] == reject &&
           checked_desc[es_pl_desc_stored_lsb(N) +: ES_LEN_W] == ES_LEN_W'(len),
           reject ? "reject truncated VLAN with intact accounting" : "accept complete VLAN header");
     held = checked_desc;
@@ -148,7 +151,7 @@ module es_rx_engine_tb;
     for (int frame = 0; frame < 2; frame++)
       for (int i = 0; i < MAX_LEN; i++) beat(i, i == MAX_LEN-1, 0);
     check(!ready, "full descriptor and byte queues block admission");
-    check(desc[BASE+ES_PL_RX_ERR_LSB+1 +: 32] == 32'h87654321, "EOF delivers raw FCS");
+    check(desc[BASE+ES_PL_RX_FCS_LSB +: 32] == 32'h87654321, "EOF delivers raw FCS");
     for (int frame = 0; frame < 2; frame++) begin
       descriptor(MAX_LEN, MAX_LEN, 0); consume(MAX_LEN);
     end

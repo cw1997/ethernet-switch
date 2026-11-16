@@ -43,10 +43,9 @@ module es_switch_stage_4_lookup_decide #(
   localparam int unsigned PW       = es_port_w(NUM_PORTS);
   localparam int unsigned CAM_W    = es_pl_cam_w(NUM_PORTS);
   localparam int unsigned LW       = NUM_PORTS + ES_LEN_W;
-  localparam int unsigned DST_LSB  = es_pl_desc_dstm_lsb(NUM_PORTS);
-  localparam int unsigned LEN_LSB  = es_pl_desc_len_lsb(NUM_PORTS);
-  localparam int unsigned STORED_LSB = es_pl_desc_stored_lsb(NUM_PORTS);
-  localparam int unsigned DESC_W = es_pl_desc_w(NUM_PORTS);
+  localparam int unsigned DST_LSB  = es_pl_cam_dstm_lsb(NUM_PORTS);
+  localparam int unsigned STORED_LSB = es_pl_cam_stored_lsb(NUM_PORTS);
+  localparam int unsigned DROP_LSB = es_pl_cam_drop_lsb(NUM_PORTS);
   localparam int unsigned HIT_LSB  = es_pl_cam_hit_lsb(NUM_PORTS);
   localparam int unsigned PORT_LSB = es_pl_cam_port_lsb(NUM_PORTS);
 
@@ -83,16 +82,16 @@ module es_switch_stage_4_lookup_decide #(
       logic [NUM_PORTS-1:0] mask;
       logic [LW-1:0]     dat_d;
 
-      logic unused_drop;
-      assign unused_drop = i_pkg[gp*CAM_W + DESC_W-1];
-      assign mask = (i_pkg[gp*CAM_W + LEN_LSB +: ES_LEN_W] == '0) ? '0 : decide_mask(
+      // The drop bit is the folded Stage 2/3 verdict: a rejected frame gets a
+      // zero mask and is drained in order rather than forwarded.
+      assign mask = i_pkg[gp*CAM_W + DROP_LSB] ? '0 : decide_mask(
           i_pkg[gp*CAM_W + DST_LSB +: 48],
           i_pkg[gp*CAM_W +: PW],
           i_pkg[gp*CAM_W + HIT_LSB],
           i_pkg[gp*CAM_W + PORT_LSB +: NUM_PORTS]);
 
-      // Only the egress mask and the frame length are needed downstream;
-      // carrying the full descriptor would leave its MAC bits unread at the
+      // Only the egress mask and the stored length are needed downstream;
+      // carrying more of the package would leave its MAC bits unread at the
       // fabric level and -Wall would report UNUSEDSIGNAL.
       assign dat_d = {mask, i_pkg[gp*CAM_W + STORED_LSB +: ES_LEN_W]};
 

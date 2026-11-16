@@ -14,7 +14,7 @@
 | `CLK_FREQ_HZ` | `int unsigned` | GMII 125_000_000；MII/RMII 50_000_000 | 核心时钟频率 |
 | `PORT_SPEED` | `logic [N*2-1:0]` | GMII `{N{2'd2}}`；MII/RMII `{N{2'd1}}` | 每端口速率枚举 `es_speed_e`（0=10M、1=100M、2=1000M、3=down） |
 | `PORT_MAC` | `logic [N*48-1:0]` | `'0` | 每端口 MAC；为零时由 `es_default_mac(PORT_ID)` 派生本地地址 |
-| `MIN_FRAME_LEN` | `int unsigned` | 64 | 接受的最小 MAC client 字节数 |
+| `MIN_FRAME_LEN` | `int unsigned` | 60 | 接受的最小 MAC client 字节数 |
 | `MAX_FRAME_LEN` | `int unsigned` | 1518 | 接受的最大 MAC client 字节数 |
 | `SLOTS` | `int unsigned` | 2 | 每入口缓冲的帧槽数 |
 | `SLOT_BYTES` | `int unsigned` | 2048 | 每槽字节数；`SLOTS*SLOT_BYTES` **必须是 2 的幂** |
@@ -28,7 +28,7 @@
 
 `FLOOD_MODE` 与 `LEARNING_EN` 是纯 elaboration 参数，无运行期配置路径；`link_up_i` 只是数据门控。
 
-上表为**仿真**默认几何。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 的 `VERILOG_DEFINES`），`es_switch_defs.sv` 改提供缩小默认：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`（`MIN_FRAME_LEN=64`、`DESC_DEPTH=8` 不变）。原因是全尺寸 4×2048×8 帧缓冲约合 13 万触发器，yosys `synth -flatten` 展开极慢；仿真不定义该宏，故行为回归始终用全尺寸。LibreLane 的 `SYNTH_PARAMETERS` 与这组值一致。
+上表为**仿真**默认几何。定义 `SYNTHESIS` 时（`make synth` 与 LibreLane 的 `VERILOG_DEFINES`），`es_switch_defs.sv` 改提供缩小默认：`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`（`MIN_FRAME_LEN=60`、`DESC_DEPTH=8` 不变）。原因是全尺寸 4×2048×8 帧缓冲约合 13 万触发器，yosys `synth -flatten` 展开极慢；仿真不定义该宏，故行为回归始终用全尺寸。LibreLane 的 `SYNTH_PARAMETERS` 与这组值一致。
 
 ## 2. 端口表
 
@@ -63,7 +63,7 @@
 | 内部吞吐 | 每端口每时钟 1 字节，`N` 端口并行即 `N` 字节/clk；级间握手无损；约 5 帧可同时在各级驻留 |
 | 线速模型 | `BYTE_PERIOD = es_byte_period(CLK_FREQ_HZ, PORT_SPEED[p])`，由时钟使能表达；125 MHz 下 1000BASE-T=1、100BASE-TX=10、10BASE-T=100 周期/八位组 |
 | 单端口理论线速 | `8 bit × CLK_FREQ_HZ / BYTE_PERIOD`，如 125 MHz / 1 周期 = 1000 Mbit/s；50 MHz / 4 周期 = 100 Mbit/s |
-| 帧缓冲 / 队列 | 每入口端口 1 个 `SLOTS*SLOT_BYTES` 字节 FIFO + 1 个 `DESC_DEPTH` 描述符 FIFO（坏帧单拍 `undo` 回卷）；每端口 1 个 `TX_QUEUE_DEPTH` 深 FIFO，字为 `{sof, eof, data[7:0]}` |
+| 帧缓冲 / 队列 | 每入口端口 1 个 `SLOTS*SLOT_BYTES` 字节 FIFO + 1 个 `DESC_DEPTH` 描述符 FIFO（数据通路不使用回卷；坏帧前缀由复制引擎按序读空）；每端口 1 个 `TX_QUEUE_DEPTH` 深 FIFO，字为 `{sof, eof, data[7:0]}` |
 | 转发表 | `CAM_SETS × CAM_WAYS` 表项，同拍 `N` 查 + `N` 学；单时钟无 CDC，复位同步低有效 |
 | 资源构成 | 存储占主导；`sky130_fd_sc_hd` 无 SRAM 宏，以寄存器 + 读 mux 实现 |
 | 物理实现 | LibreLane 用缩小实例 `SYNTH_PARAMETERS`（`MAX_FRAME_LEN=256`、`SLOTS=1`、`SLOT_BYTES=512`、`TX_QUEUE_DEPTH=64`、`CAM_SETS=16`、`CAM_WAYS=2`），`CLOCK_PERIOD=10` |
@@ -72,11 +72,11 @@
 
 ## 4. 异形包丢弃规则（八类）
 
-`MIN_FRAME_LEN` / `MAX_FRAME_LEN` 以 MAC client 字节计（不含前导/SFD/FCS）；帧仅在完整收齐并通过全部检查后才对下游可见，坏帧回卷、不产生描述符。
+`MIN_FRAME_LEN` / `MAX_FRAME_LEN` 以 MAC client 字节计（不含前导/SFD/FCS）；帧仅在完整收齐并通过全部检查后才可触碰 CAM。坏帧同样会发布描述符（drop 位置位），其已存储前缀由复制引擎按序读空。
 
 | # | 丢弃条件 |
 |---|---|
-| 1 | FCS 错 / RX_ER / 截断（`b_err_i` 裁决，FCS 只在 MAC 适配器校验一次） |
+| 1 | FCS 错 / RX_ER / 截断：MAC 适配器把线上 FCS 作为 EOF 边带捕获，交换核在 Stage 3（`es_switch_stage_3_checksum`）将其与重算 CRC 比对，比对先于任何 CAM 动作 |
 | 2 | runt：`client_len < MIN_FRAME_LEN` |
 | 3 | 超 MTU：`client_len > MAX_FRAME_LEN`（继续排空线上剩余字节） |
 | 4 | 802.3 length 字段与实测 client 长度不符（`l2type ≤ 1500` 时校验） |
@@ -96,7 +96,7 @@
 | 替换 | 组相联 + round-robin 指针；精确命中就地重定位、不推进指针 |
 | 冲突 | 同 bucket 学习多于 `NUM_WAYS` 时 `learn_ready_o` 反压一拍，`cam_stage` 保持 `valid` 直到批准；禁止静默丢弃 |
 
-转发决策（S3）：广播 → 除源端口外全发；组播 → 仅 `FLOOD_MODE=2` 时全发；
+转发决策（Stage 4 内部第 3 级 decide）：广播 → 除源端口外全发；组播 → 仅 `FLOOD_MODE=2` 时全发；
 单播命中 → 命中掩码去掉源端口；单播未命中 → `FLOOD_MODE≠0` 时全发；源端口始终被过滤。egress mask 为零的帧仍被 TX writer 读空丢弃。
 
 ## 6. 五个 top 差异

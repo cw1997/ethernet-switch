@@ -174,38 +174,52 @@ function automatic int unsigned es_pl_fifo_cnt_w(input int unsigned depth);
   es_pl_fifo_cnt_w = ((depth <= 2) ? 1 : $clog2(depth)) + 1;
 endfunction
 
-// Forward descriptor = {drop, stored_len, dst_mac, src_mac, len, src_port}.
-// The frame bytes live in a per-port FIFO. stored_len remains nonzero for
-// rejected frames whose prefix must still be consumed in order.
+// Forward descriptor = {drop, stored_len, dst_mac, src_mac, src_port} (LSB
+// order).  The frame bytes live in a per-port FIFO.  There is no separate
+// forward-length field: an accepted frame copies exactly stored_len bytes and
+// a rejected frame is identified by the drop bit alone, into which Stage 2
+// and Stage 3 fold their verdicts.  stored_len remains nonzero for rejected
+// frames whose prefix must still be consumed in order.
 function automatic int unsigned es_pl_desc_w(input int unsigned nports);
-  es_pl_desc_w = 1 + 48 + 48 + 2 * ES_LEN_W + es_port_w(nports);
-endfunction
-
-function automatic int unsigned es_pl_desc_len_lsb(input int unsigned nports);
-  es_pl_desc_len_lsb = es_port_w(nports);
+  es_pl_desc_w = 1 + 48 + 48 + ES_LEN_W + es_port_w(nports);
 endfunction
 
 function automatic int unsigned es_pl_desc_srcm_lsb(input int unsigned nports);
-  es_pl_desc_srcm_lsb = es_port_w(nports) + ES_LEN_W;
+  es_pl_desc_srcm_lsb = es_port_w(nports);
 endfunction
 
 function automatic int unsigned es_pl_desc_dstm_lsb(input int unsigned nports);
-  es_pl_desc_dstm_lsb = es_port_w(nports) + ES_LEN_W + 48;
+  es_pl_desc_dstm_lsb = es_port_w(nports) + 48;
 endfunction
 
 function automatic int unsigned es_pl_desc_stored_lsb(input int unsigned nports);
   es_pl_desc_stored_lsb = es_pl_desc_dstm_lsb(nports) + 48;
 endfunction
 
-// RX/validate append {computed CRC, wire FCS, error, VLAN, Length/Type,
-// measured length}. The count includes the failing beat for an early abort.
+// RX append {computed CRC, wire FCS, error, VLAN, Length/Type, measured
+// length} above the forward descriptor, LSB order as listed.  The count
+// includes the failing beat for an early abort.  Stage 2 consumes this
+// metadata; nothing past Stage 2 sees it.
 localparam int unsigned ES_PL_MIN_WIRE_CLIENT = 60;
 localparam int unsigned ES_PL_RX_TYPE_LSB = ES_LEN_W + 1;
 localparam int unsigned ES_PL_RX_VLAN_LSB = ES_PL_RX_TYPE_LSB + 16;
 localparam int unsigned ES_PL_RX_ERR_LSB  = ES_PL_RX_VLAN_LSB + 1;
+localparam int unsigned ES_PL_RX_FCS_LSB  = ES_PL_RX_ERR_LSB + 1;
+localparam int unsigned ES_PL_RX_CRC_LSB  = ES_PL_RX_FCS_LSB + 32;
 
 function automatic int unsigned es_pl_rx_desc_w(input int unsigned nports);
-  es_pl_rx_desc_w = es_pl_desc_w(nports) + ES_PL_RX_ERR_LSB + 1 + 64;
+  es_pl_rx_desc_w = es_pl_desc_w(nports) + ES_PL_RX_CRC_LSB + 32;
+endfunction
+
+// Checksum append {computed CRC, wire FCS} above the forward descriptor.
+// Stage 2 writes its folded receive-error + validation verdict into the
+// descriptor's drop bit and passes both 32-bit values through for the Stage 3
+// FCS comparison.  The RX metadata and its offsets stop at Stage 2.
+localparam int unsigned ES_PL_CHK_FCS_LSB = 0;
+localparam int unsigned ES_PL_CHK_CRC_LSB = 32;
+
+function automatic int unsigned es_pl_chk_desc_w(input int unsigned nports);
+  es_pl_chk_desc_w = es_pl_desc_w(nports) + ES_PL_CHK_CRC_LSB + 32;
 endfunction
 
 function automatic int unsigned es_pl_tx_depth(input int unsigned depth,
@@ -214,19 +228,34 @@ function automatic int unsigned es_pl_tx_depth(input int unsigned depth,
 endfunction
 
 // ============================================================================
-// 9.  CAM-level descriptor accessors
+// 9.  CAM-level package accessors
 // ============================================================================
-/// CAM level appends {hit, port_onehot} to the descriptor.
+// The CAM lanes consume the source MAC for learning on their input side, so
+// the package registered toward decide carries only the fields the forwarding
+// decision reads: {src_port, stored_len, dst_mac, drop, hit, port_onehot}
+// (LSB order).  Anything else would sit unread in the lane register.
 function automatic int unsigned es_pl_cam_w(input int unsigned nports);
-  es_pl_cam_w = es_pl_desc_w(nports) + 1 + nports;
+  es_pl_cam_w = es_port_w(nports) + ES_LEN_W + 48 + 1 + 1 + nports;
+endfunction
+
+function automatic int unsigned es_pl_cam_stored_lsb(input int unsigned nports);
+  es_pl_cam_stored_lsb = es_port_w(nports);
+endfunction
+
+function automatic int unsigned es_pl_cam_dstm_lsb(input int unsigned nports);
+  es_pl_cam_dstm_lsb = es_port_w(nports) + ES_LEN_W;
+endfunction
+
+function automatic int unsigned es_pl_cam_drop_lsb(input int unsigned nports);
+  es_pl_cam_drop_lsb = es_pl_cam_dstm_lsb(nports) + 48;
 endfunction
 
 function automatic int unsigned es_pl_cam_hit_lsb(input int unsigned nports);
-  es_pl_cam_hit_lsb = es_pl_desc_w(nports);
+  es_pl_cam_hit_lsb = es_pl_cam_drop_lsb(nports) + 1;
 endfunction
 
 function automatic int unsigned es_pl_cam_port_lsb(input int unsigned nports);
-  es_pl_cam_port_lsb = es_pl_desc_w(nports) + 1;
+  es_pl_cam_port_lsb = es_pl_cam_hit_lsb(nports) + 1;
 endfunction
 
 // ============================================================================

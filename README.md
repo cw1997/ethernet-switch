@@ -20,13 +20,100 @@ Each port uses an 8-bit `valid/ready` stream with `sof/eof/err`. The receive MAC
 
 ## 2. Pipeline architecture
 
+The fabric instantiates stages 1–3 and 5 **once per port**; stage 4 is **shared** and crossbar-shaped. Every stage handoff is a `valid/ready` descriptor transfer, and frame bytes move only through the FIFOs named below — never across a stage boundary.
+
+```mermaid
+flowchart LR
+    subgraph lane["Per ingress lane - × NUM_PORTS"]
+        direction TB
+        RXMAC["MAC RX adapter<br>preamble / SFD hunt,<br>wire FCS as EOF sideband"] --> S1["Stage 1 - es_switch_stage_1_rx<br>admission at SOF, header parse,<br>byte FIFO + descriptor FIFO"]
+        S1 -->|"RX descriptor"| S2["Stage 2 - es_switch_stage_2_validate<br>nine parallel header and length checks"]
+        S2 -->|"checksum descriptor"| S3["Stage 3 - es_switch_stage_3_checksum<br>CRC32 absorb on the write tap,<br>compare with the wire FCS"]
+    end
+    S3 -->|"forward descriptor, one per port"| CAM
+    subgraph st4["Stage 4 - es_switch_stage_4_lookup (shared)"]
+        direction LR
+        CAM["cam_stage lanes<br>destination lookup + source learn,<br>same clock, read-first"] --> DEC["decide<br>hit / flood / drop policy"]
+        DEC --> SCHED["scheduler<br>whole-frame round-robin grants,<br>atomic byte-credit reservation"]
+        SCHED --> COPY["copy engine per source lane<br>one byte per clock"]
+    end
+    COPY --> S5["Stage 5 - es_switch_stage_5_tx<br>one TX queue per egress,<br>whole-frame commit"]
+    S5 --> TXMAC["MAC TX adapter<br>preamble, pad, FCS, IFG"]
+    S1 -. ingress byte FIFO .-> COPY
+    S1 -. CRC write tap .-> S3
+```
+
 1. **`es_switch_stage_1_rx`** reserves byte and descriptor capacity at SOF for each ingress. It writes bytes to the ingress FIFO and publishes the parsed descriptor at EOF, or on the first definitive receive error. It drains the rest of an aborted frame and caps the stored length at `MAX_FRAME_LEN`. The MAC discards the whole frame when admission fails.
-2. **`es_switch_stage_2_validate`** evaluates header and length checks in parallel. A rejected frame has zero forward length and retains the exact number of bytes stored.
-3. **`es_switch_stage_3_checksum`** accumulates CRC32 on the RX write tap and compares the captured result with the original FCS. It preserves the ordered reclamation count on failure.
+2. **`es_switch_stage_2_validate`** evaluates nine header and length checks in parallel and folds the receive-error bit and its verdict into the descriptor's single drop bit. A rejected frame retains the exact number of bytes stored, so its prefix is reclaimed in order.
+3. **`es_switch_stage_3_checksum`** accumulates CRC32 on the RX write tap, compares the captured result with the original FCS and folds that verdict into the same drop bit. It preserves the ordered reclamation count on failure.
 4. **`es_switch_stage_4_lookup`** looks up and learns only accepted frames. Each ingress drains rejected and filtered frames in FIFO order. Round-robin whole-frame grants reserve all target destinations and their byte credits together. Disjoint copies can run concurrently.
 5. **`es_switch_stage_5_tx`** commits each frame when its EOF enters the egress queue. The transmitter can drain one complete frame while the fabric copies the next.
 
+### 2.1 Stage by stage
+
+**Stage 1 — receive, parse, buffer.** Admission at SOF requires the byte FIFO to hold a full `MAX_FRAME_LEN` frame plus a free descriptor slot. Frame size is unknown at SOF — only an 802.3 length field would reveal it early — so the reservation is worst-case and no admitted byte is ever dropped. The `S_IDLE / S_FRAME / S_DRAIN` FSM stops storing on the first definitive receive error or the first byte past the length cap and drains the remainder without storing it. `es_switch_stage_1_rx_parse` shifts in destination (octets 0–5), source (6–11) and Length/Type (12–13), deriving the VLAN flag from the completed EtherType. `crc_write_o` qualifies exactly the bytes written to the FIFO, so the Stage 3 accumulator sees the frame the descriptor describes.
+
+**Stage 2 — validate.** Nine checks run in parallel on the descriptor: receive error, length outside `[MIN_FRAME_LEN, MAX_FRAME_LEN]`, truncated first VLAN header, non-unicast source, source or destination equal to the port MAC, identical source and destination, all-zero source or destination, Length/Type in the 1501–1535 gap, and 802.3-length mismatch against the padded declared length (§3). The verdict is OR-ed with the receive-error bit into the drop bit; `stored_len` is untouched so the queued prefix is still reclaimed byte-exactly.
+
+**Stage 3 — FCS verdict.** The CRC32 accumulator absorbs one octet per write-tap byte. SOF selects the seed, so the register needs no reset value, and the accumulator output includes the current beat, so a descriptor published on the EOF beat already carries the final CRC. The output verdict ORs the incoming drop bit with `wire FCS != computed CRC` and writes it back into that bit — everything downstream reads one reject bit. The comparison completes before the frame can act on the CAM (§3).
+
+**Stage 4 — lookup, decide, copy.** `cam_stage` runs one lane per port, each issuing a combinational destination lookup **and** a source learn in the same clock; lookup is read-first, so a same-edge learn is invisible to that clock's lookups. A lane whose learn the table refused keeps `valid` asserted and lowers `ready` for that clock — no learn is ever silently dropped. The table is `CAM_SETS × CAM_WAYS` with the XOR-fold hash and round-robin victims described in §4. `decide` applies the forwarding policy per lane: broadcast → all ports but the source; group → flood only in `FLOOD_MODE=2`; unicast hit → the learned port; unicast miss → flood unless `FLOOD_MODE=0`; rejected frame → empty mask. A decision is always published — a zero mask means *read and discard*, because the bytes must still be drained. The scheduler grants whole frames round-robin, only when **every** targeted egress queue has byte credit (`tx_free >= stored_len`), so queues are reserved atomically before the first byte moves; grants with disjoint destination masks run concurrently, and two lanes never write one queue. One copy engine per source lane reads its own ingress byte FIFO at one byte per clock.
+
+**Stage 5 — transmit queues.** Each egress queue is a fall-through FIFO whose frame counter increments only when a frame's EOF byte is enqueued and decrements when the MAC consumes that EOF, so `valid` exposes **only complete frames**. The depth is clamped to at least `2 × MAX_FRAME_LEN`, so a full frame can always be committed while another drains.
+
+### 2.2 Descriptor evolution
+
+Each stage narrows the descriptor to what its consumer reads: a field is carried exactly once and stripped at the boundary after its last reader. The frame bytes never travel with the descriptor — they stay in the ingress byte FIFO until the copy engine claims them.
+
+```mermaid
+flowchart LR
+    D1["RX descriptor<br>src_port · stored_len · src · dst · drop<br>+ measured_len · Length/Type · VLAN · err<br>+ wire FCS · computed CRC"] -->|"Stage 2 consumes the metadata,<br>folds err + verdict"| D2["checksum descriptor<br>src_port · stored_len · src · dst · drop<br>+ wire FCS · computed CRC"]
+    D2 -->|"Stage 3 folds the FCS verdict<br>into drop"| D3["forward descriptor<br>src_port · stored_len · src · dst · drop"]
+    D3 -->|"CAM adds hit + port_onehot;<br>src_mac was consumed by the learn"| D4["CAM package<br>src_port · stored_len · dst · drop<br>hit · port_onehot"]
+    D4 -->|"decide applies the policy"| D5["decision<br>mask · stored_len"]
+```
+
+| Boundary | Width (bits) |
+|---|---|
+| Stage 1 → 2 RX descriptor | `202 + PW` |
+| Stage 2 → 3 checksum descriptor | `172 + PW` |
+| Stage 3 → 4 forward descriptor | `108 + PW` |
+| CAM lane → decide package | `61 + PW + N` |
+| decide → scheduler decision | `N + 11` |
+
+`PW = es_port_w(NUM_PORTS)`, `N = NUM_PORTS`; at the default four ports that is 204 / 174 / 110 / 67 / 15 bits.
+
+### 2.3 Frame concurrency
+
 Descriptors remain stable under backpressure. The payload stays in the ingress byte FIFO until its descriptor reaches the copy engine. Copying a frame takes one cycle per byte and atomically reserves space on every selected egress, so a slow destination can delay a broadcast before copying but cannot interrupt its transmission on another port.
+
+The pipeline is frame-concurrent: while one lane receives frame E, earlier frames from other lanes sit in validate, checksum and lookup simultaneously, and every egress queue drains independently. Up to `NUM_PORTS` copies run at once — one engine per source lane, limited by destination overlap, not by a global arbiter.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Stage 4 scheduler
+    participant A as Egress queue A (fast MAC)
+    participant B as Egress queue B (slow MAC)
+    Note over S: broadcast descriptor arrives:<br>mask = A + B, stored_len = len
+    S->>A: credit check, tx_free >= len
+    S->>B: credit check, tx_free >= len
+    Note over S,B: all-or-nothing: every queue is reserved<br>before the first byte is copied
+    S->>A: copy len bytes, one per clock
+    S->>B: copy len bytes, one per clock
+    Note over A: EOF commit makes the frame visible;<br>the MAC drains it while the next frame is copied
+    Note over B: a slow MAC delays the grant before copying starts -<br>it never interrupts a frame already committed elsewhere
+```
+
+### 2.4 Invariants
+
+* Descriptors are stable under backpressure: fields never change between `valid` and `ready`.
+* No admitted byte is ever dropped; a rejected or filtered frame's stored prefix is drained in FIFO order before the lane's next frame reaches the CAM.
+* The CAM lookup is read-first; a learn on the same edge is visible only from the next clock.
+* A learn is never silently dropped: the table backpressures the excess through `learn_ready_o`.
+* A whole-frame grant reserves every selected egress through EOF before the first byte is copied.
+* A frame is visible to its egress MAC only after its EOF byte is queued.
+* The FCS verdict completes before the frame can act on the CAM.
 
 ## 3. Frame admission and drop rules
 

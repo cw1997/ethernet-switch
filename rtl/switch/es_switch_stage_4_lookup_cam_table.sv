@@ -242,6 +242,7 @@ module es_switch_stage_4_lookup_cam_table #(
   logic [NUM_PORTS*WAYW-1:0] lway;
   logic [NUM_PORTS-1:0]      lexact;
   logic [NUM_PORTS-1:0]      grant;
+  logic [NUM_PORTS*32-1:0]   wr_idx_flat;
 
   genvar gi;
   genvar gp;
@@ -262,6 +263,7 @@ module es_switch_stage_4_lookup_cam_table #(
       logic [WAYW:0]   ex;
       logic [WAYW-1:0] rr;
       logic [WAYW-1:0] victim;
+      logic [31:0]     wr_idx;
 
       assign lset[gp*SETW +: SETW] = cam_set(learn_mac_i[gp*48 +: 48]);
       assign rr = rr_flat[lset[gp*SETW +: SETW]*WAYW +: WAYW];
@@ -273,6 +275,14 @@ module es_switch_stage_4_lookup_cam_table #(
       // An exact match relocates in place; otherwise take a distinct victim
       // way so concurrent learners in this set do not fight over one entry.
       assign lway[gp*WAYW +: WAYW] = ex[WAYW] ? ex[WAYW-1:0] : victim;
+      // Per-port write index into the entry array.  Both fields are
+      // deliberately widened to the 32-bit integer domain before the ADD:
+      // NUM_WAYS is an int unsigned, so an unextended SETW/WAYW field would
+      // be silently zero-extended (WIDTHEXPAND).  Computing it once per port
+      // keeps the NENT entry blocks below to a bare index comparison.
+      assign wr_idx = 32'(lset[gp*SETW +: SETW])*NUM_WAYS +
+                      32'(lway[gp*WAYW +: WAYW]);
+      assign wr_idx_flat[gp*32 +: 32] = wr_idx;
     end
   endgenerate
 
@@ -285,12 +295,10 @@ module es_switch_stage_4_lookup_cam_table #(
       logic [NUM_PORTS-1:0] pick;
 
       for (gp = 0; gp < NUM_PORTS; gp++) begin : g_hit
-        // Both fields are deliberately widened to the 32-bit integer domain
-        // before the ADD: NUM_WAYS is an int unsigned, so an unextended
-        // SETW/WAYW field would be silently zero-extended (WIDTHEXPAND).
+        // The per-port write index is computed once in g_learn above; this
+        // decode stays a bare equality per (entry, port) pair.
         assign hits[gp] = learn_i[gp] && grant[gp] &&
-            ((32'(lset[gp*SETW +: SETW])*NUM_WAYS +
-              32'(lway[gp*WAYW +: WAYW])) == gi);
+            (wr_idx_flat[gp*32 +: 32] == gi);
       end
 
       assign pick = cam_pick(hits);

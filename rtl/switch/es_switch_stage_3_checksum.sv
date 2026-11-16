@@ -1,7 +1,8 @@
 // ============================================================================
 //  File        : es_switch_stage_3_checksum.sv
-//  Description : One ingress lane. Accumulates CRC on the Stage 1 write tap;
-//                verdict and queue accounting travel together through stalls.
+//  Description : One ingress lane. Accumulates CRC on the Stage 1 write tap,
+//                compares it with the wire FCS and folds every reject source
+//                into the descriptor's drop bit.
 // ============================================================================
 `timescale 1ns/1ps
 `ifndef ES_SWITCH_STAGE_3_CHECKSUM_SV
@@ -21,14 +22,15 @@ module es_switch_stage_3_checksum #(
   output logic [31:0] crc_o,
   input var logic i_valid,
   output logic i_ready,
-  input var logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] i_desc,
+  input var logic [es_pl_chk_desc_w(NUM_PORTS)-1:0] i_desc,
   output logic o_valid,
   input var logic o_ready,
   output logic [es_pl_desc_w(NUM_PORTS)-1:0] o_desc
 );
   localparam int unsigned DW = es_pl_desc_w(NUM_PORTS);
   localparam int unsigned PW = es_port_w(NUM_PORTS);
-  localparam int unsigned ERR = DW + ES_PL_RX_ERR_LSB;
+  localparam int unsigned FCS_LSB = DW + ES_PL_CHK_FCS_LSB;
+  localparam int unsigned CRC_LSB = DW + ES_PL_CHK_CRC_LSB;
   logic [31:0] crc_q, crc_next;
   logic accept, valid_d, reject;
   logic [DW-1:0] verdict;
@@ -48,14 +50,13 @@ module es_switch_stage_3_checksum #(
     .data_o    (crc_q)
   );
 
-  // Stage 2 carries its reason-independent drop bit and zero forward length.
-  // Header-check metadata has no consumer after this boundary.
-  logic [ERR-DW-1:0] unused_validation_metadata;
-  assign unused_validation_metadata = i_desc[DW +: ERR-DW];
-  assign reject = i_desc[ERR] || i_desc[DW-1] ||
-      (i_desc[ERR+1 +: 32] != i_desc[ERR+33 +: 32]);
-  assign verdict = {reject, i_desc[DW-2:PW+ES_LEN_W],
-                   reject ? ES_LEN_W'(0) : i_desc[PW +: ES_LEN_W], i_desc[PW-1:0]};
+  // Stage 2 folded the receive-error and header/length verdicts into the
+  // drop bit; the FCS comparison adds the last reject source and the folded
+  // verdict lands back in that bit.  A rejected frame carries no forward
+  // length implicitly: the copy engine drains stored_len and writes nothing.
+  assign reject = i_desc[DW-1] ||
+      (i_desc[FCS_LSB +: 32] != i_desc[CRC_LSB +: 32]);
+  assign verdict = {reject, i_desc[DW-2:PW], i_desc[PW-1:0]};
   assign i_ready = !o_valid || o_ready;
   assign accept = i_valid && i_ready;
   assign valid_d = accept || (o_valid && !o_ready);

@@ -58,6 +58,7 @@ module es_switch_stage_4_lookup_cam_stage #(
   localparam int unsigned CAM_W     = es_pl_cam_w(NUM_PORTS);
   localparam int unsigned DST_LSB   = es_pl_desc_dstm_lsb(NUM_PORTS);
   localparam int unsigned SRC_LSB   = es_pl_desc_srcm_lsb(NUM_PORTS);
+  localparam int unsigned STORED_LSB = es_pl_desc_stored_lsb(NUM_PORTS);
 
   logic [NUM_PORTS-1:0]                 req;
   logic [NUM_PORTS*48-1:0]              lookup_mac;
@@ -97,7 +98,15 @@ module es_switch_stage_4_lookup_cam_stage #(
       // are NUM_PORTS bits wide, so no implicit 32-bit extension occurs.
       assign port_mask = hit[gp] ? (NUM_PORTS'(1) << hit_port[gp*PW +: PW])
                                  : '0;
-      assign dat_d = {port_mask, hit[gp], d_i_desc[gp*DESC_W +: DESC_W]};
+      // The learn already consumed src_mac on the input side, so the
+      // registered package carries only what decide reads: the one-hot
+      // destination, hit, drop, dst_mac, stored_len and src_port.
+      assign dat_d = {port_mask,
+                      hit[gp],
+                      d_i_desc[gp*DESC_W + DESC_W-1],
+                      d_i_desc[gp*DESC_W + DST_LSB +: 48],
+                      d_i_desc[gp*DESC_W + STORED_LSB +: ES_LEN_W],
+                      d_i_desc[gp*DESC_W +: PW]};
 
       assign grant_ok[gp]   = !learn[gp] || learn_ready[gp];
       assign vld_set        = d_i_valid[gp] && d_i_ready[gp];
