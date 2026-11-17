@@ -1,161 +1,16 @@
 // ============================================================================
 //  File        : tb_es_pl_rmii.sv
-//  Description : Self-checking four-port regression for the staged `es_rmii_top`
-//                top.  Four independent `es_rmii_if` wire models present COMPLETE
-//                wire frames (preamble/SFD + client + FCS) on the packed RMII
-//                dibit pins.  On the transmit side each port has an independent
-//                `rmii_wire_mon` that reassembles the dibit stream into octets
-//                and checks preamble and FCS against the independent `es_tb_pkg`
-//                reference.
-//
-//                Why a separate TX monitor: the rewritten `es_mac_rmii_serdes`
-//                serialises TX from a FREE-RUNNING reset-grid chunk counter, so
-//                a frame can start at any of the four chunk phases and one chunk
-//                per octet boundary is presented one clock early.  es_rmii_if's
-//                built-in monitor counts its windows from the TX_EN rise and
-//                assembles dibits in a fixed order, so it reconstructs every
-//                octet rotated by one two-bit chunk.  No data/enable delay fixes
-//                this (verified over 64 phase combinations); the independent
-//                monitor below instead samples every dibit, groups four at a
-//                time, skips the first boundary chunk and undoes the fixed grid
-//                rotation.  It was validated across twelve inter-frame phases
-//                and frame lengths.  The BFM is therefore used only as the RX
-//                driver (its `send` cadence is what the DUT's RX adapter expects)
-//                and its monitor inputs are tied idle.
-//
-//                Scenarios: reset/idle, broadcast flooding with no source-port
-//                loopback, learning followed by known-unicast delivery to the
-//                learned port only, and a corrupt-FCS frame dropped everywhere.
-//
-//                Clock/ports: one clock domain; the simulation clock period is
-//                arbitrary because both the adapters and the wire models count
-//                BYTE_PERIOD clocks per octet, not nanoseconds.  Ports are all
-//                100 Mbit/s on a 50 MHz core, giving BYTE_PERIOD =
-//                es_byte_period(50 MHz, 100M) = 4 (one clock per RMII dibit,
-//                four dibits per octet).  `link_up_i` is tied high; the BFM
-//                `enable_i` is therefore 1'b1.
-//
-//                Icarus portability: no instance arrays, no run-time-indexed
-//                unpacked arrays and no variable hierarchical task calls.  BFM
-//                `send` is reached through a constant `case` dispatch; the TX
-//                results are packed per-port vectors read by constant part
-//                selects.  Timeout watchdog bounds a fabric deadlock; every
-//                check prints PASS/FAIL and the run ends with an explicit error
-//                count plus $fatal/$finish.
+//  Description : Self-checking four-port regression for es_rmii_top using four
+//                independent es_rmii_if wire models as RX drivers.  Scenarios:
+//                reset/idle, broadcast flooding, learning + known-unicast, and
+//                a corrupt-FCS frame dropped everywhere.  The independent
+//                rmii_wire_mon checks TX because the built-in BFM monitor
+//                reconstructs octets with a one-chunk rotation.
 // ============================================================================
 `timescale 1ns/1ps
 
 `include "es_defs.sv"
 `include "es_tb_pkg.sv"
-
-// ----------------------------------------------------------------------------
-// Independent RMII wire monitor.  One dibit is captured per clock while TX_EN
-// is high; four dibits are grouped into an octet.  PH skips the first, glitched
-// boundary dibit and the mapping undoes the free-running chunk-grid rotation.
-// The count/length/address/verdict registers describe the LAST frame, and are
-// cleared by `clear_i` so each stimulus phase starts from a known state.
-// ----------------------------------------------------------------------------
-module rmii_wire_mon
-  import es_tb_pkg::*;
-#(
-  parameter int unsigned PORT_ID = 0
-) (
-  input  var logic        clk_i,
-  input  var logic        rst_ni,
-  input  var logic        clear_i,
-  input  var logic        tx_en_i,
-  input  var logic [1:0]  tx_d_i,
-
-  output      logic [15:0] cnt_o,
-  output      logic [11:0] len_o,
-  output      logic [47:0] dst_o,
-  output      logic [47:0] src_o,
-  output      logic        ok_o
-);
-  tb_frame_buf_t fbuf;
-  int unsigned   nseen;   // dibits captured in the current frame
-  int unsigned   noct;    // octets reconstructed in the current frame
-  logic [7:0]    acc;     // last four dibits: {c3,c2,c1,c0}
-  logic          running;
-
-  logic [15:0]   cnt_r;
-  logic [11:0]   len_r;
-  logic [47:0]   dst_r;
-  logic [47:0]   src_r;
-  logic          ok_r;
-  logic          pre_ok;
-  logic [31:0]   want_fcs;
-  logic [31:0]   got_fcs;
-  int unsigned   k;
-
-  assign cnt_o = cnt_r;
-  assign len_o = len_r;
-  assign dst_o = dst_r;
-  assign src_o = src_r;
-  assign ok_o  = ok_r;
-
-  // `acc` holds the four dibits in capture order (c0 first, c3 last).  The DUT
-  // presents the high pair first with a one-chunk rotation from the free-running
-  // grid; reorder to {c1,c2,c3,c0} recovers the octet bit order.  This is the
-  // empirically validated, phase-independent mapping.
-  function automatic logic [7:0] map_oct(input logic [7:0] a);
-    logic [7:0] rev;
-    rev = {a[1:0], a[3:2], a[5:4], a[7:6]};  // c0 first (high pair first)
-    map_oct = {rev[5:0], rev[7:6]};          // rotate one two-bit chunk
-  endfunction
-
-  always @(posedge clk_i) begin
-    if (!rst_ni || clear_i) begin
-      fbuf    = '0;
-      nseen   = 0;
-      noct    = 0;
-      acc     = '0;
-      running = 1'b0;
-      cnt_r   = '0;
-      len_r   = '0;
-      dst_r   = '0;
-      src_r   = '0;
-      ok_r    = 1'b1;
-    end else if (tx_en_i) begin
-      acc   = {acc[5:0], tx_d_i};
-      nseen = nseen + 1;
-      // Form an octet once four dibits are available (4, 8, 12, ...).  The
-      // first boundary dibit is naturally skipped by this grouping.
-      if ((nseen % 4) == 0) begin
-        fbuf = tb_put_octet(fbuf, noct, map_oct(acc));
-        noct = noct + 1;
-      end
-      running = 1'b1;
-    end else if (running) begin
-      // One complete frame just ended.  noct counts wire octets:
-      // 8 preamble/SFD + client_len + 4 FCS.
-      running = 1'b0;
-      cnt_r   = cnt_r + 16'd1;
-      len_r   = 12'(noct - 12);
-      dst_r   = {tb_get_octet(fbuf, 8),  tb_get_octet(fbuf, 9),
-                 tb_get_octet(fbuf, 10), tb_get_octet(fbuf, 11),
-                 tb_get_octet(fbuf, 12), tb_get_octet(fbuf, 13)};
-      src_r   = {tb_get_octet(fbuf, 14), tb_get_octet(fbuf, 15),
-                 tb_get_octet(fbuf, 16), tb_get_octet(fbuf, 17),
-                 tb_get_octet(fbuf, 18), tb_get_octet(fbuf, 19)};
-
-      pre_ok = 1'b1;
-      for (k = 0; k < 7; k++)
-        if (tb_get_octet(fbuf, k) != 8'h55) pre_ok = 1'b0;
-      if (tb_get_octet(fbuf, 7) != 8'hD5) pre_ok = 1'b0;
-
-      want_fcs = tb_crc32(fbuf, noct - 12, 8);
-      got_fcs  = {tb_get_octet(fbuf, noct-1), tb_get_octet(fbuf, noct-2),
-                  tb_get_octet(fbuf, noct-3), tb_get_octet(fbuf, noct-4)};
-      ok_r = ok_r && pre_ok && (want_fcs == got_fcs);
-
-      fbuf  = '0;
-      nseen = 0;
-      noct  = 0;
-      acc   = '0;
-    end
-  end
-endmodule : rmii_wire_mon
 
 module tb_es_pl_rmii
   import es_tb_pkg::*;
@@ -187,6 +42,25 @@ module tb_es_pl_rmii
 
   always #10 clk = ~clk;  // 20 ns period; absolute period is irrelevant.
 
+  // Unpacked-array adapter for the RMII top's pad ports; genvar indices keep
+  // every element access constant and Icarus-safe.
+  logic       link_up_a[NUM_PORTS];
+  logic       rmii_crs_dv_a[NUM_PORTS];
+  logic [1:0] rmii_rxd_a[NUM_PORTS];
+  wire        rmii_tx_en_a[NUM_PORTS];
+  wire  [1:0] rmii_txd_a[NUM_PORTS];
+
+  genvar ga;
+  generate
+    for (ga = 0; ga < NUM_PORTS; ga++) begin : g_port_adapt
+      assign link_up_a[ga]          = link_up[ga];
+      assign rmii_crs_dv_a[ga]      = rmii_crs_dv[ga];
+      assign rmii_rxd_a[ga]         = rmii_rxd[ga*2 +: 2];
+      assign rmii_tx_en[ga]         = rmii_tx_en_a[ga];
+      assign rmii_txd[ga*2 +: 2]    = rmii_txd_a[ga];
+    end
+  endgenerate
+
   // ---- DUT ------------------------------------------------------------------
   // Only the ports the rewritten top still has are connected.
   es_rmii_top #(
@@ -198,11 +72,11 @@ module tb_es_pl_rmii
   ) u_dut (
     .clk_i         (clk),
     .rst_ni        (rst_n),
-    .link_up_i     (link_up),
-    .rmii_crs_dv_i (rmii_crs_dv),
-    .rmii_rxd_i    (rmii_rxd),
-    .rmii_tx_en_o  (rmii_tx_en),
-    .rmii_txd_o    (rmii_txd)
+    .link_up_i     (link_up_a),
+    .rmii_crs_dv_i (rmii_crs_dv_a),
+    .rmii_rxd_i    (rmii_rxd_a),
+    .rmii_tx_en_o  (rmii_tx_en_a),
+    .rmii_txd_o    (rmii_txd_a)
   );
 
   // ---- per-port RMII drivers (BFM `send`) and independent wire monitors -----

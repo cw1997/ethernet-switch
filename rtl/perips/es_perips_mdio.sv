@@ -27,25 +27,25 @@ module es_perips_mdio #(
   parameter int unsigned MDC_FREQ_HZ = 1_000_000
 ) (
   /// Core clock, synchronous active-low reset, and transaction controls.
-  input var logic clk_i,
-  rst_ni,
-  start_i,
-  read_i,
+  input  var logic        clk_i,  ///< core clock
+  input  var logic        rst_ni,  ///< active-low synchronous reset
+  input  var logic        start_i,  ///< start_i
+  input  var logic        read_i,  ///< read_i
   /// Clause-22 PHY and register addresses plus write data.
-  input var logic [4:0] phy_i,
-  reg_i,
-  input var logic [15:0] data_i,
+  input  var logic [4:0]  phy_i,  ///< PHY address
+  input  var logic [4:0]  reg_i,  ///< reg_i
+  input  var logic [15:0] data_i,  ///< input data
   /// MDIO value sampled from the board-side bidirectional pad.
-  input var logic mdio_i,
+  input  var logic        mdio_i,  ///< serial management data input
   /// MDC output, MDIO drive value, and active-high pad output enable.
-  output    logic mdc_o,
-  mdio_o,
-  mdio_oe_o,
+  output     logic        mdc_o,  ///< management clock
+  output     logic        mdio_o,  ///< mdio_o
+  output     logic        mdio_oe_o,  ///< mdio_oe_o
   /// Transaction state and completion/error-qualified read data.
-  output    logic        busy_o,
-  valid_o,
-  error_o,
-  output    logic [15:0] data_o
+  output     logic        busy_o,  ///< asserted while a transfer is in progress
+  output     logic        valid_o,  ///< valid_o
+  output     logic        error_o,  ///< error_o
+  output     logic [15:0] data_o  ///< read data
 );
 
   // --------------------------------------------------------------------------

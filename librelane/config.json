@@ -1,17 +1,21 @@
 {
-  "DESIGN_NAME": "es_gmii_top",
+  "DESIGN_NAME": "es_top",
   "VERILOG_FILES": [
     "rtl/es_defs.sv",
     "rtl/common/es_common_crc32.sv",
-    "rtl/common/es_common_dffs.sv",
+    "rtl/common/es_common_dfflr.sv",
+    "rtl/common/es_common_dffl.sv",
     "rtl/common/es_common_pipe_stage.sv",
     "rtl/mems/es_mems_ram_1r1w.sv",
     "rtl/mems/es_mems_reg_bank.sv",
     "rtl/mems/es_mems_sync_fifo.sv",
     "rtl/mac/es_mac_mii_serdes.sv",
     "rtl/mac/es_mac_rmii_serdes.sv",
-    "rtl/mac/es_mac_byte_if.sv",
-    "rtl/mac/es_mac_adapters.sv",
+    "rtl/mac/es_mac_frame_rx.sv",
+    "rtl/mac/es_mac_frame_tx.sv",
+    "rtl/mac/es_mac_gmii_adapt.sv",
+    "rtl/mac/es_mac_mii_adapt.sv",
+    "rtl/mac/es_mac_rmii_adapt.sv",
     "rtl/switch/es_switch_stage_1_rx.sv",
     "rtl/switch/es_switch_stage_2_validate.sv",
     "rtl/switch/es_switch_stage_1_rx_parse.sv",
@@ -24,7 +28,8 @@
     "rtl/switch/es_switch_fabric.sv",
     "rtl/es_gmii_top.sv",
     "rtl/es_mii_top.sv",
-    "rtl/es_rmii_top.sv"
+    "rtl/es_rmii_top.sv",
+    "librelane/es_top.sv"
   ],
   "VERILOG_INCLUDE_DIRS": [
     "rtl"

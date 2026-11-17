@@ -31,15 +31,24 @@ module es_rmii_top #(
   parameter logic [1:0] FLOOD_MODE             = 2'd1,
   parameter int unsigned IFG_OCTETS            = 12
 ) (
-  input  var logic                   clk_i,
-  input  var logic                   rst_ni,
-  input  var logic [NUM_PORTS-1:0]   link_up_i,
+  input  var logic       clk_i,  ///< core clock
+  input  var logic       rst_ni,  ///< active-low synchronous reset
+  input      logic       link_up_i[NUM_PORTS],  ///< per-port link-up gate
 
-  input  var logic [NUM_PORTS-1:0]   rmii_crs_dv_i,
-  input  var logic [NUM_PORTS*2-1:0] rmii_rxd_i,
-  output logic     [NUM_PORTS-1:0]   rmii_tx_en_o,
-  output logic     [NUM_PORTS*2-1:0] rmii_txd_o
+  input      logic       rmii_crs_dv_i[NUM_PORTS],  ///< RMII carrier/data-valid, one bit per port
+  input      logic [1:0] rmii_rxd_i[NUM_PORTS],  ///< RMII receive dibit per port
+  output     logic       rmii_tx_en_o[NUM_PORTS],  ///< RMII transmit enables, one bit per port
+  output     logic [1:0] rmii_txd_o[NUM_PORTS]  ///< RMII transmit dibit per port
 );
+
+  // Pad-facing ports are unpacked arrays (logic sig[NUM_PORTS]); these packed
+  // mirrors bridge them to the byte-stream plumbing one generate element at a
+  // time, so the switch core never sees an unpacked array.
+  logic [NUM_PORTS-1:0]   link_up_p;
+  logic [NUM_PORTS-1:0]   rmii_crs_dv_p;
+  logic [NUM_PORTS*2-1:0] rmii_rxd_p;
+  logic [NUM_PORTS-1:0]   rmii_tx_en_p;
+  logic [NUM_PORTS*2-1:0] rmii_txd_p;
 
   logic [NUM_PORTS-1:0]   rx_valid, rx_ready, rx_sof, rx_eof, rx_err;
   logic [NUM_PORTS*32-1:0] rx_fcs;
@@ -64,6 +73,12 @@ module es_rmii_top #(
       localparam int unsigned BP_G =
           es_byte_period(CLK_FREQ_HZ, es_speed_e'(PORT_SPEED[g*2 +: 2]));
 
+      assign link_up_p[g]           = link_up_i[g];
+      assign rmii_crs_dv_p[g]       = rmii_crs_dv_i[g];
+      assign rmii_rxd_p[g*2 +: 2]   = rmii_rxd_i[g];
+      assign rmii_tx_en_o[g]        = rmii_tx_en_p[g];
+      assign rmii_txd_o[g]          = rmii_txd_p[g*2 +: 2];
+
       es_mac_rmii_adapt #(
         .BYTE_PERIOD    (BP_G),
         .IFG_OCTETS     (IFG_OCTETS),
@@ -71,10 +86,10 @@ module es_rmii_top #(
       ) u_adapt (
         .clk_i         (clk_i),
         .rst_ni        (rst_ni),
-        .rmii_crs_dv_i (rmii_crs_dv_i[g]),
-        .rmii_rxd_i    (rmii_rxd_i[g*2 +: 2]),
-        .rmii_tx_en_o  (rmii_tx_en_o[g]),
-        .rmii_txd_o    (rmii_txd_o[g*2 +: 2]),
+        .rmii_crs_dv_i (rmii_crs_dv_p[g]),
+        .rmii_rxd_i    (rmii_rxd_p[g*2 +: 2]),
+        .rmii_tx_en_o  (rmii_tx_en_p[g]),
+        .rmii_txd_o    (rmii_txd_p[g*2 +: 2]),
         .rx_valid_o    (rx_valid[g]),
         .rx_ready_i    (rx_ready[g]),
         .rx_data_o     (rx_data[g*8 +: 8]),
@@ -107,7 +122,7 @@ module es_rmii_top #(
   ) u_fabric (
     .clk_i      (clk_i),
     .rst_ni     (rst_ni),
-    .link_up_i  (link_up_i),
+    .link_up_i  (link_up_p),
     .rx_valid_i (rx_valid),
     .rx_ready_o (rx_ready),
     .rx_data_i  (rx_data),

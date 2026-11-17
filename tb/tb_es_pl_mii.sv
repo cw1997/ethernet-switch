@@ -68,6 +68,31 @@ module tb_es_pl_mii
   always #10 clk = ~clk;  // 20 ns period; absolute period is irrelevant, see header.
   always_ff @(posedge clk) mii_txd_d <= mii_txd;
 
+  // Unpacked-array adapter for the MII top's pad ports; genvar indices keep
+  // every element access constant and Icarus-safe.
+  // Icarus 12.0 needs the parent-side net of an unpacked-array output port
+  // declared `wire`; a `logic` variable does not receive the driven value.
+  logic       link_up_a[NUM_PORTS];
+  logic       mii_rx_dv_a[NUM_PORTS];
+  logic       mii_rx_er_a[NUM_PORTS];
+  logic [3:0] mii_rxd_a[NUM_PORTS];
+  wire        mii_tx_en_a[NUM_PORTS];
+  wire        mii_tx_er_a[NUM_PORTS];
+  wire  [3:0] mii_txd_a[NUM_PORTS];
+
+  genvar ga;
+  generate
+    for (ga = 0; ga < NUM_PORTS; ga++) begin : g_port_adapt
+      assign link_up_a[ga]         = link_up[ga];
+      assign mii_rx_dv_a[ga]       = mii_rx_dv[ga];
+      assign mii_rx_er_a[ga]       = mii_rx_er[ga];
+      assign mii_rxd_a[ga]         = mii_rxd[ga*4 +: 4];
+      assign mii_tx_en[ga]         = mii_tx_en_a[ga];
+      assign mii_tx_er[ga]         = mii_tx_er_a[ga];
+      assign mii_txd[ga*4 +: 4]    = mii_txd_a[ga];
+    end
+  endgenerate
+
   // ---- DUT ------------------------------------------------------------------
   // Only the ports the rewritten top still has are connected: the legacy
   // dip/stat/cam-readback/LED/cfg ports no longer exist.
@@ -80,13 +105,13 @@ module tb_es_pl_mii
   ) u_dut (
     .clk_i       (clk),
     .rst_ni      (rst_n),
-    .link_up_i   (link_up),
-    .mii_rx_dv_i (mii_rx_dv),
-    .mii_rx_er_i (mii_rx_er),
-    .mii_rxd_i   (mii_rxd),
-    .mii_tx_en_o (mii_tx_en),
-    .mii_tx_er_o (mii_tx_er),
-    .mii_txd_o   (mii_txd)
+    .link_up_i   (link_up_a),
+    .mii_rx_dv_i (mii_rx_dv_a),
+    .mii_rx_er_i (mii_rx_er_a),
+    .mii_rxd_i   (mii_rxd_a),
+    .mii_tx_en_o (mii_tx_en_a),
+    .mii_tx_er_o (mii_tx_er_a),
+    .mii_txd_o   (mii_txd_a)
   );
 
   // ---- per-port MII wire models --------------------------------------------

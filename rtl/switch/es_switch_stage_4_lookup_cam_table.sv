@@ -50,20 +50,20 @@ module es_switch_stage_4_lookup_cam_table #(
   parameter int unsigned NUM_SETS  = 128,
   parameter int unsigned NUM_WAYS  = 4
 ) (
-  input  var logic                                      clk_i,
-  input  var logic                                      rst_ni,
+  input  var logic                                      clk_i,  ///< core clock
+  input  var logic                                      rst_ni,  ///< active-low synchronous reset
 
   // ---- NUM_PORTS parallel lookups (combinational, read-first) -----------
-  input  var logic [NUM_PORTS-1:0]                      req_i,
-  input  var logic [NUM_PORTS*48-1:0]                   mac_i,
-  output logic     [NUM_PORTS-1:0]                      hit_o,
-  output logic     [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] port_o,
+  input  var logic [NUM_PORTS-1:0]                      req_i,  ///< lookup request per port
+  input  var logic [NUM_PORTS*48-1:0]                   mac_i,  ///< mac_i
+  output     logic [NUM_PORTS-1:0]                      hit_o,  ///< CAM hit per port
+  output     logic [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] port_o,  ///< learned egress port per port
 
   // ---- NUM_PORTS parallel learns (written on the same clock) ------------
-  input  var logic [NUM_PORTS-1:0]                      learn_i,
-  input  var logic [NUM_PORTS*48-1:0]                   learn_mac_i,
-  input  var logic [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] learn_port_i,
-  output logic     [NUM_PORTS-1:0]                      learn_ready_o
+  input  var logic [NUM_PORTS-1:0]                      learn_i,  ///< learn enable per port
+  input  var logic [NUM_PORTS*48-1:0]                   learn_mac_i,  ///< MAC to learn per port
+  input  var logic [NUM_PORTS*es_port_w(NUM_PORTS)-1:0] learn_port_i,  ///< ingress port to learn per port
+  output     logic [NUM_PORTS-1:0]                      learn_ready_o  ///< learn accepted per port
 );
 
   localparam int unsigned PW     = es_port_w(NUM_PORTS);

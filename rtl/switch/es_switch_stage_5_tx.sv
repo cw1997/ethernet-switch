@@ -14,18 +14,18 @@ module es_switch_stage_5_tx #(
   parameter int unsigned MAX_FRAME_LEN  = 1518,
   parameter int unsigned TX_QUEUE_DEPTH = 256
 ) (
-  input var logic clk_i,
-  rst_ni,
-  input var logic wr_i,
-  sof_i,
-  eof_i,
-  input var logic [7:0] data_i,
-  output logic [es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] free_o,
-  output logic b_valid_o,
-  b_sof_o,
-  b_eof_o,
-  input var logic b_ready_i,
-  output logic [7:0] b_data_o
+  input  var logic                                                                       clk_i,  ///< core clock
+  input  var logic                                                                       rst_ni,  ///< active-low synchronous reset
+  input  var logic                                                                       wr_i,  ///< egress write strobe
+  input  var logic                                                                       sof_i,  ///< sof_i
+  input  var logic                                                                       eof_i,  ///< eof_i
+  input  var logic [7:0]                                                                 data_i,  ///< input data
+  output     logic [es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] free_o,  ///< entries (or credit) still available
+  output     logic                                                                       b_valid_o,  ///< client byte valid
+  output     logic                                                                       b_sof_o,  ///< start of frame
+  output     logic                                                                       b_eof_o,  ///< end of frame
+  input  var logic                                                                       b_ready_i,  ///< client byte ready
+  output     logic [7:0]                                                                 b_data_o  ///< client byte
 );
   localparam int unsigned DEPTH = es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN);
   localparam int unsigned CW = es_pl_fifo_cnt_w(DEPTH);

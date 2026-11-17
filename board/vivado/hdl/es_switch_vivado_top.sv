@@ -50,6 +50,30 @@ module es_switch_vivado_top (
   assign phy_mdc_o    = '0;
   assign phy_mdio_io  = {NUM_PORTS{1'bz}};
 
+  // The board pins are packed vectors, while es_mii_top exposes per-port
+  // unpacked arrays.  Bridge between the two with a generate loop so the
+  // switch core keeps its array-style interface.
+  logic       link_up_a[NUM_PORTS];
+  logic       mii_rx_dv_a[NUM_PORTS];
+  logic       mii_rx_er_a[NUM_PORTS];
+  logic [3:0] mii_rxd_a[NUM_PORTS];
+  wire        mii_tx_en_a[NUM_PORTS];
+  wire        mii_tx_er_a[NUM_PORTS];
+  wire  [3:0] mii_txd_a[NUM_PORTS];
+
+  genvar gv;
+  generate
+    for (gv = 0; gv < NUM_PORTS; gv++) begin : g_switch_port_adapt
+      assign link_up_a[gv]          = 1'b1;
+      assign mii_rx_dv_a[gv]        = mii_rx_dv_i[gv];
+      assign mii_rx_er_a[gv]        = mii_rx_er_i[gv];
+      assign mii_rxd_a[gv]          = mii_rxd_i[gv*4 +: 4];
+      assign mii_tx_en_o[gv]        = mii_tx_en_a[gv];
+      assign mii_tx_er_o[gv]        = mii_tx_er_a[gv];
+      assign mii_txd_o[gv*4 +: 4]   = mii_txd_a[gv];
+    end
+  endgenerate
+
   es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
@@ -57,15 +81,13 @@ module es_switch_vivado_top (
   ) u_switch (
     .clk_i       (clk_i),
     .rst_ni      (rst_ni),
-    // No management controller in this template, so nothing to ask about link
-    // state; all eight ports are administratively enabled.
-    .link_up_i   ({NUM_PORTS{1'b1}}),
-    .mii_rx_dv_i (mii_rx_dv_i),
-    .mii_rx_er_i (mii_rx_er_i),
-    .mii_rxd_i   (mii_rxd_i),
-    .mii_tx_en_o (mii_tx_en_o),
-    .mii_tx_er_o (mii_tx_er_o),
-    .mii_txd_o   (mii_txd_o)
+    .link_up_i   (link_up_a),
+    .mii_rx_dv_i (mii_rx_dv_a),
+    .mii_rx_er_i (mii_rx_er_a),
+    .mii_rxd_i   (mii_rxd_a),
+    .mii_tx_en_o (mii_tx_en_a),
+    .mii_tx_er_o (mii_tx_er_a),
+    .mii_txd_o   (mii_txd_a)
   );
 
   // The house unused_* pattern records intentionally unobserved signals

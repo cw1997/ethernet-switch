@@ -47,15 +47,19 @@ RTL_HEADERS := $(wildcard $(RTL_DIR)/*defs.sv $(RTL_DIR)/*/*defs.sv)
 
 RTL_SRCS := \
   $(RTL_DIR)/common/es_common_crc32.sv \
-  $(RTL_DIR)/common/es_common_dffs.sv \
+  $(RTL_DIR)/common/es_common_dfflr.sv \
+  $(RTL_DIR)/common/es_common_dffl.sv \
   $(RTL_DIR)/common/es_common_pipe_stage.sv \
   $(RTL_DIR)/mems/es_mems_ram_1r1w.sv \
   $(RTL_DIR)/mems/es_mems_reg_bank.sv \
   $(RTL_DIR)/mems/es_mems_sync_fifo.sv \
   $(RTL_DIR)/mac/es_mac_mii_serdes.sv \
   $(RTL_DIR)/mac/es_mac_rmii_serdes.sv \
-  $(RTL_DIR)/mac/es_mac_byte_if.sv \
-  $(RTL_DIR)/mac/es_mac_adapters.sv \
+  $(RTL_DIR)/mac/es_mac_frame_rx.sv \
+  $(RTL_DIR)/mac/es_mac_frame_tx.sv \
+  $(RTL_DIR)/mac/es_mac_gmii_adapt.sv \
+  $(RTL_DIR)/mac/es_mac_mii_adapt.sv \
+  $(RTL_DIR)/mac/es_mac_rmii_adapt.sv \
   $(RTL_DIR)/perips/es_perips_mdio.sv \
   $(RTL_DIR)/perips/es_perips_phy_88e1111.sv \
   $(RTL_DIR)/switch/es_switch_stage_1_rx.sv \
@@ -75,6 +79,9 @@ RTL_SRCS := \
 TB_COMMON := \
   $(TB_DIR)/es_tb_pkg.sv \
   $(TB_DIR)/es_rec_q.sv
+
+# Helper modules split out of the GMII system testbench (one module per file).
+GMII_TB_HELPERS := $(TB_DIR)/es_pl_gmii_mon.sv $(TB_DIR)/es_mixed_gmii_check.sv
 
 BOARD_DIR      := board/de2_115/quartus_ii/hdl
 BOARD_TOP_SRCS := $(RTL_SRCS) $(BOARD_DIR)/es_switch_de2_115_top.sv
@@ -155,11 +162,13 @@ $(BUILD)/es_phy_88e1111_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_phy_88e1
 pipe-unit: $(BUILD)/es_pipe_stage_tb.vvp
 	$(VVP) $<
 $(BUILD)/es_pipe_stage_tb.vvp: $(RTL_HEADERS) \
-    $(RTL_DIR)/common/es_common_dffs.sv $(RTL_DIR)/common/es_common_pipe_stage.sv \
-    $(TB_DIR)/es_pipe_stage_tb.sv | $(BUILD)
+    $(RTL_DIR)/common/es_common_dfflr.sv $(RTL_DIR)/common/es_common_dffl.sv \
+    $(RTL_DIR)/common/es_common_pipe_stage.sv \
+    $(TB_DIR)/es_pipe_stage_case.sv $(TB_DIR)/es_pipe_stage_tb.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -s es_pipe_stage_tb -o $@ \
-	  $(RTL_DIR)/common/es_common_dffs.sv $(RTL_DIR)/common/es_common_pipe_stage.sv \
-	  $(TB_DIR)/es_pipe_stage_tb.sv
+	  $(RTL_DIR)/common/es_common_dfflr.sv $(RTL_DIR)/common/es_common_dffl.sv \
+	  $(RTL_DIR)/common/es_common_pipe_stage.sv \
+	  $(TB_DIR)/es_pipe_stage_case.sv $(TB_DIR)/es_pipe_stage_tb.sv
 
 rx-unit: $(BUILD)/es_rx_engine_tb.vvp
 	$(VVP) $<
@@ -169,8 +178,8 @@ $(BUILD)/es_rx_engine_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_rx_engine_
 # End-to-end staged-fabric regression (8-bit byte stream, no PHY pins).
 fabric-unit: $(BUILD)/es_fabric_tb.vvp
 	$(VVP) $<
-$(BUILD)/es_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_tb.sv | $(BUILD)
-	$(IVERILOG) $(IVFLAGS) -s es_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_tb.sv
+$(BUILD)/es_fabric_tb.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_mon.sv $(TB_DIR)/es_fabric_tb.sv | $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -s es_fabric_tb -o $@ $(RTL_SRCS) $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/es_fabric_mon.sv $(TB_DIR)/es_fabric_tb.sv
 
 # ---------------------------------------------------------------------------
 # Front-end regressions: complete wire frames (preamble/SFD/FCS) are driven
@@ -187,9 +196,9 @@ $(BUILD)/tb_es_pl_mii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
 rmii: $(BUILD)/tb_es_pl_rmii.vvp
 	$(VVP) $<
 $(BUILD)/tb_es_pl_rmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) $(TB_COMMON) \
-    $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/tb_es_pl_rmii.sv | $(BUILD)
+    $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/rmii_wire_mon.sv $(TB_DIR)/tb_es_pl_rmii.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_rmii $(RTL_SRCS) $(TB_COMMON) \
-	  $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/tb_es_pl_rmii.sv
+	  $(TB_DIR)/es_rmii_if.sv $(TB_DIR)/rmii_wire_mon.sv $(TB_DIR)/tb_es_pl_rmii.sv
 
 vivado: $(BUILD)/tb_es_switch_vivado_top.vvp
 	$(VVP) $<
@@ -213,19 +222,19 @@ sim: $(BUILD)/tb_es_pl_gmii.vvp
 	$(VVP) $(BUILD)/tb_es_pl_gmii.vvp
 
 $(BUILD)/tb_es_pl_gmii.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
-                            $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
+                            $(TB_DIR)/es_tb_pkg.sv $(GMII_TB_HELPERS) $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_gmii $(RTL_SRCS) \
-	  $(TB_DIR)/tb_es_pl_gmii.sv
+	  $(GMII_TB_HELPERS) $(TB_DIR)/tb_es_pl_gmii.sv
 
 param: $(BUILD)/tb_es_pl_param.vvp
 	$(VVP) $(BUILD)/tb_es_pl_param.vvp
 
 $(BUILD)/tb_es_pl_param.vvp: $(RTL_HEADERS) $(RTL_SRCS) \
-                             $(TB_DIR)/es_tb_pkg.sv $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
+                             $(TB_DIR)/es_tb_pkg.sv $(GMII_TB_HELPERS) $(TB_DIR)/tb_es_pl_gmii.sv | $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ -s tb_es_pl_gmii \
 	  -P tb_es_pl_gmii.NUM_PORTS=3 -P tb_es_pl_gmii.CAM_SETS=96 \
 	  -P tb_es_pl_gmii.CAM_WAYS=3 \
-	  $(RTL_SRCS) $(TB_DIR)/tb_es_pl_gmii.sv
+	  $(RTL_SRCS) $(GMII_TB_HELPERS) $(TB_DIR)/tb_es_pl_gmii.sv
 
 # Layered port-count / CAM-geometry scan (4/8/16/32/48 ports).  A full
 # cross-product at 48 ports would exceed the CI time budget, so the large
@@ -238,7 +247,7 @@ param-scan: | $(BUILD)
 	  $(IVERILOG) $(IVFLAGS) -o $(BUILD)/pl_scan.vvp -s tb_es_pl_gmii \
 	    -P tb_es_pl_gmii.NUM_PORTS=$$1 -P tb_es_pl_gmii.CAM_SETS=$$2 \
 	    -P tb_es_pl_gmii.CAM_WAYS=$$3 \
-	    $(RTL_SRCS) $(TB_DIR)/tb_es_pl_gmii.sv; \
+	    $(RTL_SRCS) $(GMII_TB_HELPERS) $(TB_DIR)/tb_es_pl_gmii.sv; \
 	  $(VVP) $(BUILD)/pl_scan.vvp; \
 	done
 

@@ -31,17 +31,28 @@ module es_mii_top #(
   parameter logic [1:0] FLOOD_MODE             = 2'd1,
   parameter int unsigned IFG_OCTETS            = 12
 ) (
-  input  var logic                   clk_i,
-  input  var logic                   rst_ni,
-  input  var logic [NUM_PORTS-1:0]   link_up_i,
+  input  var logic       clk_i,  ///< core clock
+  input  var logic       rst_ni,  ///< active-low synchronous reset
+  input      logic       link_up_i[NUM_PORTS],  ///< per-port link-up gate
 
-  input  var logic [NUM_PORTS-1:0]   mii_rx_dv_i,
-  input  var logic [NUM_PORTS-1:0]   mii_rx_er_i,
-  input  var logic [NUM_PORTS*4-1:0] mii_rxd_i,
-  output logic     [NUM_PORTS-1:0]   mii_tx_en_o,
-  output logic     [NUM_PORTS-1:0]   mii_tx_er_o,
-  output logic     [NUM_PORTS*4-1:0] mii_txd_o
+  input      logic       mii_rx_dv_i[NUM_PORTS],  ///< MII receive data valid, one bit per port
+  input      logic       mii_rx_er_i[NUM_PORTS],  ///< MII receive error, one bit per port
+  input      logic [3:0] mii_rxd_i[NUM_PORTS],  ///< MII receive nibble per port
+  output     logic       mii_tx_en_o[NUM_PORTS],  ///< MII transmit enables, one bit per port
+  output     logic       mii_tx_er_o[NUM_PORTS],  ///< MII transmit errors, one bit per port
+  output     logic [3:0] mii_txd_o[NUM_PORTS]  ///< MII transmit nibble per port
 );
+
+  // Pad-facing ports are unpacked arrays (logic sig[NUM_PORTS]); these packed
+  // mirrors bridge them to the byte-stream plumbing one generate element at a
+  // time, so the switch core never sees an unpacked array.
+  logic [NUM_PORTS-1:0]   link_up_p;
+  logic [NUM_PORTS-1:0]   mii_rx_dv_p;
+  logic [NUM_PORTS-1:0]   mii_rx_er_p;
+  logic [NUM_PORTS*4-1:0] mii_rxd_p;
+  logic [NUM_PORTS-1:0]   mii_tx_en_p;
+  logic [NUM_PORTS-1:0]   mii_tx_er_p;
+  logic [NUM_PORTS*4-1:0] mii_txd_p;
 
   logic [NUM_PORTS-1:0]   rx_valid, rx_ready, rx_sof, rx_eof, rx_err;
   logic [NUM_PORTS*32-1:0] rx_fcs;
@@ -66,6 +77,14 @@ module es_mii_top #(
       localparam int unsigned BP_G =
           es_byte_period(CLK_FREQ_HZ, es_speed_e'(PORT_SPEED[g*2 +: 2]));
 
+      assign link_up_p[g]           = link_up_i[g];
+      assign mii_rx_dv_p[g]         = mii_rx_dv_i[g];
+      assign mii_rx_er_p[g]         = mii_rx_er_i[g];
+      assign mii_rxd_p[g*4 +: 4]    = mii_rxd_i[g];
+      assign mii_tx_en_o[g]         = mii_tx_en_p[g];
+      assign mii_tx_er_o[g]         = mii_tx_er_p[g];
+      assign mii_txd_o[g]           = mii_txd_p[g*4 +: 4];
+
       es_mac_mii_adapt #(
         .BYTE_PERIOD    (BP_G),
         .IFG_OCTETS     (IFG_OCTETS),
@@ -73,12 +92,12 @@ module es_mii_top #(
       ) u_adapt (
         .clk_i       (clk_i),
         .rst_ni      (rst_ni),
-        .mii_rx_dv_i (mii_rx_dv_i[g]),
-        .mii_rx_er_i (mii_rx_er_i[g]),
-        .mii_rxd_i   (mii_rxd_i[g*4 +: 4]),
-        .mii_tx_en_o (mii_tx_en_o[g]),
-        .mii_tx_er_o (mii_tx_er_o[g]),
-        .mii_txd_o   (mii_txd_o[g*4 +: 4]),
+        .mii_rx_dv_i (mii_rx_dv_p[g]),
+        .mii_rx_er_i (mii_rx_er_p[g]),
+        .mii_rxd_i   (mii_rxd_p[g*4 +: 4]),
+        .mii_tx_en_o (mii_tx_en_p[g]),
+        .mii_tx_er_o (mii_tx_er_p[g]),
+        .mii_txd_o   (mii_txd_p[g*4 +: 4]),
         .rx_valid_o  (rx_valid[g]),
         .rx_ready_i  (rx_ready[g]),
         .rx_data_o   (rx_data[g*8 +: 8]),
@@ -111,7 +130,7 @@ module es_mii_top #(
   ) u_fabric (
     .clk_i      (clk_i),
     .rst_ni     (rst_ni),
-    .link_up_i  (link_up_i),
+    .link_up_i  (link_up_p),
     .rx_valid_i (rx_valid),
     .rx_ready_o (rx_ready),
     .rx_data_i  (rx_data),

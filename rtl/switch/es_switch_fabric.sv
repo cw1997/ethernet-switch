@@ -28,25 +28,25 @@ module es_switch_fabric #(
   parameter int unsigned LEARNING_EN          = 1,
   parameter logic [1:0] FLOOD_MODE            = 2'd1
 ) (
-  input  var logic                    clk_i,
-  input  var logic                    rst_ni,
-  input  var logic [NUM_PORTS-1:0]    link_up_i,
+  input  var logic                    clk_i,  ///< core clock
+  input  var logic                    rst_ni,  ///< active-low synchronous reset
+  input  var logic [NUM_PORTS-1:0]    link_up_i,  ///< per-port link-up gate
 
   // ---- 8-bit byte streams from the N MAC adapters -----------------------
-  input  var logic [NUM_PORTS-1:0]    rx_valid_i,
-  output logic     [NUM_PORTS-1:0]    rx_ready_o,
-  input  var logic [NUM_PORTS*8-1:0]  rx_data_i,
-  input  var logic [NUM_PORTS-1:0]    rx_sof_i,
-  input  var logic [NUM_PORTS-1:0]    rx_eof_i,
-  input  var logic [NUM_PORTS-1:0]    rx_err_i,
-  input  var logic [NUM_PORTS*32-1:0] rx_fcs_i,
+  input  var logic [NUM_PORTS-1:0]    rx_valid_i,  ///< byte-stream valid per port
+  output     logic [NUM_PORTS-1:0]    rx_ready_o,  ///< byte-stream ready per port
+  input  var logic [NUM_PORTS*8-1:0]  rx_data_i,  ///< byte-stream data per port
+  input  var logic [NUM_PORTS-1:0]    rx_sof_i,  ///< start of frame per port
+  input  var logic [NUM_PORTS-1:0]    rx_eof_i,  ///< end of frame per port
+  input  var logic [NUM_PORTS-1:0]    rx_err_i,  ///< frame error per port
+  input  var logic [NUM_PORTS*32-1:0] rx_fcs_i,  ///< received FCS sideband per port
 
   // ---- 8-bit byte streams toward the N MAC adapters ---------------------
-  output logic     [NUM_PORTS-1:0]    tx_valid_o,
-  input  var logic [NUM_PORTS-1:0]    tx_ready_i,
-  output logic     [NUM_PORTS*8-1:0]  tx_data_o,
-  output logic     [NUM_PORTS-1:0]    tx_sof_o,
-  output logic     [NUM_PORTS-1:0]    tx_eof_o
+  output     logic [NUM_PORTS-1:0]    tx_valid_o,  ///< egress byte valid per port
+  input  var logic [NUM_PORTS-1:0]    tx_ready_i,  ///< egress byte ready per port
+  output     logic [NUM_PORTS*8-1:0]  tx_data_o,  ///< egress write data per port
+  output     logic [NUM_PORTS-1:0]    tx_sof_o,  ///< egress start of frame per port
+  output     logic [NUM_PORTS-1:0]    tx_eof_o  ///< egress end of frame per port
 );
 
   localparam int unsigned RAW_W = es_pl_rx_desc_w(NUM_PORTS);

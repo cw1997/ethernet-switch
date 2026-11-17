@@ -103,24 +103,24 @@ module es_mac_mii_serdes #(
   /// even number >= 2: every octet time carries exactly two nibble windows.
   parameter int unsigned BYTE_PERIOD = 2
 ) (
-  input  var logic       clk_i,
-  input  var logic       rst_ni,  /// Low-nibble-first receive symbols and per-frame receive error indication.
+  input  var logic       clk_i,  ///< core clock
+  input  var logic       rst_ni,  ///< reset; serialiser counts from a reset-aligned grid
 
   // ---- MII receive pins (synchronous to clk_i) -----------------------------
-  input  var logic       mii_rx_dv_i,
-  input  var logic       mii_rx_er_i,
-  input  var logic [3:0] mii_rxd_i,  /// Low-nibble-first transmit symbols; error is tied low by this adapter.
+  input  var logic       mii_rx_dv_i,  ///< MII receive data valid
+  input  var logic       mii_rx_er_i,  ///< MII receive error
+  input  var logic [3:0] mii_rxd_i,  ///< MII receive nibble, low nibble first
 
   // ---- MII transmit pins ---------------------------------------------------
-  output logic           mii_tx_en_o,
-  output logic           mii_tx_er_o,  ///< never asserted: no transmit error source
-  output logic     [3:0] mii_txd_o,  /// Receive octets are presented for one complete BYTE_PERIOD window.
+  output     logic       mii_tx_en_o,  ///< MII transmit enable
+  output     logic       mii_tx_er_o,  ///< MII transmit error; always low
+  output     logic [3:0] mii_txd_o,  ///< MII transmit nibbles, port p in [p*4 +: 4]
 
   // ---- canonical octet stream (see the module header) ----------------------
-  output logic           oct_en_o,
-  output logic     [7:0] oct_d_o,  /// Transmit octets are consumed on the canonical octet grid.
-  input  var logic       oct_en_i,
-  input  var logic [7:0] oct_d_i
+  output     logic       oct_en_o,  ///< PHY octet enable
+  output     logic [7:0] oct_d_o,  ///< PHY octet
+  input  var logic       oct_en_i,  ///< PHY octet enable
+  input  var logic [7:0] oct_d_i  ///< PHY octet
 );
 
   // --------------------------------------------------------------------------

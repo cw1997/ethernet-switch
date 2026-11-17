@@ -19,19 +19,19 @@ module es_switch_stage_4_lookup #(
   parameter int unsigned MAX_FRAME_LEN  = 1518,
   parameter int unsigned TX_QUEUE_DEPTH = 256
 ) (
-  input var logic clk_i,
-  rst_ni,
-  input var logic [NUM_PORTS-1:0] i_valid,
-  output logic [NUM_PORTS-1:0] i_ready,
-  input var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0] i_desc,
-  input var logic [NUM_PORTS*8-1:0] buf_data_i,
-  input var logic [NUM_PORTS-1:0] buf_empty_i,
-  output logic [NUM_PORTS-1:0] buf_read_o,
-  input var logic [NUM_PORTS*es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] tx_free_i,
-  output logic [NUM_PORTS-1:0] tx_write_o,
-  tx_sof_o,
-  tx_eof_o,
-  output logic [NUM_PORTS*8-1:0] tx_data_o
+  input  var logic                                                                                 clk_i,  ///< core clock
+  input  var logic                                                                                 rst_ni,  ///< active-low synchronous reset
+  input  var logic [NUM_PORTS-1:0]                                                                 i_valid,  ///< input valid; stable while i_ready is low
+  output     logic [NUM_PORTS-1:0]                                                                 i_ready,  ///< input ready; asserted when a beat is accepted
+  input  var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0]                                         i_desc,  ///< input descriptor
+  input  var logic [NUM_PORTS*8-1:0]                                                               buf_data_i,  ///< ingress buffer read data per port
+  input  var logic [NUM_PORTS-1:0]                                                                 buf_empty_i,  ///< ingress buffer empty per port
+  output     logic [NUM_PORTS-1:0]                                                                 buf_read_o,  ///< ingress buffer read strobe per port
+  input  var logic [NUM_PORTS*es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN))-1:0] tx_free_i,  ///< egress free credit per port
+  output     logic [NUM_PORTS-1:0]                                                                 tx_write_o,  ///< egress write strobe per port
+  output     logic [NUM_PORTS-1:0]                                                                 tx_sof_o,  ///< egress start of frame per port
+  output     logic [NUM_PORTS-1:0]                                                                 tx_eof_o,  ///< egress end of frame per port
+  output     logic [NUM_PORTS*8-1:0]                                                               tx_data_o  ///< egress write data per port
 );
   localparam int unsigned PW = es_port_w(NUM_PORTS);
   localparam int unsigned CW = es_pl_fifo_cnt_w(es_pl_tx_depth(TX_QUEUE_DEPTH, MAX_FRAME_LEN));

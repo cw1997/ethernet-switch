@@ -20,26 +20,26 @@ module es_switch_stage_1_rx #(
   parameter int unsigned SLOT_BYTES    = 2048,
   parameter int unsigned DESC_DEPTH    = 8
 ) (
-  input var logic clk_i,
-  rst_ni,
-  input var logic link_up_i,
-  input var logic b_valid_i,
-  b_sof_i,
-  b_eof_i,
-  b_err_i,
-  input var logic [7:0] b_data_i,
-  input var logic [31:0] b_fcs_i,
+  input  var logic                                  clk_i,  ///< core clock
+  input  var logic                                  rst_ni,  ///< active-low synchronous reset
+  input  var logic                                  link_up_i,  ///< per-port link-up gate
+  input  var logic                                  b_valid_i,  ///< client byte valid
+  input  var logic                                  b_sof_i,  ///< start of frame
+  input  var logic                                  b_eof_i,  ///< end of frame
+  input  var logic                                  b_err_i,  ///< frame carried an error
+  input  var logic [7:0]                            b_data_i,  ///< client byte
+  input  var logic [31:0]                           b_fcs_i,  ///< received FCS sideband
   // wire FCS, first octet in bits 7:0
-  output logic b_ready_o,
+  output     logic                                  b_ready_o,  ///< client byte ready
   // The CRC tap qualifies only bytes actually written to the FIFO.
-  output logic crc_write_o,
-  input var logic [31:0] crc_i,
-  output logic d_valid_o,
-  input var logic d_ready_i,
-  output logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] desc_o,
-  input var logic rd_i,
-  output logic [7:0] data_o,
-  output logic empty_o
+  output     logic                                  crc_write_o,  ///< CRC write strobe
+  input  var logic [31:0]                           crc_i,  ///< running CRC
+  output     logic                                  d_valid_o,  ///< d_valid_o
+  input  var logic                                  d_ready_i,  ///< d_ready_i
+  output     logic [es_pl_rx_desc_w(NUM_PORTS)-1:0] desc_o,  ///< raw RX descriptor
+  input  var logic                                  rd_i,  ///< ingress buffer read strobe
+  output     logic [7:0]                            data_o,  ///< ingress byte for the lookup stage
+  output     logic                                  empty_o  ///< asserted when no entry is buffered
 );
   localparam int unsigned PW = es_port_w(NUM_PORTS);
   localparam int unsigned BYTE_DEPTH = SLOTS * SLOT_BYTES;

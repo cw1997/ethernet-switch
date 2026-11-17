@@ -112,6 +112,35 @@ module es_switch_de2_115_top (
   endgenerate
 
   // ---- staged switch -------------------------------------------------------
+  // The MII top exposes unpacked-array pad ports (logic sig[NUM_PORTS]).  With
+  // NUM_PORTS=2 the two PHYs are named explicitly; bridge each into one array
+  // element so the board pins stay in their original order (port 0 = ENET0).
+  logic       link_up_a[NUM_PORTS];
+  logic       mii_rx_dv_a[NUM_PORTS];
+  logic       mii_rx_er_a[NUM_PORTS];
+  logic [3:0] mii_rxd_a[NUM_PORTS];
+  wire        mii_tx_en_a[NUM_PORTS];
+  wire        mii_tx_er_a[NUM_PORTS];
+  wire  [3:0] mii_txd_a[NUM_PORTS];
+
+  genvar gp;
+  generate
+    for (gp = 0; gp < NUM_PORTS; gp++) begin : g_switch_port_adapt
+      assign link_up_a[gp]   = phy_enabled[gp];
+      assign mii_rx_dv_a[gp] = (gp == 0) ? ENET0_RX_DV : ENET1_RX_DV;
+      assign mii_rx_er_a[gp] = (gp == 0) ? ENET0_RX_ER : ENET1_RX_ER;
+      assign mii_rxd_a[gp]   = (gp == 0) ? ENET0_RX_DATA : ENET1_RX_DATA;
+    end
+  endgenerate
+  // TX outputs are plain board pins, not packed arrays: drive each from the
+  // matching array element (port 0 = ENET0, port 1 = ENET1).
+  assign ENET0_TX_EN   = mii_tx_en_a[0];
+  assign ENET0_TX_ER   = mii_tx_er_a[0];
+  assign ENET0_TX_DATA = mii_txd_a[0];
+  assign ENET1_TX_EN   = mii_tx_en_a[1];
+  assign ENET1_TX_ER   = mii_tx_er_a[1];
+  assign ENET1_TX_DATA = mii_txd_a[1];
+
   es_mii_top #(
     .NUM_PORTS   (NUM_PORTS),
     .CLK_FREQ_HZ (CLK_FREQ_HZ),
@@ -121,13 +150,13 @@ module es_switch_de2_115_top (
   ) u_switch (
     .clk_i       (CLOCK_50),
     .rst_ni      (rst_ni),
-    .link_up_i   (phy_enabled),
-    .mii_rx_dv_i ({ENET1_RX_DV, ENET0_RX_DV}),
-    .mii_rx_er_i ({ENET1_RX_ER, ENET0_RX_ER}),
-    .mii_rxd_i   ({ENET1_RX_DATA, ENET0_RX_DATA}),
-    .mii_tx_en_o ({ENET1_TX_EN, ENET0_TX_EN}),
-    .mii_tx_er_o ({ENET1_TX_ER, ENET0_TX_ER}),
-    .mii_txd_o   ({ENET1_TX_DATA, ENET0_TX_DATA})
+    .link_up_i   (link_up_a),
+    .mii_rx_dv_i (mii_rx_dv_a),
+    .mii_rx_er_i (mii_rx_er_a),
+    .mii_rxd_i   (mii_rxd_a),
+    .mii_tx_en_o (mii_tx_en_a),
+    .mii_tx_er_o (mii_tx_er_a),
+    .mii_txd_o   (mii_txd_a)
   );
 
   // Deliberate dummy consumer for status / interrupt pins that no longer have

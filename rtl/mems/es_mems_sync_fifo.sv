@@ -44,26 +44,26 @@ module es_mems_sync_fifo #(
   /// Occupancy / free-space counter width: one extra bit for the DEPTH+1 state.
   parameter int unsigned CNT_W  = ADDR_W + 1
 ) (
-  input  var logic             clk_i,
-  input  var logic             rst_ni,
+  input  var logic             clk_i,  ///< core clock
+  input  var logic             rst_ni,  ///< active-low synchronous reset
 
   // ---- abort (rewind) ------------------------------------------------------
   input  var logic             undo_i,  ///< rewind the write pointer
-  input  var logic [CNT_W-1:0] undo_cnt_i,  ///< number of entries to discard
+  input  var logic [CNT_W-1:0] undo_cnt_i,  ///< number of entries to discard on undo
 
   // ---- hard flush ----------------------------------------------------------
   input  var logic             flush_i,  ///< drop every buffered entry
 
   // ---- write port ----------------------------------------------------------
-  input  var logic             wr_en_i,
-  input  var logic [WIDTH-1:0] wr_data_i,
-  output logic                 full_o,
-  output logic     [CNT_W-1:0] free_o,  ///< entries that can still be written
+  input  var logic             wr_en_i,  ///< write enable
+  input  var logic [WIDTH-1:0] wr_data_i,  ///< write data
+  output     logic             full_o,  ///< asserted when no write slot remains
+  output     logic [CNT_W-1:0] free_o,  ///< entries (or credit) still available
 
   // ---- read port (FWFT) ----------------------------------------------------
-  input  var logic             rd_en_i,
-  output logic     [WIDTH-1:0] rd_data_o,  ///< head entry, valid while !empty_o
-  output logic                 empty_o
+  input  var logic             rd_en_i,  ///< read enable
+  output     logic [WIDTH-1:0] rd_data_o,  ///< head entry, valid while !empty_o
+  output     logic             empty_o  ///< asserted when no entry is buffered
 );
 
   // --------------------------------------------------------------------------

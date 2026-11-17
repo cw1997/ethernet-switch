@@ -14,18 +14,18 @@
 module es_switch_stage_3_checksum #(
   parameter int unsigned NUM_PORTS = 4
 ) (
-  input var logic clk_i,
-  rst_ni,
-  input var logic crc_write_i,
-  crc_sof_i,
-  input var logic [7:0] crc_data_i,
-  output logic [31:0] crc_o,
-  input var logic i_valid,
-  output logic i_ready,
-  input var logic [es_pl_chk_desc_w(NUM_PORTS)-1:0] i_desc,
-  output logic o_valid,
-  input var logic o_ready,
-  output logic [es_pl_desc_w(NUM_PORTS)-1:0] o_desc
+  input  var logic                                   clk_i,  ///< core clock
+  input  var logic                                   rst_ni,  ///< active-low synchronous reset
+  input  var logic                                   crc_write_i,  ///< CRC write strobe
+  input  var logic                                   crc_sof_i,  ///< start of frame for CRC
+  input  var logic [7:0]                             crc_data_i,  ///< CRC input octet
+  output     logic [31:0]                            crc_o,  ///< running CRC
+  input  var logic                                   i_valid,  ///< input valid; stable while i_ready is low
+  output     logic                                   i_ready,  ///< input ready; asserted when a beat is accepted
+  input  var logic [es_pl_chk_desc_w(NUM_PORTS)-1:0] i_desc,  ///< input descriptor
+  output     logic                                   o_valid,  ///< output valid; stable while o_ready is low
+  input  var logic                                   o_ready,  ///< output ready; asserted when a beat is accepted
+  output     logic [es_pl_desc_w(NUM_PORTS)-1:0]     o_desc  ///< output descriptor
 );
   localparam int unsigned DW = es_pl_desc_w(NUM_PORTS);
   localparam int unsigned PW = es_port_w(NUM_PORTS);

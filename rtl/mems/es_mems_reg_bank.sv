@@ -20,14 +20,14 @@ module es_mems_reg_bank #(
   parameter logic [WIDTH-1:0] RESET_VALUE = '0
 ) (
   /// Clock, synchronous active-low reset, and synchronous bank-wide clear.
-  input var logic clk_i,
-  rst_ni,
-  clear_i,
+  input  var logic                   clk_i,  ///< core clock
+  input  var logic                   rst_ni,  ///< active-low synchronous reset
+  input  var logic                   clear_i,  ///< descriptor publication clears header state
   /// Per-entry write enables and packed words; entry zero occupies the low slice.
-  input var logic [DEPTH-1:0] wr_en_i,
-  input var logic [DEPTH*WIDTH-1:0] wr_data_i,
+  input  var logic [DEPTH-1:0]       wr_en_i,  ///< write enable
+  input  var logic [DEPTH*WIDTH-1:0] wr_data_i,  ///< write data
   /// Packed register contents, with entry zero in the least-significant slice.
-  output    logic [DEPTH*WIDTH-1:0] data_o
+  output     logic [DEPTH*WIDTH-1:0] data_o  ///< read data
 );
 
   // --------------------------------------------------------------------------

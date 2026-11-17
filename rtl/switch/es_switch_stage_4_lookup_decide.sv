@@ -28,16 +28,16 @@ module es_switch_stage_4_lookup_decide #(
   parameter int unsigned NUM_PORTS = 4,
   parameter logic [1:0] FLOOD_MODE = ES_FLOOD_BCAST_UKN
 ) (
-  input  var logic                                        clk_i,
-  input  var logic                                        rst_ni,
+  input  var logic                                        clk_i,  ///< core clock
+  input  var logic                                        rst_ni,  ///< active-low synchronous reset
 
-  input  var logic [NUM_PORTS-1:0]                        i_valid,
-  output logic     [NUM_PORTS-1:0]                        i_ready,
-  input  var logic [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0] i_pkg,
+  input  var logic [NUM_PORTS-1:0]                        i_valid,  ///< input valid; stable while i_ready is low
+  output     logic [NUM_PORTS-1:0]                        i_ready,  ///< input ready; asserted when a beat is accepted
+  input  var logic [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0] i_pkg,  ///< input package (valid + payload)
 
-  output logic     [NUM_PORTS-1:0]                        o_valid,
-  input  var logic [NUM_PORTS-1:0]                        o_ready,
-  output logic     [NUM_PORTS*(NUM_PORTS+ES_LEN_W)-1:0]   o_pkg
+  output     logic [NUM_PORTS-1:0]                        o_valid,  ///< output valid; stable while o_ready is low
+  input  var logic [NUM_PORTS-1:0]                        o_ready,  ///< output ready; asserted when a beat is accepted
+  output     logic [NUM_PORTS*(NUM_PORTS+ES_LEN_W)-1:0]   o_pkg  ///< output package (valid + payload)
 );
 
   localparam int unsigned PW       = es_port_w(NUM_PORTS);

@@ -29,19 +29,19 @@ module es_perips_phy_88e1111 #(
   parameter int unsigned RESET_WAIT_MS    = 20
 ) (
   /// Clock, synchronous active-low reset, and sampled value from the MDIO pad.
-  input var logic clk_i,
-  rst_ni,
-  mdio_i,
+  input  var logic       clk_i,  ///< core clock
+  input  var logic       rst_ni,  ///< active-low synchronous reset
+  input  var logic       mdio_i,  ///< serial management data input
   /// MDC plus MDIO output value and active-high pad output enable.
-  output    logic mdc_o,
-  mdio_o,
-  mdio_oe_o,
+  output     logic       mdc_o,  ///< management clock
+  output     logic       mdio_o,  ///< mdio_o
+  output     logic       mdio_oe_o,  ///< mdio_oe_o
   /// PHY discovery and negotiated status; validity qualifies every field.
   /// Bits 0..5: valid, link, duplex, two-bit speed, management error.  The
   /// board may enable its MII path only for a valid 100-Mbit full-duplex link.
-  output    logic [7:0] status_o,
+  output     logic [7:0] status_o,  ///< PHY status bitmap
   /// Traffic-enable decision for a valid 100-Mbit full-duplex link.
-  output    logic enabled_o
+  output     logic       enabled_o  ///< asserted once the PHY is configured
 );
 
   // --------------------------------------------------------------------------

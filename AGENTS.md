@@ -203,7 +203,16 @@ to Verilator, Icarus or yosys:
 - Module inputs use `input var logic`: Vivado rejects the implicit net kind of
   `input logic` under `default_nettype none`. The board MDIO ports use
   explicit `tri logic` nets for bidirectional high impedance.
-- `logic` for nets, **never `wire` or `reg`**. Declare and then `assign`; do not
+- **Exception — top-level unpacked-array ports.** The three `es_*_top` wrappers
+  and `librelane/es_top.sv` expose per-port arrays (`logic sig[NUM_PORTS]`).
+  Icarus 12.0 silently leaves an unpacked-array output X unless the parent-side
+  net is `wire`, and does not update an `input var logic ... sig[N]` at all, so
+  at every instantiation site: declare the nets connected to **output** array
+  ports as `wire`, and declare the top's **input** array ports as
+  `input logic` (no `var`). Verilator lint accepts both, so the lint gate stays
+  clean. `make synth` is expected to fail at yosys on these ports (see §2.1);
+  this is the accepted trade-off for the array-style interface.
+- `logic` for nets, **never `wire` or `reg`** (except the array-port nets above). Declare and then `assign`; do not
   use the `wire x = expr;` inline form, so that every derived signal in the
   design is declared and driven the same way.
 - One driver per signal. A signal is written by exactly one `always_ff`, one

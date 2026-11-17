@@ -36,15 +36,25 @@ module es_gmii_top #(
   parameter logic [1:0] FLOOD_MODE             = 2'd1,
   parameter int unsigned IFG_OCTETS            = 12
 ) (
-  input  var logic                   clk_i,
-  input  var logic                   rst_ni,
-  input  var logic [NUM_PORTS-1:0]   link_up_i,
+  input  var logic       clk_i,  ///< core clock
+  input  var logic       rst_ni,  ///< active-low synchronous reset
+  input      logic       link_up_i[NUM_PORTS],  ///< per-port link-up gate
 
-  input  var logic [NUM_PORTS-1:0]   gmii_rx_en_i,
-  input  var logic [NUM_PORTS*8-1:0] gmii_rx_data_i,
-  output logic     [NUM_PORTS-1:0]   gmii_tx_en_o,
-  output logic     [NUM_PORTS*8-1:0] gmii_tx_data_o
+  input      logic       gmii_rx_en_i[NUM_PORTS],  ///< GMII receive enables, one bit per port
+  input      logic [7:0] gmii_rx_data_i[NUM_PORTS],  ///< GMII receive octet per port
+  output     logic       gmii_tx_en_o[NUM_PORTS],  ///< GMII transmit enables, one bit per port
+  output     logic [7:0] gmii_tx_data_o[NUM_PORTS]  ///< GMII transmit octet per port
 );
+
+  // The pad-facing ports are unpacked arrays (logic sig[NUM_PORTS]), one
+  // element per port.  The fabric and the byte-stream plumbing stay packed;
+  // these mirrors bridge the two domains one generate-loop element at a time
+  // so no runtime index ever touches an unpacked array.
+  logic [NUM_PORTS-1:0]   link_up_p;
+  logic [NUM_PORTS-1:0]   gmii_rx_en_p;
+  logic [NUM_PORTS*8-1:0] gmii_rx_data_p;
+  logic [NUM_PORTS-1:0]   gmii_tx_en_p;
+  logic [NUM_PORTS*8-1:0] gmii_tx_data_p;
 
   logic [NUM_PORTS-1:0]   rx_valid;
   logic [NUM_PORTS-1:0]   rx_ready;
@@ -68,6 +78,12 @@ module es_gmii_top #(
       localparam int unsigned BP_G =
           es_byte_period(CLK_FREQ_HZ, es_speed_e'(PORT_SPEED[g*2 +: 2]));
 
+      assign link_up_p[g]              = link_up_i[g];
+      assign gmii_rx_en_p[g]           = gmii_rx_en_i[g];
+      assign gmii_rx_data_p[g*8 +: 8]  = gmii_rx_data_i[g];
+      assign gmii_tx_en_o[g]           = gmii_tx_en_p[g];
+      assign gmii_tx_data_o[g]         = gmii_tx_data_p[g*8 +: 8];
+
       es_mac_gmii_adapt #(
         .BYTE_PERIOD    (BP_G),
         .IFG_OCTETS     (IFG_OCTETS),
@@ -75,10 +91,10 @@ module es_gmii_top #(
       ) u_adapt (
         .clk_i        (clk_i),
         .rst_ni       (rst_ni),
-        .gmii_rx_en_i (gmii_rx_en_i[g]),
-        .gmii_rx_d_i  (gmii_rx_data_i[g*8 +: 8]),
-        .gmii_tx_en_o (gmii_tx_en_o[g]),
-        .gmii_tx_d_o  (gmii_tx_data_o[g*8 +: 8]),
+        .gmii_rx_en_i (gmii_rx_en_p[g]),
+        .gmii_rx_d_i  (gmii_rx_data_p[g*8 +: 8]),
+        .gmii_tx_en_o (gmii_tx_en_p[g]),
+        .gmii_tx_d_o  (gmii_tx_data_p[g*8 +: 8]),
         .rx_valid_o   (rx_valid[g]),
         .rx_ready_i   (rx_ready[g]),
         .rx_data_o    (rx_data[g*8 +: 8]),
@@ -111,7 +127,7 @@ module es_gmii_top #(
   ) u_fabric (
     .clk_i      (clk_i),
     .rst_ni     (rst_ni),
-    .link_up_i  (link_up_i),
+    .link_up_i  (link_up_p),
     .rx_valid_i (rx_valid),
     .rx_ready_o (rx_ready),
     .rx_data_i  (rx_data),

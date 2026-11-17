@@ -1,13 +1,15 @@
 # LibreLane build
 
-Physical implementation of `es_gmii_top` (the GMII top) down to GDSII, with
-LibreLane **3.0.14** and the `sky130A` / `sky130_fd_sc_hd` PDK. CI runs the same
-flow in the `gds` job of `.github/workflows/ci.yml`.
+Physical implementation of `es_top` (the pad-level top wrapping `es_gmii_top`)
+down to GDSII, with LibreLane **3.0.14** and the `sky130A` /
+`sky130_fd_sc_hd` PDK. CI runs the same flow in the `gds` job of
+`.github/workflows/ci.yml`.
 
 ```
 librelane/
   config.json              the flow configuration
   constraints/io.sdc       timing constraints
+  es_top.sv                pad-level top: every pad pin wired to es_gmii_top
   runs/                    per-run working directory (generated)
 ```
 
@@ -30,8 +32,8 @@ The image is a Nix closure, so **pin the tag**: the RTL is elaborated against it
 
 | Key | Value / purpose |
 |---|---|
-| `DESIGN_NAME` | `es_gmii_top` — netlist and GDS are named after it |
-| `VERILOG_FILES` | staged RTL in dependency order: `es_defs.sv`, `common/`, `mems/`, `mac/` byte-stream framers + adapters, `switch/` pipeline levels (RX, validate, checksum, lookup and TX), `es_switch_fabric.sv`, three wrappers in `rtl/` (`es_gmii_top.sv`, `es_mii_top.sv`, `es_rmii_top.sv`). Stops at the GMII top; board shells and PHY-management peripherals are outside the ASIC build. |
+| `DESIGN_NAME` | `es_top` — netlist and GDS are named after it |
+| `VERILOG_FILES` | staged RTL in dependency order: `es_defs.sv`, `common/`, `mems/`, `mac/` byte-stream framers + adapters, `switch/` pipeline levels (RX, validate, checksum, lookup and TX), `es_switch_fabric.sv`, three wrappers in `rtl/` (`es_gmii_top.sv`, `es_mii_top.sv`, `es_rmii_top.sv`), then the pad-level top `librelane/es_top.sv`. Stops at the pad top; board shells and PHY-management peripherals are outside the ASIC build. |
 | `VERILOG_INCLUDE_DIRS` | `["rtl"]` |
 | `VERILOG_DEFINES` | `["SYNTHESIS"]` — keeps elaboration-time `$error`/`$warning` checks out of the netlist, since yosys has no implementation for them |
 | `CLOCK_PORT` / `CLOCK_PERIOD` | `clk_i` / `10` (100 MHz). The RTL default is 125 MHz; 10 ns is a defensible target on this PDK. |
@@ -40,6 +42,46 @@ The image is a Nix closure, so **pin the tag**: the RTL is elaborated against it
 
 **Unknown JSON keys are a hard error.** The loader validates every key against the flow's variables (`Unknown key '<name>' provided`) while reading the config, *before* synthesis — after a multi-GB image pull and PDK download. There are no comments in `config.json` (keys starting with `#` or containing `_OPT` are skipped silently, but that is an implementation detail, not a convention).
 To check a key against the pinned tag: `librelane/config/removals.py` lists removed variables, `Changelog.md` holds the per-step notes, and `grep -rn '"VARIABLE_NAME"' librelane/` finds the declarations. Any rename in `config.json` must be recorded here in the same commit.
+
+### `es_top` — pad-level boundary
+
+`es_top.sv` is the only top the physical flow elaborates. It is a pure
+pass-through: it declares every pad pin and instantiates `es_gmii_top`,
+connecting each pin straight through with no logic of its own. The pad pins
+are:
+
+| Pad pin | Direction | Shape |
+|---|---|---|
+| `clk_i` | input | scalar core clock |
+| `rst_ni` | input | scalar active-low synchronous reset |
+| `link_up_i` | input | `logic [NUM_PORTS]` per-port link gate |
+| `gmii_rx_en_i` | input | `logic [NUM_PORTS]` GMII receive enables |
+| `gmii_rx_data_i` | input | `logic [7:0] sig[NUM_PORTS]` receive octets |
+| `gmii_tx_en_o` | output | `logic [NUM_PORTS]` GMII transmit enables |
+| `gmii_tx_data_o` | output | `logic [7:0] sig[NUM_PORTS]` transmit octets |
+
+All parameters of `es_gmii_top` are redeclared on `es_top` and passed through,
+so `SYNTH_PARAMETERS` in `config.json` set the design geometry on this top.
+
+**Known tool-chain conflict.** The pad pins use unpacked arrays
+(`logic sig[NUM_PORTS]`), as required by the RTL port style. Yosys 0.52 — the
+synthesis frontend used by both LibreLane and `make synth` — rejects unpacked
+dimensions on module ports (`input/output/inout ports cannot have unpacked
+dimensions`). Icarus Verilog and Verilator accept them and both lint and
+elaborate `es_top` cleanly. Consequently `make synth` and the LibreLane GDS
+flow are **expected to fail at the yosys frontend** with this port style; all
+simulation and lint gates pass. This is a deliberate trade-off, not an
+unexpected regression.
+
+Icarus 12.0 also needs two portability rules wherever the array ports are
+connected, both applied at every instantiation site:
+
+- the parent-side net connected to an **output** unpacked-array port must be
+  declared `wire` (a `logic` variable silently stays X);
+- the top's **input** unpacked-array ports are declared `input logic` without
+  the `var` keyword (`input var logic ... sig[N]` does not update on Icarus).
+
+Verilator accepts both forms, so these rules cost nothing in the lint gate.
 
 ## 2. `SYNTH_PARAMETERS` — this build's change record
 
@@ -105,4 +147,4 @@ The 3.0 major release removed or renamed ten variables this configuration used; 
 ## 5. Synthesis portability and the CI `gds` approval gate
 
 The flow reads the design with `read_verilog -defer -noautowire -sv -I<dir>... -D<define>... <file>`, one file at a time, then `chparam -set` for each `SYNTH_PARAMETERS` entry. That is why the RTL obeys the three yosys bans (no `package`/`import`, no `return` in a function, `-sv` mandatory) and why `make synth` is a faithful stand-in for the frontend. `make synth` uses the locally installed yosys, which need not be the version inside the image, so cell/area numbers differ.
-The CI `gds` job is **gated behind a manual approval**: it declares `environment: production`, which must exist in repository settings with "Required reviewers" enabled, or no gate is enforced. It `needs: [lint, test]`, runs on the self-hosted runner, has a 180-minute budget, pins `ghcr.io/librelane/librelane:3.0.14`, and globs for `es_gmii_top.gds` in `librelane/runs`. A job waiting for approval is not dispatched and blocks nothing; an approved, started job holds the single runner. This document does not claim a GDSII has been produced or taped out on this revision.
+The CI `gds` job is **gated behind a manual approval**: it declares `environment: production`, which must exist in repository settings with "Required reviewers" enabled, or no gate is enforced. It `needs: [lint, test]`, runs on the self-hosted runner, has a 180-minute budget, pins the `ghcr.io/librelane/librelane:3.0.14`, and globs for `es_top.gds` in `librelane/runs`. A job waiting for approval is not dispatched and blocks nothing; an approved, started job holds the single runner. This document does not claim a GDSII has been produced or taped out on this revision.

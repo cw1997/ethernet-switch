@@ -60,19 +60,19 @@ module es_common_pipe_stage #(
   /// threshold (AGENTS.md 3.2).
   parameter int unsigned FLUSH_EN  = 0
 ) (
-  input  var logic          clk_i,
-  input  var logic          rst_ni,
+  input  var logic          clk_i,  ///< core clock
+  input  var logic          rst_ni,  ///< active-low synchronous reset
 
-  input  var logic          i_valid,
-  output logic              i_ready,
-  input  var logic [DW-1:0] i_dat,
+  input  var logic          i_valid,  ///< input valid; stable while i_ready is low
+  output     logic          i_ready,  ///< input ready; asserted when a beat is accepted
+  input  var logic [DW-1:0] i_dat,  ///< input data word
 
-  output logic              o_valid,
-  input  var logic          o_ready,
-  output logic     [DW-1:0] o_dat,
+  output     logic          o_valid,  ///< output valid; stable while o_ready is low
+  input  var logic          o_ready,  ///< output ready; asserted when a beat is accepted
+  output     logic [DW-1:0] o_dat,  ///< output data word
 
-  input  var logic          flush_req_i,
-  output logic              flush_ack_o
+  input  var logic          flush_req_i,  ///< flush the pipeline
+  output     logic          flush_ack_o  ///< acknowledge a flush request
 );
 
   logic flush_now;

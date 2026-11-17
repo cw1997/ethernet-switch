@@ -39,18 +39,18 @@ module es_switch_stage_4_lookup_cam_stage #(
   parameter int unsigned NUM_WAYS    = 4,
   parameter int unsigned LEARNING_EN = 1
 ) (
-  input  var logic                                         clk_i,
-  input  var logic                                         rst_ni,
+  input  var logic                                         clk_i,  ///< core clock
+  input  var logic                                         rst_ni,  ///< active-low synchronous reset
 
   // ---- descriptors from the N receive engines ---------------------------
-  input  var logic [NUM_PORTS-1:0]                         d_i_valid,
-  output logic     [NUM_PORTS-1:0]                         d_i_ready,
-  input  var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0] d_i_desc,
+  input  var logic [NUM_PORTS-1:0]                         d_i_valid,  ///< CAM-stage input valid
+  output     logic [NUM_PORTS-1:0]                         d_i_ready,  ///< CAM-stage input ready
+  input  var logic [NUM_PORTS*es_pl_desc_w(NUM_PORTS)-1:0] d_i_desc,  ///< CAM-stage input descriptor
 
   // ---- packages toward the decide level ---------------------------------
-  output logic     [NUM_PORTS-1:0]                         o_valid,
-  input  var logic [NUM_PORTS-1:0]                         o_ready,
-  output logic     [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0]  o_pkg
+  output     logic [NUM_PORTS-1:0]                         o_valid,  ///< output valid; stable while o_ready is low
+  input  var logic [NUM_PORTS-1:0]                         o_ready,  ///< output ready; asserted when a beat is accepted
+  output     logic [NUM_PORTS*es_pl_cam_w(NUM_PORTS)-1:0]  o_pkg  ///< output package (valid + payload)
 );
 
   localparam int unsigned PW        = es_port_w(NUM_PORTS);
